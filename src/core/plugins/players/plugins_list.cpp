@@ -1,23 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief  Player plugins factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Player plugins factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#pragma once
-
-//local includes
+// local includes
 #include <core/plugins/players/plugins_list.h>
 
 namespace ZXTune
 {
   void RegisterPlayerPlugins(PlayerPluginsRegistrator& registrator)
   {
-    //try TS & AY first
+    // try TS & AY first
     RegisterTSSupport(registrator);
     RegisterAYSupport(registrator);
     RegisterPT3Support(registrator);
@@ -48,24 +46,31 @@ namespace ZXTune
     RegisterCOPSupport(registrator);
     RegisterTFESupport(registrator);
     RegisterXMPPlugins(registrator);
-    RegisterSIDPlugins(registrator);
     RegisterET1Support(registrator);
     RegisterAYCSupport(registrator);
     RegisterSPCSupport(registrator);
     RegisterMTCSupport(registrator);
-    RegisterGMEPlugins(registrator);
     RegisterAHXSupport(registrator);
     RegisterPSFSupport(registrator);
     RegisterUSFSupport(registrator);
     RegisterGSFSupport(registrator);
     Register2SFSupport(registrator);
+    RegisterNCSFSupport(registrator);
     RegisterSDSFSupport(registrator);
-    RegisterASAPPlugins(registrator);
     RegisterMP3Plugin(registrator);
     RegisterOGGPlugin(registrator);
     RegisterWAVPlugin(registrator);
     RegisterFLACPlugin(registrator);
     RegisterV2MSupport(registrator);
     RegisterVGMPlugins(registrator);
+    RegisterMPTPlugins(registrator);
   }
-}
+
+  void RegisterMultitrackPlayerPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegistrator& archives)
+  {
+    RegisterSIDPlugins(players, archives);
+    RegisterGMEPlugins(players, archives);
+    RegisterASAPPlugins(players, archives);
+    RegisterVGMStreamPlugins(players, archives);
+  }
+}  // namespace ZXTune

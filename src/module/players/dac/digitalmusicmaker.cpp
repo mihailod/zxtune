@@ -1,69 +1,66 @@
 /**
-* 
-* @file
-*
-* @brief  DigitalMusicMaker chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  DigitalMusicMaker chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/dac/digitalmusicmaker.h"
 #include "module/players/dac/dac_properties_helper.h"
 #include "module/players/dac/dac_simple.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <devices/dac/sample_factories.h>
 #include <formats/chiptune/digital/digitalmusicmaker.h>
+#include <module/players/platforms.h>
 #include <module/players/properties_meta.h>
 #include <module/players/simple_orderlist.h>
 #include <module/players/tracking.h>
-//text includes
-#include <module/text/platforms.h>
 
-namespace Module
-{
-namespace DigitalMusicMaker
+namespace Module::DigitalMusicMaker
 {
   const std::size_t CHANNELS_COUNT = 3;
 
   const uint64_t Z80_FREQ = 3500000;
-  //119+116+111+10=356 ticks/out cycle = 9831 outs/sec (AY)
+  // 119+116+111+10=356 ticks/out cycle = 9831 outs/sec (AY)
   const uint_t TICKS_PER_CYCLE = 119 + 116 + 111 + 10;
-  //C-1 step 44/256 32.7Hz = ~1689 samples/sec
+  // C-1 step 44/256 32.7Hz = ~1689 samples/sec
   const uint_t C_1_STEP = 44;
   const uint_t SAMPLES_FREQ = Z80_FREQ * C_1_STEP / TICKS_PER_CYCLE / 256;
   const uint_t RENDERS_PER_SEC = Z80_FREQ / TICKS_PER_CYCLE;
 
   inline int_t StepToHz(int_t step)
   {
-    //C-1 frequency is 32.7Hz
-    //step * 32.7 / c-1_step
+    // C-1 frequency is 32.7Hz
+    // step * 32.7 / c-1_step
     return step * 3270 / int_t(C_1_STEP * 100);
   }
 
-  //supported tracking commands
+  // supported tracking commands
   enum CmdType
   {
-    //no parameters
+    // no parameters
     EMPTY_CMD,
-    //2 param: direction, step
+    // 2 param: direction, step
     FREQ_FLOAT,
-    //3 params: isApply, step, period
+    // 3 params: isApply, step, period
     VIBRATO,
-    //3 params: isApply, step, period
+    // 3 params: isApply, step, period
     ARPEGGIO,
-    //3 param: direction, step, period
+    // 3 param: direction, step, period
     TONE_SLIDE,
-    //2 params: isApply, period
+    // 2 params: isApply, period
     DOUBLE_NOTE,
-    //3 params: isApply, limit, period
+    // 3 params: isApply, limit, period
     VOL_ATTACK,
-    //3 params: isApply, limit, period
+    // 3 params: isApply, limit, period
     VOL_DECAY,
-    //1 param
+    // 1 param
     MIX_SAMPLE,
   };
 
@@ -73,6 +70,10 @@ namespace DigitalMusicMaker
     typedef std::shared_ptr<const ModuleData> Ptr;
     typedef std::shared_ptr<ModuleData> RWPtr;
 
+    ModuleData()
+      : DAC::SimpleModuleData(CHANNELS_COUNT)
+    {}
+
     struct MixedChannel
     {
       MutableCell Mixin;
@@ -80,8 +81,7 @@ namespace DigitalMusicMaker
 
       MixedChannel()
         : Period()
-      {
-      }
+      {}
     };
 
     std::array<MixedChannel, 64> Mixes;
@@ -92,8 +92,7 @@ namespace DigitalMusicMaker
   public:
     explicit ChannelBuilder(MutableCell& cell)
       : Target(cell)
-    {
-    }
+    {}
 
     void SetRest() override
     {
@@ -195,6 +194,7 @@ namespace DigitalMusicMaker
     {
       Target.AddCommand(EMPTY_CMD);
     }
+
   private:
     MutableCell& Target;
   };
@@ -226,7 +226,8 @@ namespace DigitalMusicMaker
       Data->Samples.Add(index, Devices::DAC::CreateU4PackedSample(sample, loop));
     }
 
-    std::unique_ptr<Formats::Chiptune::DigitalMusicMaker::ChannelBuilder> SetSampleMixin(uint_t index, uint_t period) override
+    std::unique_ptr<Formats::Chiptune::DigitalMusicMaker::ChannelBuilder> SetSampleMixin(uint_t index,
+                                                                                         uint_t period) override
     {
       ModuleData::MixedChannel& dst = Data->Mixes[index];
       dst.Period = period;
@@ -247,7 +248,8 @@ namespace DigitalMusicMaker
     std::unique_ptr<Formats::Chiptune::DigitalMusicMaker::ChannelBuilder> StartChannel(uint_t index) override
     {
       Patterns.SetChannel(index);
-      return std::unique_ptr<Formats::Chiptune::DigitalMusicMaker::ChannelBuilder>(new ChannelBuilder(Patterns.GetChannel()));
+      return std::unique_ptr<Formats::Chiptune::DigitalMusicMaker::ChannelBuilder>(
+          new ChannelBuilder(Patterns.GetChannel()));
     }
 
     ModuleData::Ptr CaptureResult()
@@ -255,6 +257,7 @@ namespace DigitalMusicMaker
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     DAC::PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -266,7 +269,7 @@ namespace DigitalMusicMaker
   {
   public:
     ChannelState()
-      //values are from player' defaults
+      // values are from player' defaults
       : FreqSlideStep(1)
       , VibratoPeriod(4)
       , VibratoStep(3)
@@ -287,8 +290,7 @@ namespace DigitalMusicMaker
       , Volume(15)
       , Sample(0)
       , Effect(&ChannelState::NoEffect)
-    {
-    }
+    {}
 
     void OnFrame(DAC::ChannelDataBuilder& builder)
     {
@@ -297,7 +299,7 @@ namespace DigitalMusicMaker
 
     void OnNote(const Cell& src, const ModuleData& data, DAC::ChannelDataBuilder& builder)
     {
-      //if has new sample, start from it, else use previous sample
+      // if has new sample, start from it, else use previous sample
       const uint_t oldPos = src.GetSample() ? 0 : builder.GetState().PosInSample;
       ParseNote(src, builder);
       CommandsIterator it = src.GetCommands();
@@ -391,15 +393,15 @@ namespace DigitalMusicMaker
           }
           break;
         case MIX_SAMPLE:
-          {
-            DacState = builder.GetState();
-            DacState.PosInSample = oldPos;
-            const ModuleData::MixedChannel& mix = data.Mixes[it->Param1];
-            ParseNote(mix.Mixin, builder);
-            MixPeriod = mix.Period;
-            Effect = &ChannelState::Mix;
-          }
-          break;
+        {
+          DacState = builder.GetState();
+          DacState.PosInSample = oldPos;
+          const ModuleData::MixedChannel& mix = data.Mixes[it->Param1];
+          ParseNote(mix.Mixin, builder);
+          MixPeriod = mix.Period;
+          Effect = &ChannelState::Mix;
+        }
+        break;
         }
       }
     }
@@ -412,6 +414,7 @@ namespace DigitalMusicMaker
       builder.SetSampleNum(Sample);
       builder.SetLevelInPercents(Volume * 100 / 15);
     }
+
   private:
     void ParseNote(const Cell& src, DAC::ChannelDataBuilder& builder)
     {
@@ -445,9 +448,7 @@ namespace DigitalMusicMaker
       }
     }
 
-    void NoEffect(DAC::ChannelDataBuilder& /*builder*/)
-    {
-    }
+    void NoEffect(DAC::ChannelDataBuilder& /*builder*/) {}
 
     void FreqFloat(DAC::ChannelDataBuilder& /*builder*/)
     {
@@ -522,9 +523,9 @@ namespace DigitalMusicMaker
       if (Step(MixPeriod))
       {
         ParseNote(OldData, builder);
-        //restore a6ll
+        // restore a6ll
         const uint_t prevStep = GetStep() + FreqSlide;
-        const uint_t FPS = 50;//TODO
+        const uint_t FPS = 50;  // TODO
         const uint_t skipped = MixPeriod * prevStep * RENDERS_PER_SEC / FPS / 256;
         Devices::DAC::ChannelData& dst = builder.GetState();
         dst = DacState;
@@ -560,14 +561,10 @@ namespace DigitalMusicMaker
 
     uint_t GetStep() const
     {
-      static const uint_t STEPS[] =
-      {
-        44, 47, 50, 53, 56, 59, 63, 66, 70, 74, 79, 83,
-        88, 94, 99, 105, 111, 118, 125, 133, 140, 149, 158, 167,
-        177, 187, 199, 210, 223, 236, 250, 265, 281, 297, 315, 334,
-        354, 375, 397, 421, 446, 472, 500, 530, 561, 595, 630, 668,
-        707, 749, 794, 841, 891, 944, 1001, 1060, 1123, 1189, 1216, 1335
-      };
+      static const uint_t STEPS[] = {44,  47,  50,  53,  56,  59,  63,  66,  70,  74,   79,   83,   88,   94,   99,
+                                     105, 111, 118, 125, 133, 140, 149, 158, 167, 177,  187,  199,  210,  223,  236,
+                                     250, 265, 281, 297, 315, 334, 354, 375, 397, 421,  446,  472,  500,  530,  561,
+                                     595, 630, 668, 707, 749, 794, 841, 891, 944, 1001, 1060, 1123, 1189, 1216, 1335};
       return STEPS[Note + NoteSlide];
     }
 
@@ -575,33 +572,34 @@ namespace DigitalMusicMaker
     {
       Effect = &ChannelState::NoEffect;
     }
+
   private:
     int_t FreqSlideStep;
 
-    uint_t VibratoPeriod;//VBT_x
-    int_t VibratoStep;//VBF_x * VBA1/VBA2
-    
-    uint_t ArpeggioPeriod;//APT_x
-    int_t ArpeggioStep;//APF_x * APA1/APA2
+    uint_t VibratoPeriod;  // VBT_x
+    int_t VibratoStep;     // VBF_x * VBA1/VBA2
 
-    uint_t NoteSlidePeriod;//SUT_x/SDT_x
+    uint_t ArpeggioPeriod;  // APT_x
+    int_t ArpeggioStep;     // APF_x * APA1/APA2
+
+    uint_t NoteSlidePeriod;  // SUT_x/SDT_x
     int_t NoteSlideStep;
 
-    uint_t NoteDoublePeriod;//DUT_x
+    uint_t NoteDoublePeriod;  // DUT_x
 
-    uint_t AttackPeriod;//ATT_x
-    uint_t AttackLimit;//ATL_x
+    uint_t AttackPeriod;  // ATT_x
+    uint_t AttackLimit;   // ATL_x
 
-    uint_t DecayPeriod;//DYT_x
-    uint_t DecayLimit;//DYL_x
+    uint_t DecayPeriod;  // DYT_x
+    uint_t DecayLimit;   // DYL_x
 
     uint_t MixPeriod;
 
-    uint_t Counter;//COUN_x
-    uint_t Note;  //NOTN_x
+    uint_t Counter;  // COUN_x
+    uint_t Note;     // NOTN_x
     uint_t NoteSlide;
     uint_t FreqSlide;
-    uint_t Volume;//pVOL_x
+    uint_t Volume;  // pVOL_x
     uint_t Sample;
 
     Cell OldData;
@@ -634,7 +632,7 @@ namespace DigitalMusicMaker
 
         ChannelState& chanState = Chans[chan];
         chanState.OnFrame(builder);
-        //begin note
+        // begin note
         if (line)
         {
           if (const auto src = line->GetChannel(chan))
@@ -645,6 +643,7 @@ namespace DigitalMusicMaker
         chanState.GetState(builder);
       }
     }
+
   private:
     const ModuleData::Ptr Data;
     std::array<ChannelState, CHANNELS_COUNT> Chans;
@@ -656,13 +655,11 @@ namespace DigitalMusicMaker
     Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
       : Data(std::move(data))
       , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, CHANNELS_COUNT))
-    {
-    }
+    {}
 
-    Information::Ptr GetInformation() const override
+    TrackModel::Ptr GetTrackModel() const override
     {
-      return Info;
+      return Data;
     }
 
     Parameters::Accessor::Ptr GetProperties() const override
@@ -672,28 +669,29 @@ namespace DigitalMusicMaker
 
     DAC::DataIterator::Ptr CreateDataIterator() const override
     {
-      auto iterator = CreateTrackStateIterator(Data);
+      auto iterator = CreateTrackStateIterator(GetFrameDuration(), Data);
       auto renderer = MakePtr<DataRenderer>(Data);
       return DAC::CreateDataIterator(std::move(iterator), std::move(renderer));
     }
 
-    void GetSamples(Devices::DAC::Chip::Ptr chip) const override
+    void GetSamples(Devices::DAC::Chip& chip) const override
     {
       for (uint_t idx = 0, lim = Data->Samples.Size(); idx != lim; ++idx)
       {
-        chip->SetSample(idx, Data->Samples.Get(idx));
+        chip.SetSample(idx, Data->Samples.Get(idx));
       }
     }
+
   private:
     const ModuleData::Ptr Data;
     const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
   };
 
   class Factory : public DAC::Factory
   {
   public:
-    DAC::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    DAC::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       DAC::PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
@@ -709,10 +707,9 @@ namespace DigitalMusicMaker
       }
     }
   };
-  
+
   Factory::Ptr CreateFactory()
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::DigitalMusicMaker

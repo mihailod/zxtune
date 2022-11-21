@@ -1,73 +1,29 @@
 /**
-* 
-* @file
-*
-* @brief  YM/VTX chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  YM/VTX chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/aym/ymvtx.h"
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_stream.h"
 #include "module/players/aym/aym_properties_helper.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <core/core_parameters.h>
-//std includes
+// std includes
 #include <utility>
-//boost includes
+// boost includes
 #include <boost/lexical_cast.hpp>
 
-namespace Module
+namespace Module::YMVTX
 {
-namespace YMVTX
-{
-  typedef std::vector<Devices::AYM::Registers> RegistersArray;
-
-  class StreamModel : public AYM::StreamModel
-  {
-  public:
-    typedef std::shared_ptr<StreamModel> RWPtr;
-    
-    StreamModel()
-      : LoopFrame(0)
-    {
-    }
-
-    uint_t Size() const override
-    {
-      return static_cast<uint_t>(Data.size());
-    }
-
-    uint_t Loop() const override
-    {
-      return LoopFrame;
-    }
-
-    Devices::AYM::Registers Get(uint_t pos) const override
-    {
-      return Data[pos];
-    }
-    
-    void SetLoop(uint_t frame)
-    {
-      LoopFrame = frame;
-    }
-    
-    Devices::AYM::Registers& Allocate()
-    {
-      Data.push_back(Devices::AYM::Registers());
-      return Data.back();
-    }
-  private:
-    uint_t LoopFrame;
-    RegistersArray Data;
-  };
-
   Devices::AYM::LayoutType VtxMode2AymLayout(uint_t mode)
   {
     using namespace Devices::AYM;
@@ -98,9 +54,8 @@ namespace YMVTX
   public:
     explicit DataBuilder(AYM::PropertiesHelper& props)
       : Properties(props)
-      , Data(MakeRWPtr<StreamModel>())
-    {
-    }
+      , Data(MakePtr<AYM::MutableStreamModel>())
+    {}
 
     void SetVersion(const String& version) override
     {
@@ -122,9 +77,9 @@ namespace YMVTX
       Data->SetLoop(loop);
     }
 
-    void SetDigitalSample(uint_t /*idx*/, const Dump& /*data*/) override
+    void SetDigitalSample(uint_t /*idx*/, const Binary::Dump& /*data*/) override
     {
-      //TODO:
+      // TODO:
     }
 
     void SetClockrate(uint64_t freq) override
@@ -134,7 +89,10 @@ namespace YMVTX
 
     void SetIntFreq(uint_t freq) override
     {
-      Properties.SetFramesFrequency(freq);
+      if (freq)
+      {
+        FrameDuration = Time::Microseconds::FromFrequency(freq);
+      }
     }
 
     void SetTitle(const String& title) override
@@ -162,7 +120,7 @@ namespace YMVTX
 
     void SetProgram(const String& /*program*/) override
     {
-      //TODO
+      // TODO
     }
 
     void SetEditor(const String& editor) override
@@ -170,9 +128,9 @@ namespace YMVTX
       Properties.SetProgram(editor);
     }
 
-    void AddData(const Dump& registers) override
+    void AddData(const Binary::Dump& registers) override
     {
-      Devices::AYM::Registers& data = Data->Allocate();
+      auto& data = Data->AddFrame();
       const uint_t availRegs = std::min<uint_t>(registers.size(), Devices::AYM::Registers::ENV + 1);
       for (uint_t reg = 0, mask = 1; reg != availRegs; ++reg, mask <<= 1)
       {
@@ -184,15 +142,20 @@ namespace YMVTX
       }
     }
 
-    AYM::StreamModel::Ptr GetResult() const
+    AYM::StreamModel::Ptr CaptureResult() const
     {
-      return Data->Size()
-        ? Data
-        : AYM::StreamModel::Ptr();
+      return Data->IsEmpty() ? AYM::StreamModel::Ptr() : AYM::StreamModel::Ptr(std::move(Data));
     }
+
+    Time::Microseconds GetFrameDuration() const
+    {
+      return FrameDuration;
+    }
+
   private:
     AYM::PropertiesHelper& Properties;
-    const StreamModel::RWPtr Data;
+    AYM::MutableStreamModel::Ptr Data;
+    Time::Microseconds FrameDuration = AYM::BASE_FRAME_DURATION;
   };
 
   class Factory : public AYM::Factory
@@ -200,23 +163,24 @@ namespace YMVTX
   public:
     explicit Factory(Formats::Chiptune::YM::Decoder::Ptr decoder)
       : Decoder(std::move(decoder))
-    {
-    }
+    {}
 
-    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       AYM::PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
       if (const auto container = Decoder->Parse(rawData, dataBuilder))
       {
-        if (auto data = dataBuilder.GetResult())
+        if (auto data = dataBuilder.CaptureResult())
         {
           props.SetSource(*container);
-          return AYM::CreateStreamedChiptune(std::move(data), std::move(properties));
+          return AYM::CreateStreamedChiptune(dataBuilder.GetFrameDuration(), std::move(data), std::move(properties));
         }
       }
-      return AYM::Chiptune::Ptr();
+      return {};
     }
+
   private:
     const Formats::Chiptune::YM::Decoder::Ptr Decoder;
   };
@@ -225,5 +189,4 @@ namespace YMVTX
   {
     return MakePtr<Factory>(std::move(decoder));
   }
-}
-}
+}  // namespace Module::YMVTX

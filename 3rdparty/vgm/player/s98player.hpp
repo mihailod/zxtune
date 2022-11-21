@@ -8,6 +8,7 @@
 #include "helper.h"
 #include "playerbase.hpp"
 #include "../utils/DataLoader.h"
+#include "../emu/logging.h"
 #include <vector>
 #include <map>
 #include <string>
@@ -32,25 +33,46 @@ struct S98_DEVICE
 	UINT32 pan;			// [v2: reserved] [v3: pan setting]
 	UINT32 app_spec;	// [v2: application-specific] [v3: reserved]
 };
-
-typedef struct _s98_chip_device S98_CHIPDEV;
-struct _s98_chip_device
+struct S98_PLAY_OPTIONS
 {
-	VGM_BASEDEV base;
-	size_t optID;
-	std::vector<UINT8> cfg;
-	DEVFUNC_WRITE_A8D8 write;
+	PLR_GEN_OPTS genOpts;
 };
+
 
 class S98Player : public PlayerBase
 {
+private:
+	struct DevCfgBuffer
+	{
+		std::vector<UINT8> data;
+	};
+	struct DEVLOG_CB_DATA
+	{
+		S98Player* player;
+		size_t chipDevID;
+	};
+	struct S98_CHIPDEV
+	{
+		VGM_BASEDEV base;
+		size_t optID;
+		std::vector<UINT8> cfg;
+		DEVFUNC_WRITE_A8D8 write;
+		DEVLOG_CB_DATA logCbData;
+	};
+	struct DEVLINK_CB_DATA
+	{
+		S98Player* player;
+		S98_CHIPDEV* chipDev;
+	};
+	
 public:
 	S98Player();
 	~S98Player();
 	
 	UINT32 GetPlayerType(void) const;
 	const char* GetPlayerName(void) const;
-	static UINT8 IsMyFile(DATA_LOADER *dataLoader);
+	static UINT8 PlayerCanLoadFile(DATA_LOADER *dataLoader);
+	UINT8 CanLoadFile(DATA_LOADER *dataLoader) const;
 	UINT8 LoadFile(DATA_LOADER *dataLoader);
 	UINT8 UnloadFile(void);
 	const S98_HEADER* GetFileHeader(void) const;
@@ -62,11 +84,13 @@ public:
 	UINT8 GetDeviceOptions(UINT32 id, PLR_DEV_OPTS& devOpts) const;
 	UINT8 SetDeviceMuting(UINT32 id, const PLR_MUTE_OPTS& muteOpts);
 	UINT8 GetDeviceMuting(UINT32 id, PLR_MUTE_OPTS& muteOpts) const;
+	UINT8 SetPlayerOptions(const S98_PLAY_OPTIONS& playOpts);
+	UINT8 GetPlayerOptions(S98_PLAY_OPTIONS& playOpts) const;
 	
 	//UINT32 GetSampleRate(void) const;
 	UINT8 SetSampleRate(UINT32 sampleRate);
-	//UINT8 SetPlaybackSpeed(double speed);
-	//void SetCallback(PLAYER_EVENT_CB cbFunc, void* cbParam);
+	UINT8 SetPlaybackSpeed(double speed);
+	//void SetEventCallback(PLAYER_EVENT_CB cbFunc, void* cbParam);
 	UINT32 Tick2Sample(UINT32 ticks) const;
 	UINT32 Sample2Tick(UINT32 samples) const;
 	double Tick2Second(UINT32 ticks) const;
@@ -89,6 +113,7 @@ private:
 	UINT8 GetDeviceInstance(size_t id) const;
 	size_t DeviceID2OptionID(UINT32 id) const;
 	void RefreshMuting(S98_CHIPDEV& chipDev, const PLR_MUTE_OPTS& muteOpts);
+	void RefreshPanning(S98_CHIPDEV& chipDev, const PLR_PAN_OPTS& panOpts);
 	
 	void CalcSongLength(void);
 	UINT8 LoadTags(void);
@@ -98,10 +123,17 @@ private:
 	
 	void RefreshTSRates(void);
 	
+	static void PlayerLogCB(void* userParam, void* source, UINT8 level, const char* message);
+	static void SndEmuLogCB(void* userParam, void* source, UINT8 level, const char* message);
+	
+	void GenerateDeviceConfig(void);
+	static void DeviceLinkCallback(void* userParam, VGM_BASEDEV* cDev, DEVLINK_INFO* dLink);
 	UINT8 SeekToTick(UINT32 tick);
 	UINT8 SeekToFilePos(UINT32 pos);
 	void ParseFile(UINT32 ticks);
+	void HandleEOF(void);
 	void DoCommand(void);
+	void DoRegWrite(UINT8 deviceID, UINT8 port, UINT8 reg, UINT8 data);
 	
 	enum
 	{
@@ -109,11 +141,13 @@ private:
 	};
 	
 	CPCONV* _cpcSJIS;	// ShiftJIS -> UTF-8 codepage conversion
+	DEV_LOGGER _logger;
 	DATA_LOADER *_dLoad;
 	const UINT8* _fileData;	// data pointer for quick access, equals _dLoad->GetFileData().data()
 	
 	S98_HEADER _fileHdr;
 	std::vector<S98_DEVICE> _devHdrs;
+	std::vector<DevCfgBuffer> _devCfgs;
 	UINT32 _totalTicks;
 	UINT32 _loopTick;
 	std::map<std::string, std::string> _tagData;
@@ -124,12 +158,17 @@ private:
 	// tick/sample conversion rates
 	UINT64 _tsMult;
 	UINT64 _tsDiv;
+
+	UINT64 _lastTsMult;
+	UINT64 _lastTsDiv;
 	
 	static const UINT8 _OPT_DEV_LIST[_OPT_DEV_COUNT];	// list of configurable libvgm devices
 	
+	S98_PLAY_OPTIONS _playOpts;
 	PLR_DEV_OPTS _devOpts[_OPT_DEV_COUNT * 2];	// space for 2 instances per chip
 	size_t _devOptMap[0x100][2];	// maps libvgm device ID to _devOpts vector
 	std::vector<S98_CHIPDEV> _devices;
+	std::vector<std::string> _devNames;
 	size_t _optDevMap[_OPT_DEV_COUNT * 2];	// maps _devOpts vector index to _devices vector
 	
 	UINT32 _filePos;
@@ -137,6 +176,7 @@ private:
 	UINT32 _playTick;
 	UINT32 _playSmpl;
 	UINT32 _curLoop;
+	UINT32 _lastLoopTick;
 	
 	UINT8 _playState;
 	UINT8 _psTrigger;	// used to temporarily trigger special commands

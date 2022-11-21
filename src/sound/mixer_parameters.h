@@ -1,17 +1,17 @@
 /**
-*
-* @file
-*
-* @brief  Mixing parameters names
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Mixing parameters names
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <parameters/types.h>
+// library includes
+#include <sound/sound_parameters.h>
 
 namespace Parameters
 {
@@ -24,17 +24,17 @@ namespace Parameters
       namespace Mixer
       {
         //! @brief Parameters#ZXTune#Sound#Mixer namespace prefix
-        extern const NameType PREFIX;
+        const auto PREFIX = Sound::PREFIX + "mixer"_id;
 
         //@{
         //! @brief Function to create parameter name
-        NameType LEVEL(uint_t totalChannels, uint_t inChannel, uint_t outChannel);
+        Identifier LEVEL(uint_t totalChannels, uint_t inChannel, uint_t outChannel);
 
         //! @brief Function to get defaul percent-based level
         //! @see Parameters#ZXTune#Sound#GAIN_PRECISION
         IntType LEVEL_DEFAULT(uint_t totalChannels, uint_t inChannel, uint_t outChannel);
         //@}
-      }
-    }
-  }
-}
+      }  // namespace Mixer
+    }    // namespace Sound
+  }      // namespace ZXTune
+}  // namespace Parameters

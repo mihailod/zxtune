@@ -1,74 +1,40 @@
 /**
-* 
-* @file
-*
-* @brief  GlobalTracker chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  GlobalTracker chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/aym/globaltracker.h"
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <formats/chiptune/aym/globaltracker.h>
 #include <math/numeric.h>
+#include <module/players/platforms.h>
 #include <module/players/properties_meta.h>
 #include <module/players/simple_orderlist.h>
-//text includes
-#include <module/text/platforms.h>
 
-namespace Module
-{
-namespace GlobalTracker
+namespace Module::GlobalTracker
 {
   enum CmdType
   {
     EMPTY,
-    ENVELOPE,     //2p
-    NOENVELOPE,   //0p
+    ENVELOPE,    // 2p
+    NOENVELOPE,  // 0p
   };
 
   using Formats::Chiptune::GlobalTracker::Sample;
   using Formats::Chiptune::GlobalTracker::Ornament;
 
-  class ModuleData : public TrackModel
-  {
-  public:
-    typedef std::shared_ptr<const ModuleData> Ptr;
-    typedef std::shared_ptr<ModuleData> RWPtr;
-
-    ModuleData()
-      : InitialTempo()
-    {
-    }
-
-    uint_t GetInitialTempo() const override
-    {
-      return InitialTempo;
-    }
-
-    const OrderList& GetOrder() const override
-    {
-      return *Order;
-    }
-
-    const PatternsSet& GetPatterns() const override
-    {
-      return *Patterns;
-    }
-
-    uint_t InitialTempo;
-    OrderList::Ptr Order;
-    PatternsSet::Ptr Patterns;
-    SparsedObjectsStorage<Sample> Samples;
-    SparsedObjectsStorage<Ornament> Ornaments;
-  };
+  using ModuleData = AYM::ModuleData<OrderList, Sample, Ornament>;
 
   class DataBuilder : public Formats::Chiptune::GlobalTracker::Builder
   {
@@ -159,6 +125,7 @@ namespace GlobalTracker
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     AYM::PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -169,12 +136,15 @@ namespace GlobalTracker
   struct ChannelState
   {
     ChannelState()
-      : Enabled(false), Envelope(false)
-      , Note(), SampleNum(0), PosInSample(0)
-      , OrnamentNum(0), PosInOrnament(0)
+      : Enabled(false)
+      , Envelope(false)
+      , Note()
+      , SampleNum(0)
+      , PosInSample(0)
+      , OrnamentNum(0)
+      , PosInOrnament(0)
       , Volume(0)
-    {
-    }
+    {}
     bool Enabled;
     bool Envelope;
     uint_t Note;
@@ -189,9 +159,8 @@ namespace GlobalTracker
   {
   public:
     explicit DataRenderer(ModuleData::Ptr data)
-       : Data(std::move(data))
-    {
-    }
+      : Data(std::move(data))
+    {}
 
     void Reset() override
     {
@@ -206,6 +175,7 @@ namespace GlobalTracker
       }
       SynthesizeChannelsData(track);
     }
+
   private:
     void GetNewLineState(const TrackModelState& state, AYM::TrackBuilder& track)
     {
@@ -289,7 +259,7 @@ namespace GlobalTracker
       const Sample::Line& curSampleLine = curSample.GetLine(dst.PosInSample);
       const Ornament& curOrnament = Data->Ornaments.Get(dst.OrnamentNum);
 
-      //apply tone
+      // apply tone
       const int_t halftones = Math::Clamp<int_t>(int_t(dst.Note) + curOrnament.GetLine(dst.PosInOrnament), 0, 95);
       const uint_t freq = (track.GetFrequency(halftones) + curSampleLine.Vibrato) & 0xfff;
       channel.SetTone(freq);
@@ -299,14 +269,14 @@ namespace GlobalTracker
         channel.DisableTone();
       }
       const int_t level = Math::Clamp<int_t>(int_t(curSampleLine.Level) - dst.Volume, 0, 255);
-      //apply level
+      // apply level
       channel.SetLevel(level & 0xf);
-      //apply envelope
+      // apply envelope
       if (dst.Envelope && curSampleLine.EnvelopeMask)
       {
         channel.EnableEnvelope();
       }
-      //apply noise
+      // apply noise
       noise |= curSampleLine.Noise;
       if (curSampleLine.NoiseMask)
       {
@@ -322,47 +292,17 @@ namespace GlobalTracker
         dst.PosInOrnament = curOrnament.GetLoop();
       }
     }
+
   private:
     const ModuleData::Ptr Data;
     std::array<ChannelState, AYM::TRACK_CHANNELS> PlayerState;
   };
 
-  class Chiptune : public AYM::Chiptune
-  {
-  public:
-    Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
-      : Data(std::move(data))
-      , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, AYM::TRACK_CHANNELS))
-    {
-    }
-
-    Information::Ptr GetInformation() const override
-    {
-      return Info;
-    }
-
-    Parameters::Accessor::Ptr GetProperties() const override
-    {
-      return Properties;
-    }
-
-    AYM::DataIterator::Ptr CreateDataIterator(AYM::TrackParameters::Ptr trackParams) const override
-    {
-      auto iterator = CreateTrackStateIterator(Data);
-      auto renderer = MakePtr<DataRenderer>(Data);
-      return AYM::CreateDataIterator(std::move(trackParams), std::move(iterator), std::move(renderer));
-    }
-  private:
-    const ModuleData::Ptr Data;
-    const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
-  };
-
   class Factory : public AYM::Factory
   {
   public:
-    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       AYM::PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
@@ -370,11 +310,12 @@ namespace GlobalTracker
       {
         props.SetSource(*container);
         props.SetPlatform(Platforms::ZX_SPECTRUM);
-        return MakePtr<Chiptune>(dataBuilder.CaptureResult(), std::move(properties));
+        return MakePtr<AYM::TrackingChiptune<ModuleData, DataRenderer>>(dataBuilder.CaptureResult(),
+                                                                        std::move(properties));
       }
       else
       {
-        return AYM::Chiptune::Ptr();
+        return {};
       }
     }
   };
@@ -383,5 +324,4 @@ namespace GlobalTracker
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::GlobalTracker

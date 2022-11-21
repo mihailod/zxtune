@@ -1,16 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  Parameters modifier interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Parameters modifier interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <parameters/visitor.h>
 
 namespace Parameters
@@ -22,6 +22,6 @@ namespace Parameters
     typedef std::shared_ptr<Modifier> Ptr;
 
     //! Remove parameter
-    virtual void RemoveValue(const NameType& name) = 0;
+    virtual void RemoveValue(Identifier name) = 0;
   };
-}
+}  // namespace Parameters

@@ -1,19 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief Sound component implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Sound component implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "config.h"
+// local includes
 #include "sound.h"
-//common includes
+#include "config.h"
+// common includes
 #include <error_tools.h>
-//library includes
+// library includes
 #include <core/core_parameters.h>
 #include <debug/log.h>
 #include <math/numeric.h>
@@ -26,19 +26,17 @@
 #include <sound/sound_parameters.h>
 #include <strings/array.h>
 #include <strings/map.h>
-//std includes
+// std includes
 #include <algorithm>
 #include <cctype>
-#include <list>
 #include <iostream>
+#include <list>
 #include <sstream>
-//boost includes
+// boost includes
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/value_semantic.hpp>
-//text includes
-#include "text/text.h"
 
 #define FILE_TAG DAEDAE2A
 
@@ -50,30 +48,18 @@ namespace
 
   static const String NOTUSED_MARK("\x01\x02");
 
-  template<class T>
-  inline T FromString(const String& str)
-  {
-    std::basic_istringstream<Char> stream(str);
-    T res = 0;
-    if (stream >> res)
-    {
-      return res;
-    }
-    throw MakeFormattedError(THIS_LINE, Text::ERROR_INVALID_FORMAT, str);
-  }
-
   class CommonBackendParameters
   {
   public:
     CommonBackendParameters(Parameters::Container::Ptr config)
       : Params(std::move(config))
-    {
-    }
+    {}
 
     void SetBackendParameters(const String& id, const String& options)
     {
-      ParseParametersString(Parameters::ZXTune::Sound::Backends::PREFIX + ToStdString(id),
-        options, *Params);
+      using namespace Parameters;
+      ParseParametersString(static_cast<Parameters::Identifier>(ZXTune::Sound::Backends::PREFIX).Append(id), options,
+                            *Params);
     }
 
     void SetSoundParameters(const Strings::Map& options)
@@ -105,28 +91,26 @@ namespace
       return Params;
     }
 
-    Time::Microseconds GetFrameDuration() const
-    {
-      return Sound::GetFrameDuration(*Params);
-    }
   private:
     const Parameters::Container::Ptr Params;
   };
 
   class Component : public SoundComponent
   {
-    //Id => Options
+    // Id => Options
     typedef std::map<String, String> PerBackendOptions;
+
   public:
     explicit Component(Parameters::Container::Ptr configParams)
       : Service(Sound::CreateGlobalService(configParams))
       , Params(new CommonBackendParameters(configParams))
-      , OptionsDescription(Text::SOUND_SECTION)
+      , OptionsDescription("Sound options")
       , Looped(false)
     {
       using namespace boost::program_options;
-      for (Sound::BackendInformation::Iterator::Ptr backends = Service->EnumerateBackends();
-        backends->IsValid(); backends->Next())
+      auto opt = OptionsDescription.add_options();
+      for (Sound::BackendInformation::Iterator::Ptr backends = Service->EnumerateBackends(); backends->IsValid();
+           backends->Next())
       {
         const Sound::BackendInformation::Ptr info = backends->Get();
         if (info->Status())
@@ -136,18 +120,13 @@ namespace
         const String id = info->Id();
         String& opts = BackendOptions[id];
         opts = NOTUSED_MARK;
-        OptionsDescription.add_options()
-          (id.c_str(), value<String>(&opts)->implicit_value(String(),
-            Text::SOUND_BACKEND_PARAMS), info->Description().c_str())
-          ;
+        opt(id.c_str(), value<String>(&opts)->implicit_value(String(), "parameters"), info->Description().c_str());
       }
 
-      OptionsDescription.add_options()
-        (Text::FREQUENCY_KEY, value<String>(&SoundOptions[Parameters::ZXTune::Sound::FREQUENCY.FullPath()]), Text::FREQUENCY_DESC)
-        (Text::FRAMEDURATION_KEY, value<String>(&SoundOptions[Parameters::ZXTune::Sound::FRAMEDURATION.FullPath()]), Text::FRAMEDURATION_DESC)
-        (Text::FREQTABLE_KEY, value<String>(&SoundOptions[Parameters::ZXTune::Core::AYM::TABLE.FullPath()]), Text::FREQTABLE_DESC)
-        (Text::LOOP_KEY, bool_switch(&Looped), Text::LOOP_DESC)
-      ;
+      opt("frequency", value<String>(GetSoundOption(Parameters::ZXTune::Sound::FREQUENCY)),
+          "specify sound frequency in Hz");
+      opt("freqtable", value<String>(GetSoundOption(Parameters::ZXTune::Core::AYM::TABLE)), "specify frequency table");
+      opt("loop", bool_switch(&Looped), "loop playback");
     }
 
     const boost::program_options::options_description& GetOptionsDescription() const override
@@ -159,7 +138,7 @@ namespace
     {
       Parameters::Container::Ptr soundParameters = Parameters::Container::Create();
       {
-        for (auto it = BackendOptions.begin(), lim = BackendOptions.end(); it != lim; )
+        for (auto it = BackendOptions.begin(), lim = BackendOptions.end(); it != lim;)
         {
           if (it->second != NOTUSED_MARK)
           {
@@ -181,11 +160,10 @@ namespace
       Params->SetLooped(Looped);
     }
 
-    void Initialize() override
-    {
-    }
+    void Initialize() override {}
 
-    Sound::Backend::Ptr CreateBackend(Module::Holder::Ptr module, const String& typeHint, Sound::BackendCallback::Ptr callback) override
+    Sound::Backend::Ptr CreateBackend(Module::Holder::Ptr module, const String& typeHint,
+                                      Sound::BackendCallback::Ptr callback) override
     {
       if (!typeHint.empty())
       {
@@ -196,8 +174,8 @@ namespace
         Dbg("Using previously succeed backend %1%", UsedId);
         return Service->CreateBackend(UsedId, module, callback);
       }
-      for (Sound::BackendInformation::Iterator::Ptr backends = Service->EnumerateBackends();
-        backends->IsValid(); backends->Next())
+      for (Sound::BackendInformation::Iterator::Ptr backends = Service->EnumerateBackends(); backends->IsValid();
+           backends->Next())
       {
         const Sound::BackendInformation::Ptr info = backends->Get();
         const String id = info->Id();
@@ -221,18 +199,25 @@ namespace
           }
         }
       }
-      throw Error(THIS_LINE, Text::SOUND_ERROR_NO_BACKEND);
-    }
-
-    Time::Microseconds GetFrameDuration() const override
-    {
-      return Params->GetFrameDuration();
+      throw Error(THIS_LINE, "Failed to create any backend.");
     }
 
     Sound::BackendInformation::Iterator::Ptr EnumerateBackends() const override
     {
       return Service->EnumerateBackends();
     }
+
+    uint_t GetSamplerate() const
+    {
+      return Sound::GetSoundFrequency(*Params->GetDefaultParameters());
+    }
+
+  private:
+    String* GetSoundOption(Parameters::Identifier name)
+    {
+      return &SoundOptions[name.AsString()];
+    }
+
   private:
     const Sound::Service::Ptr Service;
     const std::unique_ptr<CommonBackendParameters> Params;
@@ -244,7 +229,7 @@ namespace
 
     String UsedId;
   };
-}
+}  // namespace
 
 std::unique_ptr<SoundComponent> SoundComponent::Create(Parameters::Container::Ptr configParams)
 {

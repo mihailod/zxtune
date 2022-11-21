@@ -1,32 +1,26 @@
 /**
-* 
-* @file
-*
-* @brief  SoundTracker v3.x compiled modules support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SoundTracker v3.x compiled modules support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "formats/packed/container.h"
+// local includes
 #include "formats/chiptune/aym/soundtracker.h"
-//common includes
+#include "formats/packed/container.h"
+// common includes
 #include <byteorder.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 #include <debug/log.h>
-//std includes
+// std includes
 #include <array>
-#include <functional>
-//text includes
-#include <formats/text/chiptune.h>
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace CompiledST3
   {
@@ -35,17 +29,14 @@ namespace Packed
     const std::size_t MAX_MODULE_SIZE = 0x4000;
     const std::size_t MAX_PLAYER_SIZE = 0xa00;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawPlayer
+    struct RawPlayer
     {
       uint8_t Padding1;
-      uint16_t DataAddr;
+      le_uint16_t DataAddr;
       uint8_t Padding2;
-      uint16_t InitAddr;
+      le_uint16_t InitAddr;
       uint8_t Padding3;
-      uint16_t PlayAddr;
+      le_uint16_t PlayAddr;
       uint8_t Padding4[3];
       //+12
       uint8_t Information[55];
@@ -54,65 +45,61 @@ namespace Packed
 
       uint_t GetCompileAddr() const
       {
-        const uint_t initAddr = fromLE(InitAddr);
+        const uint_t initAddr = InitAddr;
         return initAddr - offsetof(RawPlayer, Initialization);
       }
 
       std::size_t GetSize() const
       {
         const uint_t compileAddr = GetCompileAddr();
-        return fromLE(DataAddr) - compileAddr;
+        return DataAddr - compileAddr;
       }
 
       Binary::View GetInfo() const
       {
         return Binary::View(Information, 55);
       }
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
 
     static_assert(offsetof(RawPlayer, Information) == 12, "Invalid layout");
     static_assert(offsetof(RawPlayer, Initialization) == 67, "Invalid layout");
 
-    const String DESCRIPTION = String(Text::SOUNDTRACKER3_DECODER_DESCRIPTION) + Text::PLAYER_SUFFIX;
+    const Char DESCRIPTION[] = "Sound Tracker v3.x Compiled player";
 
-    const std::string FORMAT(
-      "21??"     //ld hl,ModuleAddr
-      "c3??"     //jp xxxx
-      "c3??"     //jp xxxx
-      "c3??"     //jp xxx
-      "'K'S'A' 'S'O'F'T'W'A'R'E' 'C'O'M'P'I'L'A'T'I'O'N' 'O'F' "
-      "?{27}"
-      //+0x43
-      "f3"       //di
-      "7e"       //ld a,(hl)
-      "32??"     //ld (xxxx),a
-      "22??"     //ld (xxxx),hl
-      "22??"     //ld (xxxx),hl
-      "23"       //inc hl 
-    );
+    const auto FORMAT =
+        "21??"  // ld hl,ModuleAddr
+        "c3??"  // jp xxxx
+        "c3??"  // jp xxxx
+        "c3??"  // jp xxx
+        "'K'S'A' 'S'O'F'T'W'A'R'E' 'C'O'M'P'I'L'A'T'I'O'N' 'O'F' "
+        "?{27}"
+        //+0x43
+        "f3"    // di
+        "7e"    // ld a,(hl)
+        "32??"  // ld (xxxx),a
+        "22??"  // ld (xxxx),hl
+        "22??"  // ld (xxxx),hl
+        "23"    // inc hl
+        ""_sv;
 
     bool IsInfoEmpty(Binary::View info)
     {
       assert(info.Size() == 55);
-      //28 is fixed
-      //27 is title
+      // 28 is fixed
+      // 27 is title
       const auto start = info.As<Char>();
       const auto end = start + info.Size();
       const auto titleStart = start + 28;
-      return end == std::find_if(titleStart, end, std::bind2nd(std::greater<Char>(), Char(' ')));
+      return std::none_of(titleStart, end, [](auto c) { return c > ' '; });
     }
-  }//CompiledST3
+  }  // namespace CompiledST3
 
   class CompiledST3Decoder : public Decoder
   {
   public:
     CompiledST3Decoder()
       : Player(Binary::CreateFormat(CompiledST3::FORMAT, sizeof(CompiledST3::RawPlayer)))
-    {
-    }
+    {}
 
     String GetDescription() const override
     {
@@ -166,6 +153,7 @@ namespace Packed
       Dbg("Failed to find module after player");
       return Container::Ptr();
     }
+
   private:
     const Binary::Format::Ptr Player;
   };
@@ -174,5 +162,4 @@ namespace Packed
   {
     return MakePtr<CompiledST3Decoder>();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

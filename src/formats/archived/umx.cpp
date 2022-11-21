@@ -1,79 +1,70 @@
 /**
-* 
-* @file
-*
-* @brief  UMX containers support
-* @note   http://wiki.beyondunreal.com/Legacy:Package_File_Format
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  UMX containers support
+ * @note   http://wiki.beyondunreal.com/Legacy:Package_File_Format
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/archived/decoders.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <contract.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/container_base.h>
 #include <binary/format_factories.h>
 #include <binary/input_stream.h>
 #include <debug/log.h>
-//std includes
+// std includes
 #include <array>
 #include <map>
-//boost includes
+// boost includes
 #include <boost/algorithm/string/case_conv.hpp>
-//text includes
-#include <formats/text/archived.h>
 
-namespace Formats
-{
-namespace Archived
+namespace Formats::Archived
 {
   namespace UMX
   {
     const Debug::Stream Dbg("Formats::Archived::UMX");
 
-    const std::string FORMAT(
-      "c1832a9e"  //signature
-      "? 00"      //version
-      "??"        //license mode
-      "????"      //package flags
-      "??0000 ????" //names
-      "??0000 ????" //exports
-      "??0000 ????" //imports
-    );
+    const Char DESCRIPTION[] = "UMX (Unreal Music eXperience)";
+    const auto FORMAT =
+        "c1832a9e"     // signature
+        "? 00"         // version
+        "??"           // license mode
+        "????"         // package flags
+        "??0000 ????"  // names
+        "??0000 ????"  // exports
+        "??0000 ????"  // imports
+        ""_sv;
 
     typedef std::array<uint8_t, 4> SignatureType;
 
     const SignatureType SIGNATURE = {{0xc1, 0x83, 0x2a, 0x9e}};
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct TableDescription
+    struct TableDescription
     {
-      uint32_t Count;
-      uint32_t Offset;
-    } PACK_POST;
+      le_uint32_t Count;
+      le_uint32_t Offset;
+    };
 
-    PACK_PRE struct RawHeader
+    struct RawHeader
     {
       SignatureType Signature;
-      uint16_t PackageVersion;
-      uint16_t LicenseMode;
-      uint32_t PackageFlags;
+      le_uint16_t PackageVersion;
+      le_uint16_t LicenseMode;
+      le_uint32_t PackageFlags;
       TableDescription Names;
       TableDescription Exports;
       TableDescription Imports;
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
 
-    static_assert(sizeof(RawHeader) == 36, "Invalid layout");
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 36, "Invalid layout");
 
     struct Index
     {
@@ -81,35 +72,30 @@ namespace Archived
 
       Index()
         : Value()
-      {
-      }
+      {}
     };
 
     struct ClassName
     {
-      const std::string Name;
+      const String Name;
 
-      explicit ClassName(const std::string& name)
+      explicit ClassName(const String& name)
         : Name(boost::algorithm::to_lower_copy(name))
-      {
-      }
+      {}
 
       bool IsMusic() const
       {
-        return Name == "music"
-            || Name == "sound"
-        ;
+        return Name == "music" || Name == "sound";
       }
     };
 
     struct Property
     {
-      const std::string Name;
+      const String Name;
 
-      explicit Property(const std::string& name)
+      explicit Property(const String& name)
         : Name(boost::algorithm::to_lower_copy(name))
-      {
-      }
+      {}
 
       bool IsLimiter() const
       {
@@ -119,13 +105,12 @@ namespace Archived
 
     struct NameEntry
     {
-      std::string Name;
+      String Name;
       uint32_t Flags;
 
       NameEntry()
         : Flags()
-      {
-      }
+      {}
     };
 
     struct ExportEntry
@@ -141,8 +126,7 @@ namespace Archived
       ExportEntry()
         : Group()
         , ObjectFlags()
-      {
-      }
+      {}
     };
 
     struct ImportEntry
@@ -154,8 +138,7 @@ namespace Archived
 
       ImportEntry()
         : Package()
-      {
-      }
+      {}
     };
 
     class InputStream
@@ -168,15 +151,14 @@ namespace Archived
         , Cursor(Start)
         , Limit(Start + Data.Size())
         , MaxUsedSize()
-      {
-      }
+      {}
 
-      //primitives
+      // primitives
       template<class T>
       void Read(T& res)
       {
         Require(Cursor + sizeof(T) <= Limit);
-        res = fromLE(*safe_ptr_cast<const T*>(Cursor));
+        res = ReadLE<T>(Cursor);
         Cursor += sizeof(T);
       }
 
@@ -212,11 +194,9 @@ namespace Archived
         res.Value = negative ? -result : +result;
       }
 
-      void Read(std::string& res)
+      void Read(String& res)
       {
-        const uint8_t* const limit = Version >= 64
-          ? Cursor + ReadByte()
-          : Limit;
+        const uint8_t* const limit = Version >= 64 ? Cursor + ReadByte() : Limit;
         Require(limit <= Limit);
         const uint8_t* const strEnd = std::find(Cursor, limit, 0);
         Require(strEnd != Limit);
@@ -224,7 +204,7 @@ namespace Archived
         Cursor = strEnd + 1;
       }
 
-      //complex types
+      // complex types
       void Read(NameEntry& res)
       {
         Read(res.Name);
@@ -256,7 +236,7 @@ namespace Archived
       void Read(Property& res)
       {
         Require(!res.IsLimiter());
-        //TODO: implement
+        // TODO: implement
         Require(false);
       }
 
@@ -283,12 +263,14 @@ namespace Archived
       {
         return std::max<std::size_t>(MaxUsedSize, Cursor - Start);
       }
+
     private:
       uint8_t ReadByte()
       {
         Require(Cursor != Limit);
         return *Cursor++;
       }
+
     private:
       const uint_t Version;
       const Binary::Container& Data;
@@ -303,11 +285,11 @@ namespace Archived
     public:
       explicit Format(const Binary::Container& data)
         : Data(data)
-        , Header(*static_cast<const RawHeader*>(data.Start()))
+        , Header(*safe_ptr_cast<const RawHeader*>(data.Start()))
         , UsedSize(sizeof(Header))
       {
         Require(Header.Signature == SIGNATURE);
-        InputStream stream(fromLE(Header.PackageVersion), Data);
+        InputStream stream(Header.PackageVersion, Data);
         ReadNames(stream);
         ReadExports(stream);
         ReadImports(stream);
@@ -324,7 +306,7 @@ namespace Archived
         return Exports.size();
       }
 
-      std::string GetEntryName(uint_t idx) const
+      String GetEntryName(uint_t idx) const
       {
         const auto& exp = Exports.at(idx);
         return GetName(exp.ObjectName);
@@ -339,13 +321,11 @@ namespace Archived
           const std::size_t size = exp.SerialSize.Value;
           const Binary::Container::Ptr entryData = Data.GetSubcontainer(offset, size);
           Require(entryData.get() != nullptr);
-          InputStream stream(fromLE(Header.PackageVersion), *entryData);
+          InputStream stream(Header.PackageVersion, *entryData);
           ReadProperties(stream);
           const ClassName& cls = GetClass(exp.Class);
           Dbg("Entry[%1%] data at %2% size=%3% class=%4%", idx, offset, size, cls.Name);
-          const Binary::Container::Ptr result = cls.IsMusic()
-             ? ExtractMusicData(stream)
-             : stream.ReadRestContainer();
+          const Binary::Container::Ptr result = cls.IsMusic() ? ExtractMusicData(stream) : stream.ReadRestContainer();
           UsedSize = std::max(UsedSize, offset + stream.GetMaxUsedSize());
           return result;
         }
@@ -354,11 +334,12 @@ namespace Archived
           return Binary::Container::Ptr();
         }
       }
+
     private:
       void ReadNames(InputStream& stream)
       {
-        stream.Seek(fromLE(Header.Names.Offset));
-        const uint_t count = fromLE(Header.Names.Count);
+        stream.Seek(Header.Names.Offset);
+        const uint_t count = Header.Names.Count;
         Names.resize(count);
         for (uint_t idx = 0; idx != count; ++idx)
         {
@@ -370,33 +351,33 @@ namespace Archived
 
       void ReadExports(InputStream& stream)
       {
-        stream.Seek(fromLE(Header.Exports.Offset));
-        const uint_t count = fromLE(Header.Exports.Count);
+        stream.Seek(Header.Exports.Offset);
+        const uint_t count = Header.Exports.Count;
         Exports.resize(count);
         for (uint_t idx = 0; idx != count; ++idx)
         {
           ExportEntry& entry = Exports[idx];
           stream.Read(entry);
-          Dbg("Exports[%1%] = {class=%2% name=%3% super=%4% size=%5%}",
-            idx, entry.Class.Value, entry.ObjectName.Value, entry.Super.Value, entry.SerialSize.Value);
+          Dbg("Exports[%1%] = {class=%2% name=%3% super=%4% size=%5%}", idx, entry.Class.Value, entry.ObjectName.Value,
+              entry.Super.Value, entry.SerialSize.Value);
         }
       }
 
       void ReadImports(InputStream& stream)
       {
-        stream.Seek(fromLE(Header.Imports.Offset));
-        const uint_t count = fromLE(Header.Imports.Count);
+        stream.Seek(Header.Imports.Offset);
+        const uint_t count = Header.Imports.Count;
         Imports.resize(count);
         for (uint_t idx = 0; idx != count; ++idx)
         {
           ImportEntry& entry = Imports[idx];
           stream.Read(entry);
-          Dbg("Imports[%1%] = {pkg=%2% class=%3% name=%4%}",
-            idx, entry.ClassPackage.Value, entry.ClassName.Value, entry.ObjectName.Value);
+          Dbg("Imports[%1%] = {pkg=%2% class=%3% name=%4%}", idx, entry.ClassPackage.Value, entry.ClassName.Value,
+              entry.ObjectName.Value);
         }
       }
 
-      const std::string& GetName(Index idx) const
+      const String& GetName(Index idx) const
       {
         return Names.at(idx.Value).Name;
       }
@@ -438,7 +419,7 @@ namespace Archived
       {
         Index format;
         format.Value = -1000;
-        const uint_t version = fromLE(Header.PackageVersion);
+        const uint_t version = Header.PackageVersion;
         if (version >= 120)
         {
           uint32_t flags, aux;
@@ -468,6 +449,7 @@ namespace Archived
         Dbg("Extract music data from container (version=%1% format=%2% size=%3%)", version, format.Value, size.Value);
         return stream.ReadContainer(size.Value);
       }
+
     private:
       const Binary::Container& Data;
       const RawHeader Header;
@@ -483,8 +465,7 @@ namespace Archived
       File(String name, Binary::Container::Ptr data)
         : Name(std::move(name))
         , Data(std::move(data))
-      {
-      }
+      {}
 
       String GetName() const override
       {
@@ -500,6 +481,7 @@ namespace Archived
       {
         return Data;
       }
+
     private:
       const String Name;
       const Binary::Container::Ptr Data;
@@ -513,8 +495,7 @@ namespace Archived
       Container(Binary::Container::Ptr delegate, NamedDataMap files)
         : BaseContainer(std::move(delegate))
         , Files(std::move(files))
-      {
-      }
+      {}
 
       void ExploreFiles(const Container::Walker& walker) const override
       {
@@ -528,31 +509,29 @@ namespace Archived
       File::Ptr FindFile(const String& name) const override
       {
         const auto it = Files.find(name);
-        return it != Files.end()
-          ? MakePtr<File>(it->first, it->second)
-          : File::Ptr();
+        return it != Files.end() ? MakePtr<File>(it->first, it->second) : File::Ptr();
       }
 
       uint_t CountFiles() const override
       {
         return static_cast<uint_t>(Files.size());
       }
+
     private:
       NamedDataMap Files;
     };
-  }//namespace UMX
+  }  // namespace UMX
 
   class UMXDecoder : public Decoder
   {
   public:
     UMXDecoder()
       : Format(Binary::CreateFormat(UMX::FORMAT))
-    {
-    }
+    {}
 
     String GetDescription() const override
     {
-      return Text::UMX_DECODER_DESCRIPTION;
+      return UMX::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -584,6 +563,7 @@ namespace Archived
       UMX::Dbg("No files found");
       return Container::Ptr();
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -592,5 +572,4 @@ namespace Archived
   {
     return MakePtr<UMXDecoder>();
   }
-}//namespace Archived
-}//namespace Formats
+}  // namespace Formats::Archived

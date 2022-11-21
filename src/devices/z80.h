@@ -1,20 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief  Z80 support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Z80 support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <types.h>
-//library includes
+// library includes
+#include <binary/dump.h>
 #include <time/oscillator.h>
-//std includes
+// std includes
 #include <array>
 #include <memory>
 
@@ -91,6 +92,6 @@ namespace Devices
     };
 
     Chip::Ptr CreateChip(ChipParameters::Ptr params, ChipIO::Ptr memory, ChipIO::Ptr ports);
-    Chip::Ptr CreateChip(ChipParameters::Ptr params, const Dump& memory, ChipIO::Ptr ports);
-  }
-}
+    Chip::Ptr CreateChip(ChipParameters::Ptr params, const Binary::Dump& memory, ChipIO::Ptr ports);
+  }  // namespace Z80
+}  // namespace Devices

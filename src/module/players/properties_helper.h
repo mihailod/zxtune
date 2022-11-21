@@ -1,19 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief  Module properties helper interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Module properties helper interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <formats/chiptune.h>
 #include <parameters/modifier.h>
 #include <strings/array.h>
+#include <time/duration.h>
 
 namespace Module
 {
@@ -22,33 +23,33 @@ namespace Module
   public:
     explicit PropertiesHelper(Parameters::Modifier& delegate)
       : Delegate(delegate)
-    {
-    }
-    
-    //Generic
-    void SetNonEmptyProperty(const String& name, const String& value);
-    
-    //Common
-    void SetType(const String& type);
-    void SetContainer(const String& container);
+    {}
+
+    // Generic
+    void SetNonEmptyProperty(StringView name, StringView value);
+
+    // Common
+    void SetType(StringView type);
+    void SetContainer(StringView container);
     void SetSource(const Formats::Chiptune::Container& source);
-    
-    //Meta
-    void SetAuthor(const String& author);
-    void SetTitle(const String& title);
-    void SetComment(const String& comment);
-    void SetProgram(const String& program);
-    void SetComputer(const String& computer);
+
+    // Meta
+    void SetAuthor(StringView author);
+    void SetTitle(StringView title);
+    void SetComment(StringView comment);
+    void SetProgram(StringView program);
+    void SetComputer(StringView computer);
     void SetStrings(const Strings::Array& strings);
     void SetVersion(uint_t major, uint_t minor);
-    void SetVersion(const String& version);
-    void SetDate(const String& date);
-    void SetPlatform(const String& platform);
-    
-    //Sound
-    void SetFramesFrequency(uint_t hz);
-    void SetFramesParameters(uint_t samplesCount, uint_t sampleRate);
+    void SetVersion(StringView version);
+    void SetDate(StringView date);
+    void SetPlatform(StringView platform);
+
+    // Sound
+    void SetFadein(Time::Milliseconds fadein);
+    void SetFadeout(Time::Milliseconds fadeout);
+
   protected:
     Parameters::Modifier& Delegate;
   };
-}
+}  // namespace Module

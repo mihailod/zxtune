@@ -1,93 +1,69 @@
 /**
-*
-* @file
-*
-* @brief  2SF chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  2SF chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/xsf/2sf.h"
 #include "module/players/xsf/memory_region.h"
 #include "module/players/xsf/xsf.h"
 #include "module/players/xsf/xsf_factory.h"
-//common includes
+// common includes
 #include <contract.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/compression/zlib_container.h>
 #include <debug/log.h>
-#include <devices/details/analysis_map.h>
 #include <formats/chiptune/emulation/nintendodssoundformat.h>
 #include <math/bitops.h>
 #include <module/attributes.h>
-#include <module/players/analyzer.h>
-#include <module/players/fading.h>
+#include <module/players/platforms.h>
 #include <module/players/streaming.h>
-#include <parameters/tracking_helper.h>
-#include <sound/chunk_builder.h>
-#include <sound/render_params.h>
 #include <sound/resampler.h>
-#include <sound/sound_parameters.h>
-//std includes
+// std includes
 #include <list>
-//3rdparty includes
+// 3rdparty includes
 #include <3rdparty/vio2sf/desmume/SPU.h>
 #include <3rdparty/vio2sf/desmume/state.h>
-//text includes
-#include <module/text/platforms.h>
 
-namespace Module
-{
-namespace TwoSF
+namespace Module::TwoSF
 {
   const Debug::Stream Dbg("Module::2SF");
-  
+
   struct ModuleData
   {
     using Ptr = std::shared_ptr<const ModuleData>;
     using RWPtr = std::shared_ptr<ModuleData>;
-    
+
     ModuleData() = default;
     ModuleData(const ModuleData&) = delete;
-    
+
     std::list<Binary::Container::Ptr> PackedProgramSections;
     std::list<Binary::Container::Ptr> ReservedSections;
 
     XSF::MetaInformation::Ptr Meta;
-  };
-  
-  class AnalysisMap
-  {
-  public:
-    AnalysisMap()
+
+    uint_t GetRefreshRate() const
     {
-      const auto CLOCKRATE = 33513982 / 2;
-      const auto C3_RATE = 130.81f;
-      const auto C3_SAMPLERATE = 8000;
-      Delegate.SetClockRate(CLOCKRATE * C3_RATE / C3_SAMPLERATE);
+      return Meta->RefreshRate ? Meta->RefreshRate : 50;
     }
-    
-    uint_t GetBand(uint_t timer) const
-    {
-      return Delegate.GetBandByPeriod(0x10000 - timer);
-    }
-  private:
-    Devices::Details::AnalysisMap Delegate;
   };
-  
-  class DSEngine : public Module::Analyzer
+
+  class DSEngine
   {
   public:
     using Ptr = std::shared_ptr<DSEngine>;
-  
+
     enum
     {
       SAMPLERATE = 44100
     };
-    
+
     explicit DSEngine(const ModuleData& data)
     {
       Require(0 == ::state_init(&State));
@@ -104,12 +80,12 @@ namespace TwoSF
         SetupState(data.ReservedSections);
       }
     }
-    
-    ~DSEngine() override
+
+    ~DSEngine()
     {
       ::state_deinit(&State);
     }
-    
+
     Sound::Chunk Render(uint_t samples)
     {
       static_assert(Sound::Sample::CHANNELS == 2, "Invalid sound channels count");
@@ -120,37 +96,19 @@ namespace TwoSF
       ::state_render(&State, safe_ptr_cast<s16*>(res.data()), samples);
       return res;
     }
-    
+
     void Skip(uint_t samples)
     {
       ::state_render(&State, nullptr, samples);
     }
 
-    SpectrumState GetState() const override
-    {
-      static const AnalysisMap ANALYSIS;
-      SpectrumState result;
-      for (const auto& in : State.SPU_core->channels)
-      {
-        if (in.status == CHANSTAT_STOPPED)
-        {
-          continue;
-        }
-        if (const auto level = ::spumuldiv7(100, in.vol) >> in.datashift)
-        {
-          const auto band = ANALYSIS.GetBand(in.timer);
-          result.Set(band, LevelType(level, 100));
-        }
-      }
-      return result;
-    }
   private:
     void SetupEnvironment(const XSF::MetaInformation& meta)
     {
       int clockDown = 0;
       State.dwChannelMute = 0;
       State.initial_frames = -1;
-      //TODO: interpolation
+      // TODO: interpolation
       for (const auto& tag : meta.Tags)
       {
         if (tag.first == "_clockdown")
@@ -171,7 +129,7 @@ namespace TwoSF
         State.arm9_clockdown_level = clockDown;
       }
     }
-    
+
     int* FindTagTarget(const String& name)
     {
       if (name == "_frames")
@@ -195,7 +153,7 @@ namespace TwoSF
         return nullptr;
       }
     }
-    
+
     void SetupRom(const std::list<Binary::Container::Ptr>& blocks)
     {
       ChunkBuilder builder;
@@ -204,14 +162,14 @@ namespace TwoSF
         const auto unpacked = Binary::Compression::Zlib::Decompress(*block);
         Formats::Chiptune::NintendoDSSoundFormat::ParseRom(*unpacked, builder);
       }
-      //possibly, emulation writes to ROM are, so copy it
+      // possibly, emulation writes to ROM are, so copy it
       Rom = builder.CaptureResult();
-      //required power of 2 size
+      // required power of 2 size
       const auto alignedRomSize = uint32_t(1) << Math::Log2(Rom.Data.size());
       Rom.Data.resize(alignedRomSize);
       ::state_setrom(&State, Rom.Data.data(), alignedRomSize);
     }
-    
+
     void SetupState(const std::list<Binary::Container::Ptr>& blocks)
     {
       ChunkBuilder builder;
@@ -222,6 +180,7 @@ namespace TwoSF
       const auto& state = builder.CaptureResult();
       ::state_loadstate(&State, state.Data.data(), state.Data.size());
     }
+
   private:
     class ChunkBuilder : public Formats::Chiptune::NintendoDSSoundFormat::Builder
     {
@@ -230,123 +189,89 @@ namespace TwoSF
       {
         Result.Update(offset, content);
       }
-      
+
       MemoryRegion CaptureResult()
       {
         return std::move(Result);
       }
+
     private:
       MemoryRegion Result;
     };
+
   private:
     NDS_state State;
     MemoryRegion Rom;
   };
-  
+
+  const auto FRAME_DURATION = Time::Milliseconds(100);
+
+  uint_t GetSamples(Time::Microseconds period)
+  {
+    return period.Get() * DSEngine::SAMPLERATE / period.PER_SECOND;
+  }
+
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(ModuleData::Ptr data, Information::Ptr info, Sound::Receiver::Ptr target, Parameters::Accessor::Ptr params)
+    Renderer(ModuleData::Ptr data, Sound::Converter::Ptr target)
       : Data(std::move(data))
-      , Iterator(Module::CreateStreamStateIterator(info))
-      , State(Iterator->GetStateObserver())
-      , SoundParams(Sound::RenderParameters::Create(params))
-      , Target(Module::CreateFadingReceiver(std::move(params), std::move(info), State, std::move(target)))
+      , State(MakePtr<TimedState>(Data->Meta->Duration))
+      , Target(std::move(target))
       , Engine(MakePtr<DSEngine>(*Data))
-      , Looped()
-    {
-      const auto frameDuration = SoundParams->FrameDuration();
-      SamplesPerFrame = frameDuration.Get() * DSEngine::SAMPLERATE / frameDuration.PER_SECOND;
-      ApplyParameters();
-    }
+    {}
 
     Module::State::Ptr GetState() const override
     {
       return State;
     }
 
-    Module::Analyzer::Ptr GetAnalyzer() const override
+    Sound::Chunk Render(const Sound::LoopParameters& looped) override
     {
-      return Engine;
-    }
-
-    bool RenderFrame() override
-    {
-      try
+      if (!State->IsValid())
       {
-        ApplyParameters();
-
-        Resampler->ApplyData(Engine->Render(SamplesPerFrame));
-        Iterator->NextFrame(Looped);
-        return Iterator->IsValid();
+        return {};
       }
-      catch (const std::exception&)
-      {
-        return false;
-      }
+      const auto avail = State->Consume(FRAME_DURATION, looped);
+      return Target->Apply(Engine->Render(GetSamples(avail)));
     }
 
     void Reset() override
     {
-      SoundParams.Reset();
-      Iterator->Reset();
+      State->Reset();
       Engine = MakePtr<DSEngine>(*Data);
-      Looped = {};
     }
 
-    void SetPosition(uint_t frame) override
+    void SetPosition(Time::AtMillisecond request) override
     {
-      SeekTune(frame);
-      Module::SeekIterator(*Iterator, frame);
-    }
-  private:
-    void ApplyParameters()
-    {
-      if (SoundParams.IsChanged())
-      {
-        Looped = SoundParams->Looped();
-        Resampler = Sound::CreateResampler(DSEngine::SAMPLERATE, SoundParams->SoundFreq(), Target);
-      }
-    }
-
-    void SeekTune(uint_t frame)
-    {
-      uint_t current = State->Frame();
-      if (frame < current)
+      if (request < State->At())
       {
         Engine = MakePtr<DSEngine>(*Data);
-        current = 0;
       }
-      if (const uint_t delta = frame - current)
+      if (const auto toSkip = State->Seek(request))
       {
-        Engine->Skip(delta * SamplesPerFrame);
+        Engine->Skip(GetSamples(toSkip));
       }
     }
+
   private:
     const ModuleData::Ptr Data;
-    const StateIterator::Ptr Iterator;
-    const Module::State::Ptr State;
-    uint_t SamplesPerFrame;
-    Parameters::TrackingHelper<Sound::RenderParameters> SoundParams;
-    const Sound::Receiver::Ptr Target;
+    const TimedState::Ptr State;
+    const Sound::Converter::Ptr Target;
     DSEngine::Ptr Engine;
-    Sound::Receiver::Ptr Resampler;
-    Sound::LoopParameters Looped;
   };
 
   class Holder : public Module::Holder
   {
   public:
-    Holder(ModuleData::Ptr tune, Information::Ptr info, Parameters::Accessor::Ptr props)
+    Holder(ModuleData::Ptr tune, Parameters::Accessor::Ptr props)
       : Tune(std::move(tune))
-      , Info(std::move(info))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     Module::Information::Ptr GetModuleInformation() const override
     {
-      return Info;
+      return CreateTimedInfo(Tune->Meta->Duration);
     }
 
     Parameters::Accessor::Ptr GetModuleProperties() const override
@@ -354,27 +279,23 @@ namespace TwoSF
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
     {
-      return MakePtr<Renderer>(Tune, Info, std::move(target), std::move(params));
+      return MakePtr<Renderer>(Tune, Sound::CreateResampler(DSEngine::SAMPLERATE, samplerate));
     }
-    
+
     static Ptr Create(ModuleData::Ptr tune, Parameters::Container::Ptr properties)
     {
-      const auto period = Sound::GetFrameDuration(*properties);
-      const auto duration = tune->Meta->Duration;
-      const auto frames = duration.Divide<uint_t>(period);
-      Information::Ptr info = CreateStreamInfo(frames);
       if (tune->Meta)
       {
         tune->Meta->Dump(*properties);
       }
-      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_DS);
-      return MakePtr<Holder>(std::move(tune), std::move(info), std::move(properties));
+      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_DS.to_string());
+      return MakePtr<Holder>(std::move(tune), std::move(properties));
     }
+
   private:
     const ModuleData::Ptr Tune;
-    const Information::Ptr Info;
     const Parameters::Accessor::Ptr Properties;
   };
 
@@ -383,21 +304,20 @@ namespace TwoSF
   public:
     ModuleDataBuilder()
       : Result(MakeRWPtr<ModuleData>())
-    {
-    }
-    
+    {}
+
     void AddProgramSection(Binary::Container::Ptr packedSection)
     {
       Require(!!packedSection);
       Result->PackedProgramSections.push_back(std::move(packedSection));
     }
-    
+
     void AddReservedSection(Binary::Container::Ptr reservedSection)
     {
       Require(!!reservedSection);
       Result->ReservedSections.push_back(std::move(reservedSection));
     }
-    
+
     void AddMeta(const XSF::MetaInformation& meta)
     {
       if (!Meta)
@@ -409,16 +329,17 @@ namespace TwoSF
         Meta->Merge(meta);
       }
     }
-    
+
     ModuleData::Ptr CaptureResult()
     {
       return Result;
     }
+
   private:
     const ModuleData::RWPtr Result;
     XSF::MetaInformation::RWPtr Meta;
   };
-  
+
   class Factory : public XSF::Factory
   {
   public:
@@ -439,18 +360,21 @@ namespace TwoSF
       }
       return Holder::Create(builder.CaptureResult(), std::move(properties));
     }
-    
-    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles, Parameters::Container::Ptr properties) const override
+
+    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles,
+                                      Parameters::Container::Ptr properties) const override
     {
       ModuleDataBuilder builder;
       MergeSections(file, additionalFiles, builder);
       MergeMeta(file, additionalFiles, builder);
       return Holder::Create(builder.CaptureResult(), std::move(properties));
     }
+
   private:
     static const uint_t MAX_LEVEL = 10;
 
-    static void MergeSections(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles, ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeSections(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
+                              ModuleDataBuilder& dst, uint_t level = 1)
     {
       if (!data.Dependencies.empty() && level < MAX_LEVEL)
       {
@@ -465,8 +389,9 @@ namespace TwoSF
         dst.AddReservedSection(data.ReservedSection);
       }
     }
-    
-    static void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles, ModuleDataBuilder& dst, uint_t level = 1)
+
+    static void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
+                          ModuleDataBuilder& dst, uint_t level = 1)
     {
       if (level < MAX_LEVEL)
       {
@@ -481,10 +406,9 @@ namespace TwoSF
       }
     }
   };
-  
+
   Module::Factory::Ptr CreateFactory()
   {
     return XSF::CreateFactory(MakePtr<Factory>());
   }
-}
-}
+}  // namespace Module::TwoSF

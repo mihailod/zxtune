@@ -1,27 +1,27 @@
 /**
-* 
-* @file
-*
-* @brief  multidevice-based chiptunes support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  multidevice-based chiptunes support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <module/holder.h>
-//std includes
+// std includes
 #include <vector>
 
 namespace Module
 {
   namespace Multi
   {
-    typedef std::vector<Module::Holder::Ptr> HoldersArray;
-    
-    //first holder is used as a main one
-    Module::Holder::Ptr CreateHolder(Parameters::Accessor::Ptr params, const HoldersArray& holders);
-  }
-}
+    using HoldersArray = std::vector<Module::Holder::Ptr>;
+
+    // first holder is used as a main one
+    Module::Holder::Ptr CreateHolder(Parameters::Accessor::Ptr tuneProperties, HoldersArray holders);
+  }  // namespace Multi
+}  // namespace Module

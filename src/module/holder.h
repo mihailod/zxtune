@@ -1,21 +1,19 @@
 /**
-*
-* @file
-*
-* @brief  Modules holder interface definition
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Modules holder interface definition
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/data.h>
+// library includes
 #include <module/information.h>
 #include <module/renderer.h>
 #include <parameters/accessor.h>
-#include <sound/receiver.h>
 
 namespace Module
 {
@@ -36,8 +34,6 @@ namespace Module
 
     //! @brief Creating new renderer instance
     //! @return New player
-    virtual Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const = 0;
+    virtual Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr params) const = 0;
   };
-
-  Holder::Ptr CreateMixedPropertiesHolder(Holder::Ptr delegate, Parameters::Accessor::Ptr props);
-}
+}  // namespace Module

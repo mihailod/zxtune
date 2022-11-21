@@ -19,12 +19,10 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.FragmentActivity;
 
-import java.util.concurrent.TimeUnit;
-
-import app.zxtune.Permission;
 import app.zxtune.R;
 import app.zxtune.RingtoneService;
 import app.zxtune.TimeStamp;
+import app.zxtune.device.Permission;
 
 public class RingtoneFragment extends DialogFragment {
 
@@ -62,14 +60,11 @@ public class RingtoneFragment extends DialogFragment {
       return;
     }
 
-    final Button.OnClickListener listener = new Button.OnClickListener() {
-      @Override
-      public void onClick(View v) {
-        final String tag = (String) v.getTag();
-        final int tagValue = Integer.parseInt(tag);
-        RingtoneService.execute(getActivity(), uri, TimeStamp.createFrom(tagValue, TimeUnit.SECONDS));
-        dismiss();
-      }
+    final Button.OnClickListener listener = v -> {
+      final String tag = (String) v.getTag();
+      final int tagValue = Integer.parseInt(tag);
+      RingtoneService.execute(getActivity(), uri, TimeStamp.fromSeconds(tagValue));
+      dismiss();
     };
     for (int idx = 0, lim = container.getChildCount(); idx != lim; ++idx) {
       final Button button = (Button) container.getChildAt(idx);

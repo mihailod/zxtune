@@ -1,18 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief JNI entry points
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief JNI entry points
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
+#include "jni_api.h"
 #include "module.h"
 #include "player.h"
 #include "plugin.h"
-//platform includes
+// library includes
+#include <core/plugin.h>
+// platform includes
 #include <jni.h>
 
 const jint JNI_VERSION = JNI_VERSION_1_6;
@@ -20,7 +23,8 @@ const jint JNI_VERSION = JNI_VERSION_1_6;
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/)
 {
   JNIEnv* env;
-  if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION) != JNI_OK) {
+  if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION) != JNI_OK)
+  {
     return JNI_ERR;
   }
 
@@ -39,4 +43,14 @@ JNIEXPORT void JNI_OnUnload(JavaVM* vm, void* /*reserved*/)
   Plugin::CleanupJni(env);
   Player::CleanupJni(env);
   Module::CleanupJni(env);
+}
+
+JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniApi_forcedInit(JNIEnv* /*env*/, jobject /*self*/)
+{
+  class EmptyVisitor : public ZXTune::PluginVisitor
+  {
+  public:
+    void Visit(const ZXTune::Plugin&) {}
+  } stub;
+  ZXTune::EnumeratePlugins(stub);
 }

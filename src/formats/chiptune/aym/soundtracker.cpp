@@ -1,72 +1,68 @@
 /**
-* 
-* @file
-*
-* @brief  SoundTracker uncompiled modules support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SoundTracker uncompiled modules support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/chiptune/aym/soundtracker_detail.h"
 #include "formats/chiptune/container.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <contract.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 #include <debug/log.h>
 #include <math/numeric.h>
-//std includes
+// std includes
 #include <array>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   namespace SoundTrackerUncompiled
   {
     const Debug::Stream Dbg("Formats::Chiptune::SoundTracker");
 
+    const Char PROGRAM[] = "Sound Tracker v1.x";
+
     using namespace SoundTracker;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawSample
+
+    struct RawSample
     {
       uint8_t Volume[SAMPLE_SIZE];
       uint8_t Noise[SAMPLE_SIZE];
-      uint16_t Effect[SAMPLE_SIZE];
+      le_uint16_t Effect[SAMPLE_SIZE];
       uint8_t Loop;
       uint8_t LoopSize;
-    } PACK_POST;
+    };
 
-    PACK_PRE struct RawPosEntry
+    struct RawPosEntry
     {
       uint8_t Pattern;
       int8_t Transposition;
-    } PACK_POST;
+    };
 
-    PACK_PRE struct RawOrnament
+    struct RawOrnament
     {
       std::array<int8_t, ORNAMENT_SIZE> Offsets;
-    } PACK_POST;
+    };
 
-    PACK_PRE struct RawPattern
+    struct RawPattern
     {
-      PACK_PRE struct Line
+      struct Line
       {
-        PACK_PRE struct Channel
+        struct Channel
         {
-          //RNNN#OOO
+          // RNNN#OOO
           uint8_t Note;
-          //SSSSEEEE
+          // SSSSEEEE
           uint8_t EffectSample;
-          //EEEEeeee
+          // EEEEeeee
           uint8_t EffectOrnament;
 
           bool IsEmpty() const
@@ -103,7 +99,7 @@ namespace Chiptune
           {
             return EffectOrnament & 15;
           }
-        } PACK_POST;
+        };
 
         Channel Channels[3];
 
@@ -111,12 +107,12 @@ namespace Chiptune
         {
           return Channels[0].IsEmpty() && Channels[1].IsEmpty() && Channels[2].IsEmpty();
         }
-      } PACK_POST;
+      };
 
       Line Lines[MAX_PATTERN_SIZE];
-    } PACK_POST;
+    };
 
-    PACK_PRE struct RawHeader
+    struct RawHeader
     {
       RawSample Samples[MAX_SAMPLES_COUNT - 1];
       RawPosEntry Positions[MAX_POSITIONS_COUNT];
@@ -124,18 +120,15 @@ namespace Chiptune
       RawOrnament Ornaments[MAX_ORNAMENTS_COUNT + 1];
       uint8_t Tempo;
       uint8_t PatternsSize;
-      //at least one pattern
+      // at least one pattern
       RawPattern Patterns[1];
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
 
-    static_assert(sizeof(RawSample) == 130, "Invalid layout");
-    static_assert(sizeof(RawPosEntry) == 2, "Invalid layout");
-    static_assert(sizeof(RawOrnament) == 32, "Invalid layout");
-    static_assert(sizeof(RawPattern) == 576, "Invalid layout");
-    static_assert(sizeof(RawHeader) == 3009 + 576, "Invalid layout");
+    static_assert(sizeof(RawSample) * alignof(RawSample) == 130, "Invalid layout");
+    static_assert(sizeof(RawPosEntry) * alignof(RawPosEntry) == 2, "Invalid layout");
+    static_assert(sizeof(RawOrnament) * alignof(RawOrnament) == 32, "Invalid layout");
+    static_assert(sizeof(RawPattern) * alignof(RawPattern) == 576, "Invalid layout");
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 3009 + 576, "Invalid layout");
     static_assert(offsetof(RawHeader, Positions) == 1950, "Invalid layout");
     static_assert(offsetof(RawHeader, Length) == 2462, "Invalid layout");
     static_assert(offsetof(RawHeader, Tempo) == 3007, "Invalid layout");
@@ -150,14 +143,13 @@ namespace Chiptune
         : Data(data)
         , Source(*Data.As<RawHeader>())
         , MaxPatterns(1 + (data.Size() - sizeof(Source)) / sizeof(RawPattern))
-      {
-      }
+      {}
 
       void ParseCommonProperties(Builder& builder) const
       {
         builder.SetInitialTempo(Source.Tempo);
         MetaBuilder& meta = builder.GetMetaBuilder();
-        meta.SetProgram(Text::SOUNDTRACKER_DECODER_DESCRIPTION);
+        meta.SetProgram(PROGRAM);
       }
 
       void ParsePositions(Builder& builder) const
@@ -230,6 +222,7 @@ namespace Chiptune
       {
         return MaxPatterns;
       }
+
     private:
       const RawPattern& GetPattern(uint_t index) const
       {
@@ -244,9 +237,9 @@ namespace Chiptune
         uint_t Tone;
 
         EnvState()
-          : Type(), Tone()
-        {
-        }
+          : Type()
+          , Tone()
+        {}
       };
 
       struct ChanState
@@ -255,9 +248,9 @@ namespace Chiptune
         uint_t Ornament;
 
         ChanState()
-          : Sample(), Ornament()
-        {
-        }
+          : Sample()
+          , Ornament()
+        {}
       };
 
       void ParsePattern(uint_t patIndex, Builder& builder) const
@@ -281,7 +274,8 @@ namespace Chiptune
         patBuilder.Finish(patSize);
       }
 
-      static void ParseLine(const RawPattern::Line& srcLine, Builder& builder, std::array<ChanState, 3>& state, std::array<EnvState, 3>& env)
+      static void ParseLine(const RawPattern::Line& srcLine, Builder& builder, std::array<ChanState, 3>& state,
+                            std::array<EnvState, 3>& env)
       {
         for (uint_t chan = 0; chan < state.size(); ++chan)
         {
@@ -294,7 +288,8 @@ namespace Chiptune
         }
       }
 
-      static void ParseChannel(const RawPattern::Line::Channel& srcChan, Builder& builder, ChanState& state, EnvState& env)
+      static void ParseChannel(const RawPattern::Line::Channel& srcChan, Builder& builder, ChanState& state,
+                               EnvState& env)
       {
         if (srcChan.IsRest())
         {
@@ -317,35 +312,35 @@ namespace Chiptune
         switch (const uint_t effect = srcChan.GetEffect())
         {
         case 15:
-          {
-            const uint_t ornament = srcChan.GetOrnament();
-            builder.SetOrnament(ornament);
-            state.Ornament = ornament;
-            builder.SetNoEnvelope();
-            env.Type = 0;
-          }
-          break;
+        {
+          const uint_t ornament = srcChan.GetOrnament();
+          builder.SetOrnament(ornament);
+          state.Ornament = ornament;
+          builder.SetNoEnvelope();
+          env.Type = 0;
+        }
+        break;
         case 8:
         case 10:
         case 12:
         case 13:
         case 14:
+        {
+          const uint_t tone = srcChan.GetEffectParam();
+          if (effect != env.Type || tone != env.Tone)
           {
-            const uint_t tone = srcChan.GetEffectParam();
-            if (effect != env.Type || tone != env.Tone)
-            {
-              env.Type = effect;
-              env.Tone = tone;
-              builder.SetOrnament(0);
-              builder.SetEnvelope(env.Type, env.Tone);
-              state.Ornament = 0;
-            }
+            env.Type = effect;
+            env.Tone = tone;
+            builder.SetOrnament(0);
+            builder.SetEnvelope(env.Type, env.Tone);
+            state.Ornament = 0;
           }
-          break;
+        }
+        break;
         case 1:
           builder.SetNoEnvelope();
           builder.SetOrnament(0);
-        //default:
+          // default:
           env.Type = 0;
           break;
         }
@@ -353,24 +348,23 @@ namespace Chiptune
 
       static uint_t ConvertNote(uint8_t note)
       {
-        static const uint_t HALFTONES[] = 
-        {
-          ~uint_t(0), //invalid
-          ~uint_t(0), //invalid#
-          9,  //A
-          10, //A#
-          11, //B
-          ~uint_t(0), //B#,invalid
-          0,  //C
-          1,  //C#
-          2,  //D
-          3,  //D#
-          4,  //E
-          ~uint_t(0), //E#,invalid
-          5,  //F
-          6,  //F#
-          7,  //G
-          8,  //G#
+        static const uint_t HALFTONES[] = {
+            ~uint_t(0),  // invalid
+            ~uint_t(0),  // invalid#
+            9,           // A
+            10,          // A#
+            11,          // B
+            ~uint_t(0),  // B#,invalid
+            0,           // C
+            1,           // C#
+            2,           // D
+            3,           // D#
+            4,           // E
+            ~uint_t(0),  // E#,invalid
+            5,           // F
+            6,           // F#
+            7,           // G
+            8,           // G#
         };
 
         const uint_t NOTES_PER_OCTAVE = 12;
@@ -390,7 +384,7 @@ namespace Chiptune
           res.Noise = src.Noise[idx] & 31;
           res.NoiseMask = 0 != (src.Noise[idx] & 128);
           res.EnvelopeMask = 0 != (src.Noise[idx] & 64);
-          const int16_t eff = fromLE(src.Effect[idx]);
+          const int16_t eff = src.Effect[idx];
           res.Effect = 0 != (eff & 0x1000) ? (eff & 0xfff) : -(eff & 0xfff);
         }
         dst.Loop = std::min<uint_t>(src.Loop, SAMPLE_SIZE);
@@ -404,6 +398,7 @@ namespace Chiptune
         dst.Lines.assign(src.Offsets.begin(), src.Offsets.end());
         return dst;
       }
+
     private:
       const Binary::View Data;
       const RawHeader& Source;
@@ -412,35 +407,36 @@ namespace Chiptune
 
     bool FastCheck(Binary::View rawData)
     {
-      //at least
+      // at least
       return rawData.Size() >= sizeof(RawHeader);
     }
 
-    const std::string FORMAT(
-      //samples
-      "("
-        //levels
+    const auto DESCRIPTION = PROGRAM;
+    const auto FORMAT =
+        // samples
+        "("
+        // levels
         "00-0f{32}"
-        //noises. Bit 5 should be empty
+        // noises. Bit 5 should be empty
         "%xx0xxxxx{32}"
-        //additions
+        // additions
         "(?00-1f){32}"
-        //loop, loop limit
+        // loop, loop limit
         "00-1f{2}"
-      "){15}"
-      //positions
-      "(01-20?){256}"
-      //length
-      "00-7f"
-      //ornaments
-      "(?{32}){17}"
-      //delay
-      //Real delay may be from 01 but I don't know any module with such little delay
-      "02-0f"
-      //patterns size
-      //Real pattern size may be from 01 but I don't know any modules with such patterns size
-      "20-40"
-    );
+        "){15}"
+        // positions
+        "(01-20?){256}"
+        // length
+        "00-7f"
+        // ornaments
+        "(?{32}){17}"
+        // delay
+        // Real delay may be from 01 but I don't know any module with such little delay
+        "02-0f"
+        // patterns size
+        // Real pattern size may be from 01 but I don't know any modules with such patterns size
+        "20-40"
+        ""_sv;
 
     Formats::Chiptune::Container::Ptr ParseUncompiled(const Binary::Container& rawData, Builder& target)
     {
@@ -485,12 +481,11 @@ namespace Chiptune
     public:
       Decoder()
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
-      {
-      }
+      {}
 
       String GetDescription() const override
       {
-        return Text::SOUNDTRACKER_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -498,9 +493,8 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View data) const override
       {
-        const Binary::View data(rawData);
         return FastCheck(data) && Format->Match(data);
       }
 
@@ -518,10 +512,11 @@ namespace Chiptune
       {
         return ParseUncompiled(data, target);
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
-  }//namespace SoundTrackerUncompiled
+  }  // namespace SoundTrackerUncompiled
 
   namespace SoundTracker
   {
@@ -561,12 +556,11 @@ namespace Chiptune
       {
         return MakePtr<SoundTrackerUncompiled::Decoder>();
       }
-    }
-  }
+    }  // namespace Ver1
+  }    // namespace SoundTracker
 
   Formats::Chiptune::Decoder::Ptr CreateSoundTrackerDecoder()
   {
     return SoundTracker::Ver1::CreateUncompiledDecoder();
   }
-}// namespace Chiptune
-}// namespace Formats
+}  // namespace Formats::Chiptune

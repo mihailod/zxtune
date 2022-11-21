@@ -1,28 +1,25 @@
 /**
-* 
-* @file
-*
-* @brief  TurboFM Dump chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TurboFM Dump chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/tfm/tfd.h"
 #include "module/players/tfm/tfm_base_stream.h"
-//common includes
+// common includes
 #include <make_ptr.h>
+// library includes
+#include <formats/chiptune/fm/tfd.h>
+#include <module/players/platforms.h>
 #include <module/players/properties_helper.h>
 #include <module/players/streaming.h>
-//library includes
-#include <formats/chiptune/fm/tfd.h>
-//text includes
-#include <module/text/platforms.h>
 
-namespace Module
-{
-namespace TFD
+namespace Module::TFD
 {
   class ModuleData : public TFM::StreamModel
   {
@@ -31,15 +28,14 @@ namespace TFD
 
     ModuleData()
       : LoopPos()
-    {
-    }
+    {}
 
-    uint_t Size() const override
+    uint_t GetTotalFrames() const override
     {
       return static_cast<uint_t>(Offsets.size() - 1);
     }
 
-    uint_t Loop() const override
+    uint_t GetLoopFrame() const override
     {
       return LoopPos;
     }
@@ -50,20 +46,20 @@ namespace TFD
       const std::size_t end = Offsets[frameNum + 1];
       res.assign(Data.begin() + start, Data.begin() + end);
     }
-    
+
     void Append(std::size_t count)
     {
       Offsets.resize(Offsets.size() + count, Data.size());
     }
-    
+
     void AddRegister(const Devices::TFM::Register& reg)
     {
-     if (!Offsets.empty())
-     {
-       Data.push_back(reg);
-     }
+      if (!Offsets.empty())
+      {
+        Data.push_back(reg);
+      }
     }
-    
+
     void SetLoop()
     {
       if (!Offsets.empty())
@@ -71,6 +67,7 @@ namespace TFD
         LoopPos = static_cast<uint_t>(Offsets.size() - 1);
       }
     }
+
   private:
     uint_t LoopPos;
     Devices::TFM::Registers Data;
@@ -80,53 +77,53 @@ namespace TFD
   class DataBuilder : public Formats::Chiptune::TFD::Builder
   {
   public:
-   explicit DataBuilder(PropertiesHelper& props)
-    : Properties(props)
-    , Data(MakeRWPtr<ModuleData>())
-    , Chip(0)
-   {
-   }
+    explicit DataBuilder(PropertiesHelper& props)
+      : Properties(props)
+      , Data(MakeRWPtr<ModuleData>())
+      , Chip(0)
+    {}
 
-   void SetTitle(const String& title) override
-   {
-     Properties.SetTitle(title);
-   }
+    void SetTitle(const String& title) override
+    {
+      Properties.SetTitle(title);
+    }
 
-   void SetAuthor(const String& author) override
-   {
-     Properties.SetAuthor(author);
-   }
+    void SetAuthor(const String& author) override
+    {
+      Properties.SetAuthor(author);
+    }
 
-   void SetComment(const String& comment) override
-   {
-     Properties.SetComment(comment);
-   }
+    void SetComment(const String& comment) override
+    {
+      Properties.SetComment(comment);
+    }
 
-   void BeginFrames(uint_t count) override
-   {
-     Chip = 0;
-     Data->Append(count);
-   }
+    void BeginFrames(uint_t count) override
+    {
+      Chip = 0;
+      Data->Append(count);
+    }
 
-   void SelectChip(uint_t idx) override
-   {
-     Chip = idx;
-   }
+    void SelectChip(uint_t idx) override
+    {
+      Chip = idx;
+    }
 
-   void SetLoop() override
-   {
-     Data->SetLoop();
-   }
+    void SetLoop() override
+    {
+      Data->SetLoop();
+    }
 
-   void SetRegister(uint_t idx, uint_t val) override
-   {
-     Data->AddRegister(Devices::TFM::Register(Chip, idx, val));
-   }
+    void SetRegister(uint_t idx, uint_t val) override
+    {
+      Data->AddRegister(Devices::TFM::Register(Chip, idx, val));
+    }
 
-   TFM::StreamModel::Ptr GetResult() const
-   {
-     return Data;
-   }
+    TFM::StreamModel::Ptr CaptureResult() const
+    {
+      return std::move(Data);
+    }
+
   private:
     PropertiesHelper& Properties;
     const ModuleData::RWPtr Data;
@@ -136,27 +133,27 @@ namespace TFD
   class Factory : public TFM::Factory
   {
   public:
-    TFM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    TFM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
       if (const auto container = Formats::Chiptune::TFD::Parse(rawData, dataBuilder))
       {
-        auto data = dataBuilder.GetResult();
-        if (data->Size())
+        auto data = dataBuilder.CaptureResult();
+        if (data->GetTotalFrames())
         {
           props.SetSource(*container);
           props.SetPlatform(Platforms::ZX_SPECTRUM);
-          return TFM::CreateStreamedChiptune(std::move(data), std::move(properties));
+          return TFM::CreateStreamedChiptune(TFM::BASE_FRAME_DURATION, std::move(data), std::move(properties));
         }
       }
-      return TFM::Chiptune::Ptr();
+      return {};
     }
   };
-  
+
   Factory::Ptr CreateFactory()
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::TFD

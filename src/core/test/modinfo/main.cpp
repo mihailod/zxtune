@@ -1,66 +1,67 @@
 /**
-* 
-* @file
-*
-* @brief  ModInfo utility
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ModInfo utility
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <error_tools.h>
-#include <progress_callback.h>
 #include <binary/container_factories.h>
-#include <core/module_open.h>
+#include <core/service.h>
+#include <error_tools.h>
 #include <io/api.h>
-#include <module/track_information.h>
 #include <iostream>
+#include <module/track_information.h>
 #include <parameters/container.h>
 #include <parameters/template.h>
+#include <progress_callback.h>
+#include <time/serialize.h>
 
 namespace
 {
   Module::Holder::Ptr OpenModuleByPath(const String& fullPath)
   {
     const Parameters::Container::Ptr emptyParams = Parameters::Container::Create();
-    const String filename = fullPath;//TODO: split if required
+    const String filename = fullPath;  // TODO: split if required
     const Binary::Container::Ptr data = IO::OpenData(filename, *emptyParams, Log::ProgressCallback::Stub());
-    return Module::Open(*emptyParams, *data);
+    return ZXTune::Service::Create(emptyParams)->OpenModule(data, {}, Parameters::Container::Create());
   }
 
   void ShowModuleInfo(const Module::Information& info)
   {
     if (const auto trackInfo = dynamic_cast<const Module::TrackInformation*>(&info))
     {
-      std::cout <<
-        "Positions: " << trackInfo->PositionsCount() << " (" << trackInfo->LoopPosition() << ')' << std::endl <<
-        "Initial tempo: " << trackInfo->Tempo() << std::endl;
+      std::cout << "Positions: " << trackInfo->PositionsCount() << " (" << trackInfo->LoopPosition() << ')'
+                << std::endl;
     }
-    std::cout << "Frames: " << info.FramesCount() << " (" << info.LoopFrame() << ')' << std::endl <<
-      "Channels: " << info.ChannelsCount() << std::endl;
+    std::cout << "Duration: " << Time::ToString(info.Duration()) << " (loop " << Time::ToString(info.LoopDuration())
+              << ')' << std::endl;
   }
-  
+
   class PrintValuesVisitor : public Parameters::Visitor
   {
   public:
-    void SetValue(const Parameters::NameType& name, Parameters::IntType val) override
+    void SetValue(Parameters::Identifier name, Parameters::IntType val) override
     {
       Write(name, Parameters::ConvertToString(val));
     }
 
-    virtual void SetValue(const Parameters::NameType& name, const Parameters::StringType& val) override
+    virtual void SetValue(Parameters::Identifier name, StringView val) override
     {
       Write(name, Parameters::ConvertToString(val));
     }
-    
-    virtual void SetValue(const Parameters::NameType& name, const Parameters::DataType& val) override
+
+    virtual void SetValue(Parameters::Identifier name, Binary::View val) override
     {
       Write(name, Parameters::ConvertToString(val));
     }
+
   private:
-    static void Write(const Parameters::NameType& name, const String& value)
+    static void Write(StringView name, const String& value)
     {
-      std::cout << name.Name() << ": " << value << std::endl;
+      std::cout << name << ": " << value << std::endl;
     }
   };
 
@@ -75,7 +76,7 @@ namespace
     ShowProperties(*module.GetModuleProperties());
     ShowModuleInfo(*module.GetModuleInformation());
   }
-}
+}  // namespace
 
 int main(int argc, char* argv[])
 {

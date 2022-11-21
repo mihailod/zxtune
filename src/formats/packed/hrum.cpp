@@ -1,78 +1,71 @@
 /**
-* 
-* @file
-*
-* @brief  Hrum packer support
-*
-* @author vitamin.caig@gmail.com
-*
-* @note   Based on XLook sources by HalfElf
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Hrum packer support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ * @note   Based on XLook sources by HalfElf
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/hrust1_bitstream.h"
 #include "formats/packed/pack_utils.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <make_ptr.h>
 #include <pointers.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 #include <formats/packed.h>
 #include <math/numeric.h>
-//std includes
+// std includes
 #include <numeric>
-#include <iterator>
-//text includes
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace Hrum
   {
     const std::size_t MAX_DECODED_SIZE = 0xc000;
-    //checkers
-    const std::string DEPACKER_PATTERN =
-      "?"       // di/nop
-      "ed73??"  // ld (xxxx),sp
-      "21??"    // ld hl,xxxx   start+0x1f
-      "11??"    // ld de,xxxx   tmp buffer
-      "017700"  // ld bc,0x0077 size of depacker
-      "d5"      // push de
-      "edb0"    // ldir
-      "11??"    // ld de,xxxx   dst of depack (data = +0x12)
-      "d9"      // exx
-      "21??"    // ld hl,xxxx   last byte of src packed (data = +0x16)
-      "11??"    // ld de,xxxx   last byte of dst packed (data = +0x19)
-      "01??"    // ld bc,xxxx   size of packed          (data = +0x1c)
-      "c9"      // ret
-      "ed?"     // lddr/ldir
-      "16?"     // ld d,xx
-      "31??"    // ld sp,xxxx   ;start of moved packed (data = +0x24)
-      "c1"      // pop bc
-    ;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawHeader
+    const Char DESCRIPTION[] = "Hrum v3.x";
+    const auto DEPACKER_PATTERN =
+        "?"       // di/nop
+        "ed73??"  // ld (xxxx),sp
+        "21??"    // ld hl,xxxx   start+0x1f
+        "11??"    // ld de,xxxx   tmp buffer
+        "017700"  // ld bc,0x0077 size of depacker
+        "d5"      // push de
+        "edb0"    // ldir
+        "11??"    // ld de,xxxx   dst of depack (data = +0x12)
+        "d9"      // exx
+        "21??"    // ld hl,xxxx   last byte of src packed (data = +0x16)
+        "11??"    // ld de,xxxx   last byte of dst packed (data = +0x19)
+        "01??"    // ld bc,xxxx   size of packed          (data = +0x1c)
+        "c9"      // ret
+        "ed?"     // lddr/ldir
+        "16?"     // ld d,xx
+        "31??"    // ld sp,xxxx   ;start of moved packed (data = +0x24)
+        "c1"      // pop bc
+        ""_sv;
+
+    struct RawHeader
     {
       //+0
       uint8_t Padding1[0x16];
       //+0x16
-      uint16_t PackedSource;
+      le_uint16_t PackedSource;
       //+0x18
       uint8_t Padding2;
       //+0x19
-      uint16_t PackedTarget;
+      le_uint16_t PackedTarget;
       //+0x1b
       uint8_t Padding3;
       //+0x1c
-      uint16_t SizeOfPacked;
+      le_uint16_t SizeOfPacked;
       //+0x1e
       uint8_t Padding4[2];
       //+0x20
@@ -80,25 +73,22 @@ namespace Packed
       //+0x21
       uint8_t Padding5[3];
       //+0x24
-      uint16_t FirstOfPacked;
+      le_uint16_t FirstOfPacked;
       //+0x26
       uint8_t Padding6[0x6b];
       //+0x91
       uint8_t LastBytes[5];
       //+0x96 taken from stack to initialize variables, always 0x1010
-      //packed data starts from here
+      // packed data starts from here
       uint8_t Padding7[2];
       //+0x98
       uint8_t BitStream[2];
       //+0x9a
       uint8_t ByteStream[1];
       //+0x9b
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
 
-    static_assert(sizeof(RawHeader) == 0x9b, "Invalid layout");
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 0x9b, "Invalid layout");
 
     const std::size_t MIN_SIZE = sizeof(RawHeader);
 
@@ -108,8 +98,7 @@ namespace Packed
       Container(const void* data, std::size_t size)
         : Data(static_cast<const uint8_t*>(data))
         , Size(size)
-      {
-      }
+      {}
 
       bool FastCheck() const
       {
@@ -118,12 +107,13 @@ namespace Packed
           return false;
         }
         const RawHeader& header = GetHeader();
-        const DataMovementChecker checker(fromLE(header.PackedSource), fromLE(header.PackedTarget), fromLE(header.SizeOfPacked), header.PackedDataCopyDirection);
+        const DataMovementChecker checker(header.PackedSource, header.PackedTarget, header.SizeOfPacked,
+                                          header.PackedDataCopyDirection);
         if (!checker.IsValid())
         {
           return false;
         }
-        if (checker.FirstOfMovedData() != fromLE(header.FirstOfPacked))
+        if (checker.FirstOfMovedData() != header.FirstOfPacked)
         {
           return false;
         }
@@ -134,7 +124,7 @@ namespace Packed
       {
         const RawHeader& header = GetHeader();
         return sizeof(header) - (sizeof(header.Padding7) + sizeof(header.BitStream) + sizeof(header.ByteStream))
-          + fromLE(header.SizeOfPacked);
+               + header.SizeOfPacked;
       }
 
       std::size_t GetUsedSizeWithPadding() const
@@ -148,26 +138,24 @@ namespace Packed
         {
           return usefulSize;
         }
-        //max padding size is 255 bytes
-        //text is 78 bytes
-        static const uint8_t HRUM3_5_PADDING[] =
-        {
-          'H', 'R', 'U', 'M', ' ', 'v', '3', '.', '5', ' ', 'b', 'y', ' ', 'D', 'm', 'i', 't', 'r', 'y', ' ',
-          'P', 'y', 'a', 'n', 'k', 'o', 'v', 0x80, 'T', 'e', 'l', '.', '(', '3', '8', '8', '2', '2', ')', '-',
-          '4', '4', '2', '1', '-', '1', '.', 'B', 'y', 'e', '!', '!', '!', 0x80, ' ', 'G', 'o', 'r', 'n', 'o', '-',
-          'A', 'l', 't', 'a', 'y', 's', 'k', ',', ' ', '0', '9', '.', '0', '1', '.', '9', '7',
-          0x81,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-          0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+        // max padding size is 255 bytes
+        // text is 78 bytes
+        static const uint8_t HRUM3_5_PADDING[] = {
+            'H',  'R',  'U',  'M',  ' ',  'v',  '3',  '.',  '5',  ' ',  'b',  'y',  ' ',  'D',  'm',  'i',  't',
+            'r',  'y',  ' ',  'P',  'y',  'a',  'n',  'k',  'o',  'v',  0x80, 'T',  'e',  'l',  '.',  '(',  '3',
+            '8',  '8',  '2',  '2',  ')',  '-',  '4',  '4',  '2',  '1',  '-',  '1',  '.',  'B',  'y',  'e',  '!',
+            '!',  '!',  0x80, ' ',  'G',  'o',  'r',  'n',  'o',  '-',  'A',  'l',  't',  'a',  'y',  's',  'k',
+            ',',  ' ',  '0',  '9',  '.',  '0',  '1',  '.',  '9',  '7',  0x81, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
+            0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
         };
         static_assert(sizeof(HRUM3_5_PADDING) == 255, "Invalid layout");
         const uint8_t* const paddingStart = Data + usefulSize;
@@ -187,6 +175,7 @@ namespace Packed
         assert(Size >= sizeof(RawHeader));
         return *safe_ptr_cast<const RawHeader*>(Data);
       }
+
     private:
       const uint8_t* const Data;
       const std::size_t Size;
@@ -197,8 +186,7 @@ namespace Packed
     public:
       Bitstream(const uint8_t* data, std::size_t size)
         : Hrust1Bitstream(data, size)
-      {
-      }
+      {}
 
       uint_t GetDist()
       {
@@ -220,8 +208,8 @@ namespace Packed
       explicit DataDecoder(const Container& container)
         : IsValid(container.FastCheck())
         , Header(container.GetHeader())
-        , Stream(Header.BitStream, fromLE(Header.SizeOfPacked) - sizeof(Header.Padding7))
-        , Result(new Dump())
+        , Stream(Header.BitStream, Header.SizeOfPacked - sizeof(Header.Padding7))
+        , Result(new Binary::Dump())
         , Decoded(*Result)
       {
         if (IsValid && !Stream.Eof())
@@ -230,20 +218,19 @@ namespace Packed
         }
       }
 
-      std::unique_ptr<Dump> GetResult()
+      std::unique_ptr<Binary::Dump> GetResult()
       {
-        return IsValid
-          ? std::move(Result)
-          : std::unique_ptr<Dump>();
+        return IsValid ? std::move(Result) : std::unique_ptr<Binary::Dump>();
       }
+
     private:
       bool DecodeData()
       {
         // The main concern is to decode data as much as possible, skipping defenitely invalid structure
-        Decoded.reserve(2 * fromLE(Header.SizeOfPacked));
-        //put first byte
+        Decoded.reserve(2 * Header.SizeOfPacked);
+        // put first byte
         Decoded.push_back(Stream.GetByte());
-        //assume that first byte always exists due to header format
+        // assume that first byte always exists due to header format
         while (!Stream.Eof() && Decoded.size() < MAX_DECODED_SIZE)
         {
           if (Stream.GetBit())
@@ -258,7 +245,7 @@ namespace Packed
             len = Stream.GetByte();
             if (!len)
             {
-              //eof
+              // eof
               break;
             }
             offset = Stream.GetDist();
@@ -276,10 +263,11 @@ namespace Packed
             return false;
           }
         }
-        //put remaining bytes
+        // put remaining bytes
         std::copy(Header.LastBytes, std::end(Header.LastBytes), std::back_inserter(Decoded));
         return true;
       }
+
     private:
       uint_t DecodeOffsetByLen(uint_t len)
       {
@@ -296,26 +284,26 @@ namespace Packed
           return Stream.GetDist();
         }
       }
+
     private:
       bool IsValid;
       const RawHeader& Header;
       Bitstream Stream;
-      std::unique_ptr<Dump> Result;
-      Dump& Decoded;
+      std::unique_ptr<Binary::Dump> Result;
+      Binary::Dump& Decoded;
     };
-  }//namespace Hrum
+  }  // namespace Hrum
 
   class HrumDecoder : public Decoder
   {
   public:
     HrumDecoder()
       : Depacker(Binary::CreateFormat(Hrum::DEPACKER_PATTERN, Hrum::MIN_SIZE))
-    {
-    }
+    {}
 
     String GetDescription() const override
     {
-      return Text::HRUM_DECODER_DESCRIPTION;
+      return Hrum::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -337,6 +325,7 @@ namespace Packed
       Hrum::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), container.GetUsedSizeWithPadding());
     }
+
   private:
     const Binary::Format::Ptr Depacker;
   };
@@ -345,5 +334,4 @@ namespace Packed
   {
     return MakePtr<HrumDecoder>();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

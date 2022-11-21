@@ -1,34 +1,35 @@
 /**
-* 
-* @file
-*
-* @brief Analyzer widget implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Analyzer widget implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "analyzer_control.h"
 #include "supp/playback_supp.h"
-//common includes
+// common includes
 #include <contract.h>
-//library includes
-#include <module/analyzer.h>
-//std includes
+// library includes
+#include <sound/analyzer.h>
+// std includes
 #include <algorithm>
 #include <array>
 #include <limits>
-//qt includes
+// qt includes
 #include <QtCore/QEvent>
 #include <QtCore/QTimer>
 #include <QtGui/QPaintEngine>
 
 namespace
 {
+  const uint_t UPDATE_FPS = 25;
   const uint_t MAX_BANDS = 12 * 9;
   const uint_t BAR_WIDTH = 3;
-  const uint_t LEVELS_FALLBACK = 20;
+  const uint_t LEVELS_FALLBACK = 8;
 
   struct BandLevel
   {
@@ -36,9 +37,8 @@ namespace
     BandLevel()
       : Value(0)
       , Changed(false)
-    {
-    }
-    
+    {}
+
     void Fall(uint_t delta)
     {
       if (Value)
@@ -47,7 +47,7 @@ namespace
         Changed = true;
       }
     }
-    
+
     void Set(uint_t newVal)
     {
       if (newVal > Value)
@@ -83,11 +83,10 @@ namespace
       setObjectName(QLatin1String("AnalyzerControl"));
       SetTitle();
 
-      const unsigned UPDATE_FPS = 10;
       Timer.setInterval(1000 / UPDATE_FPS);
 
       Require(connect(&supp, SIGNAL(OnStartModule(Sound::Backend::Ptr, Playlist::Item::Data::Ptr)),
-        SLOT(InitState(Sound::Backend::Ptr))));
+                      SLOT(InitState(Sound::Backend::Ptr))));
       Require(connect(&supp, SIGNAL(OnStopModule()), SLOT(CloseState())));
       Require(connect(&Timer, SIGNAL(timeout()), SLOT(UpdateState())));
     }
@@ -107,10 +106,11 @@ namespace
         {
           level.Fall(LEVELS_FALLBACK);
         }
-        const auto& state = Analyzer->GetState();
-        for (uint_t idx = 0, lim = std::min(state.Data.size(), Levels.size()); idx < lim; ++idx)
+        std::array<Sound::Analyzer::LevelType, MAX_BANDS> spectrum;
+        Analyzer->GetSpectrum(spectrum.data(), spectrum.size());
+        for (uint_t idx = 0; idx < spectrum.size(); ++idx)
         {
-          Levels[idx].Set(state.Data[idx].Raw());
+          Levels[idx].Set(spectrum[idx].Raw());
         }
         repaint();
       }
@@ -118,12 +118,12 @@ namespace
 
     void CloseState() override
     {
-      std::for_each(Levels.begin(), Levels.end(), [](BandLevel& level) {level.Set(0);});
+      std::for_each(Levels.begin(), Levels.end(), [](BandLevel& level) { level.Set(0); });
       DoRepaint();
       Timer.stop();
     }
 
-    //QWidget
+    // QWidget
     void changeEvent(QEvent* event) override
     {
       if (event && QEvent::LanguageChange == event->type())
@@ -157,6 +157,7 @@ namespace
         }
       }
     }
+
   private:
     void SetTitle()
     {
@@ -165,23 +166,24 @@ namespace
 
     void DoRepaint()
     {
-      //update graph if visible
+      // update graph if visible
       if (isVisible())
       {
         repaint(rect());
       }
     }
+
   private:
     QTimer Timer;
     const QPalette Palette;
-    Module::Analyzer::Ptr Analyzer;
+    Sound::Analyzer::Ptr Analyzer;
     Analyzed Levels;
   };
-}
+}  // namespace
 
-AnalyzerControl::AnalyzerControl(QWidget& parent) : QWidget(&parent)
-{
-}
+AnalyzerControl::AnalyzerControl(QWidget& parent)
+  : QWidget(&parent)
+{}
 
 AnalyzerControl* AnalyzerControl::Create(QWidget& parent, PlaybackSupport& supp)
 {

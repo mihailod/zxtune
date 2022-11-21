@@ -1,17 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  Factories of different container plugins
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Factories of different container plugins
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
+#include "core/plugins/archive_plugins_registrator.h"
 #include "core/plugins/archives/archived.h"
 #include "core/plugins/archives/plugins.h"
-//library includes
+// library includes
 #include <core/plugin_attrs.h>
 #include <formats/archived/decoders.h>
 #include <formats/archived/multitrack/decoders.h>
@@ -29,7 +30,7 @@ namespace ZXTune
 
   using namespace Formats::Archived;
 
-#if 0
+  // clang-format off
   const ContainerPluginDescription UNARCHIVES[] =
   {
     {"ZIP",     &CreateZipDecoder,     Capabilities::Container::Type::ARCHIVE | Capabilities::Container::Traits::DIRECTORIES},
@@ -39,7 +40,7 @@ namespace ZXTune
     {"7ZIP",    &Create7zipDecoder,    Capabilities::Container::Type::ARCHIVE | Capabilities::Container::Traits::DIRECTORIES},
     {"FSB",     &CreateFSBDecoder,     Capabilities::Container::Type::ARCHIVE | Capabilities::Container::Traits::PLAIN},
   };
-#endif
+
   const ContainerPluginDescription ZXUNARCHIVES[] =
   {
     {"TRD",     &CreateTRDDecoder,     Capabilities::Container::Type::DISKIMAGE | Capabilities::Container::Traits::PLAIN},
@@ -52,22 +53,16 @@ namespace ZXTune
   const ContainerPluginDescription MULTITRACKS[] =
   {
     {"AY",      &CreateAYDecoder,      Capabilities::Container::Type::MULTITRACK},
-    {"SID",     &CreateSIDDecoder,     Capabilities::Container::Type::MULTITRACK | Capabilities::Container::Traits::ONCEAPPLIED},
-    {"NSF",     &CreateNSFDecoder,     Capabilities::Container::Type::MULTITRACK | Capabilities::Container::Traits::ONCEAPPLIED},
-    {"NSFE",    &CreateNSFEDecoder,    Capabilities::Container::Type::MULTITRACK | Capabilities::Container::Traits::ONCEAPPLIED},
-    {"GBS",     &CreateGBSDecoder,     Capabilities::Container::Type::MULTITRACK | Capabilities::Container::Traits::ONCEAPPLIED},
-    {"SAP",     &CreateSAPDecoder,     Capabilities::Container::Type::MULTITRACK | Capabilities::Container::Traits::ONCEAPPLIED},
-    {"KSSX",    &CreateKSSXDecoder,    Capabilities::Container::Type::MULTITRACK | Capabilities::Container::Traits::ONCEAPPLIED},
-    {"HES",     &CreateHESDecoder,     Capabilities::Container::Type::MULTITRACK | Capabilities::Container::Traits::ONCEAPPLIED},
   };
+  // clang-format on
 
   void RegisterPlugin(const ContainerPluginDescription& desc, ArchivePluginsRegistrator& registrator)
   {
     const Formats::Archived::Decoder::Ptr decoder = desc.Create();
-    const ArchivePlugin::Ptr plugin = CreateArchivePlugin(FromStdString(desc.Id), desc.Caps, decoder);
+    const ArchivePlugin::Ptr plugin = CreateArchivePlugin(desc.Id, desc.Caps, decoder);
     registrator.RegisterPlugin(plugin);
   }
-}
+}  // namespace ZXTune
 
 namespace ZXTune
 {
@@ -78,7 +73,7 @@ namespace ZXTune
       RegisterPlugin(desc, registrator);
     }
   }
-#if 0
+
   void RegisterArchiveContainers(ArchivePluginsRegistrator& registrator)
   {
     for (const auto& desc : UNARCHIVES)
@@ -86,7 +81,7 @@ namespace ZXTune
       RegisterPlugin(desc, registrator);
     }
   }
-#endif
+
   void RegisterZXArchiveContainers(ArchivePluginsRegistrator& registrator)
   {
     for (const auto& desc : ZXUNARCHIVES)
@@ -94,4 +89,4 @@ namespace ZXTune
       RegisterPlugin(desc, registrator);
     }
   }
-}
+}  // namespace ZXTune

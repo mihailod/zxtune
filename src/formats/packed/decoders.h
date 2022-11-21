@@ -1,16 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  Packe data decoders factories
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Packe data decoders factories
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <formats/packed.h>
 
 namespace Formats
@@ -61,5 +61,6 @@ namespace Formats
     Decoder::Ptr CreateMegaLZDecoder();
     Decoder::Ptr CreateDSKDecoder();
     Decoder::Ptr CreateGzipDecoder();
-  }
-}
+    Decoder::Ptr CreateMUSEDecoder();
+  }  // namespace Packed
+}  // namespace Formats

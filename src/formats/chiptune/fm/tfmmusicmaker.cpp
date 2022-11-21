@@ -1,37 +1,34 @@
 /**
-* 
-* @file
-*
-* @brief  TFMMusicMaker support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TFMMusicMaker support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/chiptune/fm/tfmmusicmaker.h"
 #include "formats/chiptune/container.h"
-//common includes
+// common includes
 #include <indices.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/crc.h>
+#include <binary/dump.h>
 #include <binary/format_factories.h>
 #include <binary/input_stream.h>
 #include <debug/log.h>
 #include <math/numeric.h>
 #include <strings/encoding.h>
-//std includes
+// std includes
 #include <array>
 #include <cassert>
-//boost includes
+// boost includes
 #include <boost/algorithm/string/trim.hpp>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   namespace TFMMusicMaker
   {
@@ -44,10 +41,7 @@ namespace Chiptune
     const std::size_t CHANNELS_COUNT = 6;
     const std::size_t EFFECTS_COUNT = 4;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct PackedDate
+    struct PackedDate
     {
       uint8_t YearMonth;
       uint8_t MonthDay;
@@ -66,16 +60,16 @@ namespace Chiptune
       {
         return MonthDay >> 3;
       }
-    } PACK_POST;
+    };
 
     using InstrumentName = std::array<char, 16>;
 
-    PACK_PRE struct RawInstrument
+    struct RawInstrument
     {
       uint8_t Algorithm;
       uint8_t Feedback;
 
-      PACK_PRE struct Operator
+      struct Operator
       {
         uint8_t Multiple;
         int8_t Detune;
@@ -87,10 +81,10 @@ namespace Chiptune
         uint8_t ReleaseRate;
         uint8_t SustainLevel;
         uint8_t Envelope;
-      } PACK_POST;
+      };
 
       std::array<Operator, 4> Operators;
-    } PACK_POST;
+    };
 
     enum Effects
     {
@@ -140,14 +134,12 @@ namespace Chiptune
       Effect()
         : Code()
         , Parameter()
-      {
-      }
+      {}
 
       Effect(uint_t code, uint_t parameter)
         : Code(code)
         , Parameter(parameter)
-      {
-      }
+      {}
 
       uint_t ParamX() const
       {
@@ -161,9 +153,7 @@ namespace Chiptune
 
       bool IsEmpty() const
       {
-        return (Code == FX_ARPEGGIO && Parameter == 0)
-            || Code == FX_NONE
-            || (Code == FX_EXT && IsEmptyExtended());
+        return (Code == FX_ARPEGGIO && Parameter == 0) || Code == FX_NONE || (Code == FX_EXT && IsEmptyExtended());
         ;
       }
 
@@ -201,13 +191,12 @@ namespace Chiptune
         : Note()
         , Volume()
         , Instrument()
-      {
-      }
+      {}
 
       bool IsEmpty() const
       {
-        return Note == NO_NOTE && Volume == 0
-            && Effects[0].IsEmpty() && Effects[1].IsEmpty() && Effects[2].IsEmpty() && Effects[3].IsEmpty();
+        return Note == NO_NOTE && Volume == 0 && Effects[0].IsEmpty() && Effects[1].IsEmpty() && Effects[2].IsEmpty()
+               && Effects[3].IsEmpty();
       }
 
       bool IsKeyOff() const
@@ -240,7 +229,7 @@ namespace Chiptune
     };
 
     template<class CellType>
-    PACK_PRE struct RawPatternType
+    struct RawPatternType
     {
       std::array<CellType, CHANNELS_COUNT> Channels;
 
@@ -251,17 +240,17 @@ namespace Chiptune
           Channels[chan].GetCell(idx, result.Channels[chan]);
         }
       }
-    } PACK_POST;
+    };
 
     struct Version05
     {
       static const std::size_t MIN_SIZE = 80;
       static const std::size_t MAX_SIZE = 65536;
       static const std::size_t SIGNATURE_SIZE = 0;
-      static const String DESCRIPTION;
-      static const std::string FORMAT;
+      static const StringView DESCRIPTION;
+      static const StringView FORMAT;
 
-      PACK_PRE struct RawCell
+      struct RawCell
       {
         std::array<uint8_t, MAX_PATTERN_SIZE> Notes;
         std::array<uint8_t, MAX_PATTERN_SIZE> Volumes;
@@ -288,11 +277,11 @@ namespace Chiptune
             result.Effects[0] = Effect(code, param);
           }
         }
-      } PACK_POST;
+      };
 
       typedef RawPatternType<RawCell> RawPattern;
 
-      PACK_PRE struct RawHeader
+      struct RawHeader
       {
         uint8_t Speeds;
         uint8_t SpeedInterleave;
@@ -300,7 +289,7 @@ namespace Chiptune
         uint8_t LoopPosition;
         PackedDate CreationDate;
         PackedDate SaveDate;
-        uint16_t SavesCount;
+        le_uint16_t SavesCount;
         std::array<char, 64> Author;
         std::array<char, 64> Title;
         std::array<char, 384> Comment;
@@ -319,7 +308,7 @@ namespace Chiptune
         {
           return Speeds & 15;
         }
-      } PACK_POST;
+      };
 
       static Instrument::Operator ParseInstrumentOperator(const RawInstrument::Operator& in)
       {
@@ -343,10 +332,10 @@ namespace Chiptune
       static const std::size_t MIN_SIZE = 128;
       static const std::size_t MAX_SIZE = 65536;
       static const std::size_t SIGNATURE_SIZE = 8;
-      static const String DESCRIPTION;
-      static const std::string FORMAT;
+      static const StringView DESCRIPTION;
+      static const StringView FORMAT;
 
-      PACK_PRE struct RawCell
+      struct RawCell
       {
         struct RawEffect
         {
@@ -370,11 +359,11 @@ namespace Chiptune
             result.Effects[eff] = Effect(in.Code[line], in.Parameter[line]);
           }
         }
-      } PACK_POST;
+      };
 
       typedef RawPatternType<RawCell> RawPattern;
 
-      PACK_PRE struct RawHeader
+      struct RawHeader
       {
         uint8_t Signature[8];
         uint8_t EvenSpeed;
@@ -384,10 +373,10 @@ namespace Chiptune
         uint8_t LoopPosition;
         PackedDate CreationDate;
         PackedDate SaveDate;
-        uint16_t SavesCount;
-        char Author[64];
-        char Title[64];
-        char Comment[384];
+        le_uint16_t SavesCount;
+        std::array<char, 64> Author;
+        std::array<char, 64> Title;
+        std::array<char, 384> Comment;
         std::array<uint8_t, MAX_POSITIONS_COUNT> Positions;
         std::array<InstrumentName, MAX_INSTRUMENTS_COUNT> InstrumentNames;
         std::array<RawInstrument, MAX_INSTRUMENTS_COUNT> Instruments;
@@ -403,7 +392,7 @@ namespace Chiptune
         {
           return OddSpeed;
         }
-      } PACK_POST;
+      };
 
       static Instrument::Operator ParseInstrumentOperator(const RawInstrument::Operator& in)
       {
@@ -422,33 +411,33 @@ namespace Chiptune
       }
     };
 
-    //ver1 0.1..0.4/0.5..1.2
-    const String Version05::DESCRIPTION = Text::TFMMUSICMAKER05_DECODER_DESCRIPTION;
-    const std::string Version05::FORMAT(
-      //use more strict detection due to lack of format
-      "11-13|21-25|32-35|42-46|52-57|62-68|76-79|87-89|98-9a|a6-a8"
-      "01-06"  //interleave
-      "01-40"  //positions count
-      "00-3f"  //loop position
-      "06-08|86-88" //creation date year is between 2006 and 2008
-      "%00001000-%11111101|80" //month/2 between 0 and 5, day between 1 and 31
-      "06-08|86-88|80" //save date year is between 2006 and 2008 or saved at 16th (marker,marker)
-    );
+    // ver1 0.1..0.4/0.5..1.2
+    const StringView Version05::DESCRIPTION = "TFM Music Maker v0.1-1.2"_sv;
+    const StringView Version05::FORMAT =
+        // use more strict detection due to lack of format
+        "11-13|21-25|32-35|42-46|52-57|62-68|76-79|87-89|98-9a|a6-a8"
+        "01-06"                   // interleave
+        "01-40"                   // positions count
+        "00-3f"                   // loop position
+        "06-08|86-88"             // creation date year is between 2006 and 2008
+        "%00001000-%11111101|80"  // month/2 between 0 and 5, day between 1 and 31
+        "06-08|86-88|80"          // save date year is between 2006 and 2008 or saved at 16th (marker,marker)
+        ""_sv;
 
-    const String Version13::DESCRIPTION = Text::TFMMUSICMAKER13_DECODER_DESCRIPTION;
-    const std::string Version13::FORMAT(
-      "'T'F'M'f'm't'V'2"  //signature
-      "01-0f"       //even speed
-      "01-0f|80"    //odd speed or marker
-      "01-0f|81-8f" //interleave or repeat
-    );
+    const StringView Version13::DESCRIPTION = "TFM Music Maker v1.3+"_sv;
+    const StringView Version13::FORMAT =
+        "'T'F'M'f'm't'V'2"  // signature
+        "01-0f"             // even speed
+        "01-0f|80"          // odd speed or marker
+        "01-0f|81-8f"       // interleave or repeat
+        ""_sv;
 
-    static_assert(sizeof(PackedDate) == 2, "Invalid layout");
-    static_assert(sizeof(RawInstrument) == 42, "Invalid layout");
-    static_assert(sizeof(Version05::RawPattern) == 7680, "Invalid layout");
-    static_assert(sizeof(Version05::RawHeader) == 1981904, "Invalid layout");
-    static_assert(sizeof(Version13::RawPattern) == 16896, "Invalid layout");
-    static_assert(sizeof(Version13::RawHeader) == 4341209, "Invalid layout");
+    static_assert(sizeof(PackedDate) * alignof(PackedDate) == 2, "Invalid layout");
+    static_assert(sizeof(RawInstrument) * alignof(RawInstrument) == 42, "Invalid layout");
+    static_assert(sizeof(Version05::RawPattern) * alignof(Version05::RawPattern) == 7680, "Invalid layout");
+    static_assert(sizeof(Version05::RawHeader) * alignof(Version05::RawHeader) == 1981904, "Invalid layout");
+    static_assert(sizeof(Version13::RawPattern) * alignof(Version13::RawPattern) == 16896, "Invalid layout");
+    static_assert(sizeof(Version13::RawHeader) * alignof(Version13::RawHeader) == 4341209, "Invalid layout");
 
     class StubBuilder : public Builder
     {
@@ -463,7 +452,7 @@ namespace Chiptune
       void SetComment(const String& /*comment*/) override {}
 
       void SetInstrument(uint_t /*index*/, Instrument /*instrument*/) override {}
-      //patterns
+      // patterns
       void SetPositions(Positions /*positions*/) override {}
 
       PatternBuilder& StartPattern(uint_t /*index*/) override
@@ -683,6 +672,7 @@ namespace Chiptune
       {
         return UsedInstruments;
       }
+
     private:
       Builder& Delegate;
       Indices UsedPatterns;
@@ -694,8 +684,7 @@ namespace Chiptune
     public:
       explicit ByteStream(Binary::View data)
         : Stream(data)
-      {
-      }
+      {}
 
       uint8_t GetByte()
       {
@@ -721,6 +710,7 @@ namespace Chiptune
       {
         return Stream.GetPosition();
       }
+
     private:
       Binary::DataInputStream Stream;
     };
@@ -749,10 +739,11 @@ namespace Chiptune
       {
         return Stream.GetProcessedBytes();
       }
+
     private:
       void DecodeData(std::size_t targetSize)
       {
-        //use more strict checking due to lack structure
+        // use more strict checking due to lack structure
         const uint_t MARKER = 0x80;
         int_t lastByte = -1;
         while (Decoded.size() < targetSize)
@@ -768,7 +759,7 @@ namespace Chiptune
               const std::size_t newSize = oldSize + counter - 1;
               Require(newSize <= targetSize);
               Decoded.resize(newSize, lastByte);
-              //disable doubled sequences
+              // disable doubled sequences
               lastByte = -1;
             }
             else
@@ -783,14 +774,15 @@ namespace Chiptune
         }
         Require(Decoded.size() == targetSize);
       }
+
     private:
       ByteStream Stream;
-      Dump Decoded;
+      Binary::Dump Decoded;
     };
-    
+
     StringView Trim(StringView str)
     {
-      //empty samples' names are filled with FF
+      // empty samples' names are filled with FF
       return boost::algorithm::trim_copy_if(str, boost::is_from_range('\x00', '\x20') || boost::is_any_of("\xff"));
     }
 
@@ -798,22 +790,21 @@ namespace Chiptune
     {
       return Strings::ToAutoUtf8(Trim(str));
     }
-    
+
     template<class Version>
     class VersionedFormat
     {
     public:
       explicit VersionedFormat(const typename Version::RawHeader& hdr)
         : Source(hdr)
-      {
-      }
+      {}
 
       void ParseCommonProperties(Builder& builder) const
       {
         builder.SetTempo(Source.GetEvenSpeed(), Source.GetOddSpeed(), Source.SpeedInterleave);
         builder.SetDate(ConvertDate(Source.CreationDate), ConvertDate(Source.SaveDate));
         MetaBuilder& meta = builder.GetMetaBuilder();
-        meta.SetProgram(Version::DESCRIPTION);
+        meta.SetProgram(Version::DESCRIPTION.to_string());
         meta.SetTitle(DecodeString(Source.Title));
         meta.SetAuthor(DecodeString(Source.Author));
         builder.SetComment(DecodeString(Source.Comment));
@@ -860,6 +851,7 @@ namespace Chiptune
           builder.SetInstrument(insIdx, ParseInstrument(Source.Instruments[insIdx - 1]));
         }
       }
+
     private:
       static Date ConvertDate(const PackedDate& in)
       {
@@ -871,7 +863,8 @@ namespace Chiptune
         return out;
       }
 
-      void ParsePattern(uint_t patSize, const typename Version::RawPattern& pattern, PatternBuilder& patBuilder, Builder& target) const
+      void ParsePattern(uint_t patSize, const typename Version::RawPattern& pattern, PatternBuilder& patBuilder,
+                        Builder& target) const
       {
         Line line;
         for (uint_t lineIdx = 0; lineIdx < patSize; ++lineIdx)
@@ -1050,6 +1043,7 @@ namespace Chiptune
         }
         return out;
       }
+
     private:
       const typename Version::RawHeader& Source;
     };
@@ -1066,12 +1060,11 @@ namespace Chiptune
     public:
       VersionedDecoder()
         : Format(Binary::CreateFormat(Version::FORMAT, Version::MIN_SIZE))
-      {
-      }
+      {}
 
       String GetDescription() const override
       {
-        return Version::DESCRIPTION;
+        return Version::DESCRIPTION.to_string();
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -1079,7 +1072,7 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Format->Match(rawData);
       }
@@ -1112,8 +1105,10 @@ namespace Chiptune
           format.ParseInstruments(usedInstruments, target);
 
           auto subData = data.GetSubcontainer(0, decompressor.GetUsedSize());
-          const std::size_t fixStart = offsetof(typename Version::RawHeader, Patterns) + sizeof(typename Version::RawPattern) * usedPatterns.Minimum();
-          const std::size_t fixEnd = offsetof(typename Version::RawHeader, Patterns) + sizeof(typename Version::RawPattern) * (1 + usedPatterns.Maximum());
+          const std::size_t fixStart = offsetof(typename Version::RawHeader, Patterns)
+                                       + sizeof(typename Version::RawPattern) * usedPatterns.Minimum();
+          const std::size_t fixEnd = offsetof(typename Version::RawHeader, Patterns)
+                                     + sizeof(typename Version::RawPattern) * (1 + usedPatterns.Maximum());
           const uint_t crc = Binary::Crc32(decoded.SubView(fixStart, fixEnd - fixStart));
           return CreateKnownCrcContainer(std::move(subData), crc);
         }
@@ -1122,6 +1117,7 @@ namespace Chiptune
           return Formats::Chiptune::Container::Ptr();
         }
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
@@ -1132,7 +1128,7 @@ namespace Chiptune
       {
         return MakePtr<VersionedDecoder<Version05> >();
       }
-    }
+    }  // namespace Ver05
 
     namespace Ver13
     {
@@ -1140,8 +1136,8 @@ namespace Chiptune
       {
         return MakePtr<VersionedDecoder<Version13> >();
       }
-    }
-  }//namespace TFMMusicMaker
+    }  // namespace Ver13
+  }    // namespace TFMMusicMaker
 
   Decoder::Ptr CreateTFMMusicMaker05Decoder()
   {
@@ -1152,5 +1148,4 @@ namespace Chiptune
   {
     return TFMMusicMaker::Ver13::CreateDecoder();
   }
-}//namespace Chiptune
-}//namespace Formats
+}  // namespace Formats::Chiptune

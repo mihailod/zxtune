@@ -1,20 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief  Player plugins factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Player plugins factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include <core/plugins/player_plugins_registrator.h>
-
 namespace ZXTune
 {
+  class PlayerPluginsRegistrator;
+  class ArchivePluginsRegistrator;
+
   void RegisterTSSupport(PlayerPluginsRegistrator& registrator);
   void RegisterAYSupport(PlayerPluginsRegistrator& registrator);
   void RegisterPSGSupport(PlayerPluginsRegistrator& registrator);
@@ -45,25 +45,29 @@ namespace ZXTune
   void RegisterCOPSupport(PlayerPluginsRegistrator& registrator);
   void RegisterTFESupport(PlayerPluginsRegistrator& registrator);
   void RegisterXMPPlugins(PlayerPluginsRegistrator& registrator);
-  void RegisterSIDPlugins(PlayerPluginsRegistrator& registrator);
+  void RegisterSIDPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegistrator& archives);
   void RegisterET1Support(PlayerPluginsRegistrator& registrator);
   void RegisterAYCSupport(PlayerPluginsRegistrator& registrator);
   void RegisterSPCSupport(PlayerPluginsRegistrator& registrator);
   void RegisterMTCSupport(PlayerPluginsRegistrator& registrator);
-  void RegisterGMEPlugins(PlayerPluginsRegistrator& registrator);
+  void RegisterGMEPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegistrator& archives);
   void RegisterAHXSupport(PlayerPluginsRegistrator& registrator);
   void RegisterPSFSupport(PlayerPluginsRegistrator& registrator);
   void RegisterUSFSupport(PlayerPluginsRegistrator& registrator);
   void RegisterGSFSupport(PlayerPluginsRegistrator& registrator);
   void Register2SFSupport(PlayerPluginsRegistrator& registrator);
+  void RegisterNCSFSupport(PlayerPluginsRegistrator& registrator);
   void RegisterSDSFSupport(PlayerPluginsRegistrator& registrator);
-  void RegisterASAPPlugins(PlayerPluginsRegistrator& registrator);
+  void RegisterASAPPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegistrator& archives);
   void RegisterMP3Plugin(PlayerPluginsRegistrator& registrator);
   void RegisterOGGPlugin(PlayerPluginsRegistrator& registrator);
   void RegisterWAVPlugin(PlayerPluginsRegistrator& registrator);
   void RegisterFLACPlugin(PlayerPluginsRegistrator& registrator);
   void RegisterV2MSupport(PlayerPluginsRegistrator& registrator);
   void RegisterVGMPlugins(PlayerPluginsRegistrator& registrator);
+  void RegisterMPTPlugins(PlayerPluginsRegistrator& registrator);
+  void RegisterVGMStreamPlugins(PlayerPluginsRegistrator& registrator, ArchivePluginsRegistrator& archives);
 
   void RegisterPlayerPlugins(PlayerPluginsRegistrator& registrator);
-}
+  void RegisterMultitrackPlayerPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegistrator& archives);
+}  // namespace ZXTune

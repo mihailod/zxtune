@@ -1,24 +1,25 @@
 /**
-* 
-* @file
-*
-* @brief  SAA chips implementation
-*
-* @author vitamin.caig@gmail.com
-*
-* @note Based on sources of PerfectZX emulator
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SAA chips implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ * @note Based on sources of PerfectZX emulator
+ *
+ **/
 
-//local includes
+// local includes
 #include "device.h"
-//library includes
-#include <devices/details/analysis_map.h>
+// common includes
+#include <contract.h>
+#include <make_ptr.h>
+// library includes
 #include <devices/details/renderers.h>
 #include <parameters/tracking_helper.h>
-#include <sound/chunk_builder.h>
 #include <sound/lpfilter.h>
-//std includes
+// std includes
 #include <cassert>
 #include <cmath>
 #include <functional>
@@ -27,9 +28,7 @@
 #include <numeric>
 #include <utility>
 
-namespace Devices
-{
-namespace SAA
+namespace Devices::SAA
 {
   static_assert(Registers::TOTAL <= 8 * sizeof(uint_t), "Too many registers for mask");
   static_assert(sizeof(Registers) == 32, "Invalid layout");
@@ -48,7 +47,7 @@ namespace SAA
       {
         if (0 == (data.Mask & mask))
         {
-          //no new data
+          // no new data
           continue;
         }
         const uint_t val = data.Data[idx];
@@ -109,10 +108,6 @@ namespace SAA
       return Device.GetLevels();
     }
 
-    void GetState(const Details::AnalysisMap& analysis, DeviceState& state) const
-    {
-      Device.GetState(analysis, state);
-    }
   private:
     SAADevice Device;
   };
@@ -125,13 +120,13 @@ namespace SAA
 
   class HQWrapper
   {
-    //minimal period is 512
+    // minimal period is 512
     static const uint_t FREQ_DIVIDER = 8;
+
   public:
     explicit HQWrapper(SAARenderer& delegate)
       : Delegate(delegate)
-    {
-    }
+    {}
 
     void SetClockFrequency(uint64_t clockFreq)
     {
@@ -156,19 +151,20 @@ namespace SAA
     {
       return Filter.Get();
     }
+
   private:
     SAARenderer& Delegate;
     Sound::LPFilter Filter;
-  };   
+  };
 
   class HQRenderer : public Details::BaseRenderer<Stamp, HQWrapper>
   {
     typedef Details::BaseRenderer<Stamp, HQWrapper> Parent;
+
   public:
     HQRenderer(ClockSource& clock, SAARenderer& psg)
       : Parent(clock, psg)
-    {
-    }
+    {}
 
     void SetClockFrequency(uint64_t clockFreq)
     {
@@ -187,8 +183,7 @@ namespace SAA
       , MQ(clock, psg)
       , HQ(clock, psg)
       , Current()
-    {
-    }
+    {}
 
     void Reset()
     {
@@ -225,10 +220,11 @@ namespace SAA
       }
     }
 
-    void Render(Stamp tillTime, uint_t samples, Sound::ChunkBuilder& target)
+    Sound::Chunk Render(Stamp tillTime, uint_t samples)
     {
-      Current->Render(tillTime, samples, target);
+      return Current->Render(tillTime, samples);
     }
+
   private:
     uint64_t ClockFreq;
     uint_t SoundFreq;
@@ -242,9 +238,8 @@ namespace SAA
   class RegularSAAChip : public Chip
   {
   public:
-    RegularSAAChip(ChipParameters::Ptr params, Sound::Receiver::Ptr target)
+    explicit RegularSAAChip(ChipParameters::Ptr params)
       : Params(std::move(params))
-      , Target(std::move(target))
       , Clock()
       , Renderers(Clock, PSG)
     {
@@ -253,11 +248,8 @@ namespace SAA
 
     void RenderData(const DataChunk& src) override
     {
-      if (Clock.HasSamplesBefore(src.TimeStamp))
-      {
-        SynchronizeParameters();
-        RenderTill(src.TimeStamp);
-      }
+      // for simplicity
+      Require(!Clock.HasSamplesBefore(src.TimeStamp));
       PSG.SetNewData(src.Data);
     }
 
@@ -266,14 +258,18 @@ namespace SAA
       Params.Reset();
       PSG.Reset();
       Renderers.Reset();
+      SynchronizeParameters();
     }
 
-    DeviceState GetState() const override
+    Sound::Chunk RenderTill(Stamp stamp) override
     {
-      DeviceState res;
-      PSG.GetState(Analyser, res);
-      return res;
+      const uint_t samples = Clock.SamplesTill(stamp);
+      Require(samples);
+      auto result = Renderers.Render(stamp, samples);
+      SynchronizeParameters();
+      return result;
     }
+
   private:
     void SynchronizeParameters()
     {
@@ -283,31 +279,18 @@ namespace SAA
         const uint_t sndFreq = Params->SoundFreq();
         Renderers.SetFrequency(clock, sndFreq);
         Renderers.SetInterpolation(Params->Interpolation());
-        Analyser.SetClockRate(clock);
       }
     }
 
-    void RenderTill(Stamp stamp)
-    {
-      const uint_t samples = Clock.SamplesTill(stamp);
-      Sound::ChunkBuilder builder;
-      builder.Reserve(samples);
-      Renderers.Render(stamp, samples, builder);
-      Target->ApplyData(builder.CaptureResult());
-      Target->Flush();
-    }
   private:
     Parameters::TrackingHelper<ChipParameters> Params;
-    const Sound::Receiver::Ptr Target;
     SAARenderer PSG;
     ClockSource Clock;
-    Details::AnalysisMap Analyser;
     RenderersSet Renderers;
   };
 
-  Chip::Ptr CreateChip(ChipParameters::Ptr params, Sound::Receiver::Ptr target)
+  Chip::Ptr CreateChip(ChipParameters::Ptr params)
   {
-    return MakePtr<RegularSAAChip>(params, target);
+    return MakePtr<RegularSAAChip>(std::move(params));
   }
-}
-}
+}  // namespace Devices::SAA

@@ -1,36 +1,34 @@
 /**
-* 
-* @file
-*
-* @brief Implementation of .xspf exporting
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Implementation of .xspf exporting
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "export.h"
 #include "tags/xspf.h"
 #include "ui/utils.h"
-//common includes
+// common includes
 #include <error_tools.h>
-//library includes
-#include <zxtune.h>
+// library includes
+#include <core/plugins/archives/zdata_supp.h>
 #include <debug/log.h>
 #include <module/attributes.h>
-#include <sound/sound_parameters.h>
 #include <parameters/convert.h>
-#include <core/plugins/archives/zdata_supp.h>
-//std includes
+#include <sound/sound_parameters.h>
+#include <zxtune.h>
+// std includes
 #include <set>
-//qt includes
+// qt includes
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QString>
 #include <QtCore/QUrl>
 #include <QtCore/QXmlStreamWriter>
-//text includes
-#include "text/text.h"
 
 #define FILE_TAG A016CAAF
 
@@ -42,14 +40,14 @@ namespace
 
   const unsigned XSPF_VERSION = 1;
 
-  typedef bool (*AttributesFilter)(const Parameters::NameType&);
+  typedef bool (*AttributesFilter)(Parameters::Identifier);
 
   QString DataToQString(const QByteArray& data)
   {
-	return QString::fromLatin1(data.data(), data.size());
+    return QString::fromLatin1(data.data(), data.size());
   }
 
-  QString ConvertString(const String& str)
+  QString ConvertString(StringView str)
   {
     const QByteArray data = QUrl::toPercentEncoding(ToQString(str));
     return DataToQString(data);
@@ -97,6 +95,7 @@ namespace
     {
       return ElementHelper(Xml, tagName);
     }
+
   private:
     QXmlStreamWriter& Xml;
   };
@@ -109,57 +108,59 @@ namespace
       explicit StringPropertySaver(QXmlStreamWriter& xml)
         : Extension(xml, XSPF::EXTENSION_TAG)
       {
-        Extension.Attribute(XSPF::APPLICATION_ATTR, QLatin1String(Text::PLAYLIST_APPLICATION_ID));
+        Extension.Attribute(XSPF::APPLICATION_ATTR, Playlist::APPLICATION_ID);
       }
 
-      void SaveProperty(const Parameters::NameType& name, const String& strVal)
+      void SaveProperty(StringView name, StringView strVal)
       {
         Extension.Subtag(XSPF::EXTENDED_PROPERTY_TAG)
-          .Attribute(XSPF::EXTENDED_PROPERTY_NAME_ATTR, ToQString(name.FullPath()))
-          .Text(ConvertString(strVal));
+            .Attribute(XSPF::EXTENDED_PROPERTY_NAME_ATTR, ToQString(name))
+            .Text(ConvertString(strVal));
       }
+
     private:
       ElementHelper Extension;
     };
+
   public:
     ExtendedPropertiesSaver(QXmlStreamWriter& xml, AttributesFilter filter = nullptr)
       : XML(xml)
       , Filter(filter)
-    {
-    }
+    {}
 
-    void SetValue(const Parameters::NameType& name, Parameters::IntType val) override
+    void SetValue(Parameters::Identifier name, Parameters::IntType val) override
     {
       if (Filter && !Filter(name))
       {
         return;
       }
-      Dbg("  saving extended attribute %1%=%2%", name.FullPath(), val);
+      Dbg("  saving extended attribute %1%=%2%", static_cast<StringView>(name), val);
       SaveProperty(name, val);
     }
 
-    void SetValue(const Parameters::NameType& name, const Parameters::StringType& val) override
+    void SetValue(Parameters::Identifier name, StringView val) override
     {
       if (Filter && !Filter(name))
       {
         return;
       }
-      Dbg("  saving extended attribute %1%='%2%'", name.FullPath(), val);
+      Dbg("  saving extended attribute %1%='%2%'", static_cast<StringView>(name), val);
       SaveProperty(name, val);
     }
 
-    void SetValue(const Parameters::NameType& name, const Parameters::DataType& val) override
+    void SetValue(Parameters::Identifier name, Binary::View val) override
     {
       if (Filter && !Filter(name))
       {
         return;
       }
-      Dbg("  saving extended attribute %1%=data(%2%)", name.FullPath(), val.size());
+      Dbg("  saving extended attribute %1%=data(%2%)", static_cast<StringView>(name), val.Size());
       SaveProperty(name, val);
     }
+
   private:
     template<class T>
-    void SaveProperty(const Parameters::NameType& name, const T& value)
+    void SaveProperty(Parameters::Identifier name, T value)
     {
       if (!Saver)
       {
@@ -168,6 +169,7 @@ namespace
       const String strVal = Parameters::ConvertToString(value);
       Saver->SaveProperty(name, strVal);
     }
+
   private:
     QXmlStreamWriter& XML;
     const AttributesFilter Filter;
@@ -180,16 +182,15 @@ namespace
     explicit ItemPropertiesSaver(QXmlStreamWriter& xml)
       : XML(xml)
       , Element(xml, XSPF::ITEM_TAG)
-    {
-    }
+    {}
 
-    void SaveModuleLocation(const String& location)
+    void SaveModuleLocation(StringView location)
     {
       Dbg("  saving absolute item location %1%", location);
       SaveModuleLocation(ToQString(location));
     }
 
-    void SaveModuleLocation(const String& location, const QDir& root)
+    void SaveModuleLocation(StringView location, const QDir& root)
     {
       Dbg("  saving relative item location %1%", location);
       const QString path = ToQString(location);
@@ -206,10 +207,10 @@ namespace
 
     void SaveModuleProperties(const Module::Information& info, const Parameters::Accessor& props)
     {
-      //save common properties
+      // save common properties
       Dbg(" Save basic properties");
       props.Process(*this);
-      SaveDuration(info, props);
+      SaveDuration(info);
       Dbg(" Save extended properties");
       SaveExtendedProperties(props);
     }
@@ -233,82 +234,67 @@ namespace
     {
       Dbg(" Save content");
       Element.Text(ENDL);
-	  Element.CData(QString::fromLatin1(static_cast<const char*>(content.Start()), content.Size()));
+      Element.CData(QString::fromLatin1(static_cast<const char*>(content.Start()), content.Size()));
       Element.Text(ENDL);
     }
+
   private:
     void SaveModuleLocation(const QString& location)
     {
       Element.Text(XSPF::ITEM_LOCATION_TAG, DataToQString(QUrl(location).toEncoded()));
     }
 
-    void SetValue(const Parameters::NameType& /*name*/, Parameters::IntType /*val*/) override
-    {
-    }
+    void SetValue(Parameters::Identifier /*name*/, Parameters::IntType /*val*/) override {}
 
-    void SetValue(const Parameters::NameType& name, const Parameters::StringType& val) override
+    void SetValue(Parameters::Identifier name, StringView val) override
     {
       const String value = Parameters::ConvertToString(val);
       const QString valStr = ConvertString(value);
       if (name == Module::ATTR_TITLE)
       {
-        Dbg("  saving item attribute %1%='%2%'", name.FullPath(), val);
+        Dbg("  saving item attribute %1%='%2%'", static_cast<StringView>(name), val);
         Element.Text(XSPF::ITEM_TITLE_TAG, valStr);
       }
       else if (name == Module::ATTR_AUTHOR)
       {
-        Dbg("  saving item attribute %1%='%2%'", name.FullPath(), val);
+        Dbg("  saving item attribute %1%='%2%'", static_cast<StringView>(name), val);
         Element.Text(XSPF::ITEM_CREATOR_TAG, valStr);
       }
       else if (name == Module::ATTR_COMMENT)
       {
-        Dbg("  saving item attribute %1%='%2%'", name.FullPath(), val);
+        Dbg("  saving item attribute %1%='%2%'", static_cast<StringView>(name), val);
         Element.Text(XSPF::ITEM_ANNOTATION_TAG, valStr);
       }
     }
 
-    void SetValue(const Parameters::NameType& /*name*/, const Parameters::DataType& /*val*/) override
-    {
-    }
+    void SetValue(Parameters::Identifier /*name*/, Binary::View /*val*/) override {}
+
   private:
-    void SaveDuration(const Module::Information& info, const Parameters::Accessor& props)
+    void SaveDuration(const Module::Information& info)
     {
-      Parameters::IntType frameDuration = Parameters::ZXTune::Sound::FRAMEDURATION_DEFAULT;
-      props.FindValue(Parameters::ZXTune::Sound::FRAMEDURATION, frameDuration);
-      const uint64_t msecDuration = info.FramesCount() * frameDuration / 1000;
+      const uint64_t msecDuration = info.Duration().CastTo<Time::Millisecond>().Get();
       Dbg("  saving item attribute Duration=%1%", msecDuration);
       Element.Text(XSPF::ITEM_DURATION_TAG, QString::number(msecDuration));
     }
 
-    static bool KeepExtendedProperties(const Parameters::NameType& name)
+    static bool KeepExtendedProperties(Parameters::Identifier name)
     {
       return
-        //skip path-related properties
-        name != Module::ATTR_FULLPATH &&
-        name != Module::ATTR_PATH &&
-        name != Module::ATTR_FILENAME &&
-        name != Module::ATTR_EXTENSION &&
-        name != Module::ATTR_SUBPATH &&
-        //skip existing properties
-        name != Module::ATTR_AUTHOR &&
-        name != Module::ATTR_TITLE &&
-        name != Module::ATTR_COMMENT &&
-        //skip redundand properties
-        name != Module::ATTR_STRINGS &&
-        //skip all the parameters
-        !IsParameter(name)
-      ;
+          // skip path-related properties
+          name != Module::ATTR_FULLPATH && name != Module::ATTR_PATH && name != Module::ATTR_FILENAME
+          && name != Module::ATTR_EXTENSION && name != Module::ATTR_SUBPATH &&
+          // skip existing properties
+          name != Module::ATTR_AUTHOR && name != Module::ATTR_TITLE && name != Module::ATTR_COMMENT &&
+          // skip redundand properties
+          name != Module::ATTR_STRINGS &&
+          // skip all the parameters
+          !name.IsPath();
     }
 
-    static bool IsParameter(const Parameters::NameType& name)
+    static bool KeepOnlyParameters(Parameters::Identifier attrName)
     {
-      return name.IsPath();
-    }
-
-    static bool KeepOnlyParameters(const Parameters::NameType& name)
-    {
-      return name.IsSubpathOf(Parameters::ZXTune::PREFIX) &&
-            !name.IsSubpathOf(Playlist::ATTRIBUTES_PREFIX);
+      return !attrName.RelativeTo(Parameters::ZXTune::PREFIX).IsEmpty()
+             && attrName.RelativeTo(Playlist::ATTRIBUTES_PREFIX).IsEmpty();
     }
 
     void SaveExtendedProperties(const Parameters::Accessor& props)
@@ -316,6 +302,7 @@ namespace
       ExtendedPropertiesSaver saver(XML, &KeepExtendedProperties);
       props.Process(saver);
     }
+
   private:
     QXmlStreamWriter& XML;
     ElementHelper Element;
@@ -332,9 +319,7 @@ namespace
   class ItemFullLocationWriter : public ItemWriter
   {
   public:
-    ItemFullLocationWriter()
-    {
-    }
+    ItemFullLocationWriter() {}
 
     void Save(const Playlist::Item::Data& item, ItemPropertiesSaver& saver) const override
     {
@@ -347,13 +332,13 @@ namespace
   public:
     explicit ItemRelativeLocationWriter(const QString& dirName)
       : Root(dirName)
-    {
-    }
+    {}
 
     void Save(const Playlist::Item::Data& item, ItemPropertiesSaver& saver) const override
     {
       saver.SaveModuleLocation(item.GetFullPath(), Root);
     }
+
   private:
     const QDir Root;
   };
@@ -361,9 +346,7 @@ namespace
   class ItemContentLocationWriter : public ItemWriter
   {
   public:
-    ItemContentLocationWriter()
-    {
-    }
+    ItemContentLocationWriter() {}
 
     void Save(const Playlist::Item::Data& item, ItemPropertiesSaver& saver) const override
     {
@@ -383,10 +366,11 @@ namespace
       }
       else
       {
-		static const ItemFullLocationWriter fallback = ItemFullLocationWriter();
+        static const ItemFullLocationWriter fallback;
         fallback.Save(item, saver);
       }
     }
+
   private:
     mutable std::set<String> Ids;
   };
@@ -394,9 +378,7 @@ namespace
   class ItemShortPropertiesWriter : public ItemWriter
   {
   public:
-    ItemShortPropertiesWriter()
-    {
-    }
+    ItemShortPropertiesWriter() {}
 
     void Save(const Playlist::Item::Data& item, ItemPropertiesSaver& saver) const override
     {
@@ -409,9 +391,7 @@ namespace
   class ItemFullPropertiesWriter : public ItemWriter
   {
   public:
-    ItemFullPropertiesWriter()
-    {
-    }
+    ItemFullPropertiesWriter() {}
 
     void Save(const Playlist::Item::Data& item, ItemPropertiesSaver& saver) const override
     {
@@ -425,7 +405,7 @@ namespace
       }
       else
       {
-		static const ItemShortPropertiesWriter fallback = ItemShortPropertiesWriter();
+        static const ItemShortPropertiesWriter fallback;
         fallback.Save(item, saver);
       }
     }
@@ -437,14 +417,14 @@ namespace
     ItemCompositeWriter(std::unique_ptr<ItemWriter> loc, std::unique_ptr<ItemWriter> props)
       : Location(std::move(loc))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     void Save(const Playlist::Item::Data& item, ItemPropertiesSaver& saver) const override
     {
       Location->Save(item, saver);
       Properties->Save(item, saver);
     }
+
   private:
     const std::unique_ptr<ItemWriter> Location;
     const std::unique_ptr<ItemWriter> Properties;
@@ -522,6 +502,7 @@ namespace
     {
       XML.writeEndDocument();
     }
+
   private:
     void WriteItem(Playlist::Item::Data::Ptr item)
     {
@@ -529,11 +510,12 @@ namespace
       ItemPropertiesSaver saver(XML);
       Writer.Save(*item, saver);
     }
+
   private:
     QXmlStreamWriter XML;
     const ItemWriter& Writer;
   };
-}
+}  // namespace
 
 namespace Playlist
 {
@@ -552,6 +534,5 @@ namespace Playlist
       writer.WriteProperties(*playlistProperties, container->GetItemsCount());
       writer.WriteItems(*container, cb);
     }
-  }
-}
-
+  }  // namespace IO
+}  // namespace Playlist

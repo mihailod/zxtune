@@ -1,90 +1,81 @@
 /**
-* 
-* @file
-*
-* @brief  HRiP archives support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  HRiP archives support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/archived/trdos_catalogue.h"
 #include "formats/archived/trdos_utils.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 #include <formats/packed/decoders.h>
-//std includes
+// std includes
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
-//text include
-#include <formats/text/archived.h>
 
-namespace Formats
-{
-namespace Archived
+namespace Formats::Archived
 {
   namespace Hrip
   {
-    const std::string FORMAT(
-      "'H'R'i" //uint8_t ID[3];//'HRi'
-      "01-ff"  //uint8_t FilesCount;
-      "?"      //uint8_t UsedInLastSector;
-      "??"     //uint16_t ArchiveSectors;
-      "%0000000x"//uint8_t Catalogue;
-    );
+    const Char DESCRIPTION[] = "Hrip (Hrust RiP archiver)";
+    const auto FORMAT =
+        "'H'R'i"     // uint8_t ID[3];//'HRi'
+        "01-ff"      // uint8_t FilesCount;
+        "?"          // uint8_t UsedInLastSector;
+        "??"         // uint16_t ArchiveSectors;
+        "%0000000x"  // uint8_t Catalogue;
+        ""_sv;
 
     const std::size_t MAX_MODULE_SIZE = 655360;
 
     const uint8_t HRIP_ID[] = {'H', 'R', 'i'};
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct Header
+    struct Header
     {
-      uint8_t ID[3];//'HRi'
+      uint8_t ID[3];  //'HRi'
       uint8_t FilesCount;
       uint8_t UsedInLastSector;
-      uint16_t ArchiveSectors;
+      le_uint16_t ArchiveSectors;
       uint8_t Catalogue;
-    } PACK_POST;
+    };
 
-    PACK_PRE struct BlockHeader
+    struct BlockHeader
     {
-      uint8_t ID[5];//'Hrst2'
+      uint8_t ID[5];  //'Hrst2'
       uint8_t Flag;
-      uint16_t DataSize;
-      uint16_t PackedSize;//without header
+      le_uint16_t DataSize;
+      le_uint16_t PackedSize;  // without header
       uint8_t AdditionalSize;
-      //additional
-      uint16_t PackedCRC;
-      uint16_t DataCRC;
+      // additional
+      le_uint16_t PackedCRC;
+      le_uint16_t DataCRC;
       char Name[8];
       char Type[3];
-      uint16_t Filesize;
+      le_uint16_t Filesize;
       uint8_t Filesectors;
       uint8_t Subdir;
       char Comment[1];
 
-      //flag bits
+      // flag bits
       enum
       {
         NO_COMPRESSION = 1,
         LAST_BLOCK = 2,
         DELETED = 32
       };
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
 
-    static_assert(sizeof(Header) == 8, "Invalid layout");
+    static_assert(sizeof(Header) * alignof(Header) == 8, "Invalid layout");
     static_assert(offsetof(BlockHeader, PackedCRC) == 11, "Invalid layout");
 
     // crc16 calculating routine
@@ -107,35 +98,35 @@ namespace Archived
       return result & 0xffff;
     }
 
-    //check archive header and calculate files count and total size
+    // check archive header and calculate files count and total size
     bool FastCheck(const void* data, std::size_t dataSize, uint_t& files, std::size_t& archiveSize)
     {
       if (dataSize < sizeof(Header))
       {
         return false;
       }
-      const Header* const hripHeader = static_cast<const Header*>(data);
-      if (0 != std::memcmp(hripHeader->ID, HRIP_ID, sizeof(HRIP_ID)) ||
-         !(0 == hripHeader->Catalogue || 1 == hripHeader->Catalogue) ||
-         !hripHeader->ArchiveSectors || !hripHeader->FilesCount)
+      const auto* const hripHeader = safe_ptr_cast<const Header*>(data);
+      if (0 != std::memcmp(hripHeader->ID, HRIP_ID, sizeof(HRIP_ID))
+          || !(0 == hripHeader->Catalogue || 1 == hripHeader->Catalogue) || !hripHeader->ArchiveSectors
+          || !hripHeader->FilesCount)
       {
         return false;
       }
       files = hripHeader->FilesCount;
       if (hripHeader->Catalogue)
       {
-        archiveSize = 256 * fromLE(hripHeader->ArchiveSectors) + files * 16 + 6;
+        archiveSize = 256 * hripHeader->ArchiveSectors + files * 16 + 6;
       }
       else
       {
-        archiveSize = 256 * (fromLE(hripHeader->ArchiveSectors) - 1) + hripHeader->UsedInLastSector;
+        archiveSize = 256 * (hripHeader->ArchiveSectors - 1) + hripHeader->UsedInLastSector;
       }
       return true;
     }
 
     String ExtractFileName(const void* data)
     {
-      const BlockHeader* const header = static_cast<const BlockHeader*>(data);
+      const auto* const header = safe_ptr_cast<const BlockHeader*>(data);
       if (header->AdditionalSize >= 18)
       {
         return TRDos::GetEntryName(header->Name, header->Type);
@@ -143,7 +134,7 @@ namespace Archived
       else
       {
         assert(!"Hrip file without name");
-        static const Char DEFAULT_HRIP_FILENAME[] = {'N','O','N','A','M','E',0};
+        static const Char DEFAULT_HRIP_FILENAME[] = {'N', 'O', 'N', 'A', 'M', 'E', 0};
         return DEFAULT_HRIP_FILENAME;
       }
     }
@@ -175,26 +166,25 @@ namespace Archived
         }
         else
         {
-          //TODO: process catalogue
+          // TODO: process catalogue
           break;
         }
       }
       builder->SetRawData(data.GetSubcontainer(0, std::min(archiveSize, availSize)));
       return builder->GetResult();
     }
-  }//namespace Hrip
+  }  // namespace Hrip
 
   class HripDecoder : public Decoder
   {
   public:
     HripDecoder()
       : Format(Binary::CreateFormat(Hrip::FORMAT))
-    {
-    }
+    {}
 
     String GetDescription() const override
     {
-      return Text::HRIP_DECODER_DESCRIPTION;
+      return Hrip::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -204,9 +194,10 @@ namespace Archived
 
     Container::Ptr Decode(const Binary::Container& data) const override
     {
-      //implies FastCheck
+      // implies FastCheck
       return Hrip::ParseArchive(data);
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -215,5 +206,4 @@ namespace Archived
   {
     return MakePtr<HripDecoder>();
   }
-}//namespace Archived
-}//namespace Formats
+}  // namespace Formats::Archived

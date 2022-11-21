@@ -17,7 +17,6 @@ import java.util.HashMap;
 
 import app.zxtune.Log;
 import app.zxtune.MainApplication;
-import app.zxtune.StubProgressCallback;
 import app.zxtune.core.Identifier;
 import app.zxtune.fs.VfsDir.Visitor;
 import app.zxtune.fs.archives.Archive;
@@ -25,6 +24,8 @@ import app.zxtune.fs.archives.ArchivesService;
 import app.zxtune.fs.archives.DirEntry;
 import app.zxtune.fs.archives.Entry;
 import app.zxtune.fs.archives.Track;
+import app.zxtune.utils.ProgressCallback;
+import app.zxtune.utils.StubProgressCallback;
 
 public final class VfsArchive {
 
@@ -65,7 +66,7 @@ public final class VfsArchive {
 
   private static boolean isArchived(Uri uri) {
     final Identifier id = new Identifier(uri);
-    return !id.getSubpath().isEmpty();
+    return !id.getSubPath().isEmpty();
   }
 
   /*
@@ -146,7 +147,7 @@ public final class VfsArchive {
   @Nullable
   private VfsObject resolveUri(Uri uri, @Nullable ProgressCallback cb) throws IOException {
     final Identifier id = new Identifier(uri);
-    final String subpath = id.getSubpath();
+    final String subpath = id.getSubPath();
     if (TextUtils.isEmpty(subpath)) {
       return resolveFileUri(uri, cb);
     } else {

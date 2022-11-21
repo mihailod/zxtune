@@ -1,45 +1,43 @@
 /**
-* 
-* @file
-*
-* @brief  SoundTrackerPro compiled modules support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SoundTrackerPro compiled modules support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/chiptune/aym/soundtrackerpro_detail.h"
 #include "formats/chiptune/container.h"
 #include "formats/chiptune/metainfo.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <contract.h>
 #include <iterator.h>
 #include <make_ptr.h>
 #include <range_checker.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 #include <debug/log.h>
 #include <math/numeric.h>
 #include <strings/optimize.h>
-//std includes
+// std includes
 #include <array>
 #include <cstring>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   namespace SoundTrackerProCompiled
   {
     const Debug::Stream Dbg("Formats::Chiptune::SoundTrackerProCompiled");
 
+    const Char PROGRAM[] = "Sound Tracker Pro";
+
     using namespace SoundTrackerPro;
 
-    //size and offsets are taken from ~3400 modules analyzing
+    // size and offsets are taken from ~3400 modules analyzing
     const std::size_t MIN_SIZE = 200;
     const std::size_t MAX_SIZE = 0x2800;
 
@@ -58,26 +56,20 @@ namespace Chiptune
       SamplesOffsets (may be trunkated)
     */
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawHeader
+    struct RawHeader
     {
       uint8_t Tempo;
-      uint16_t PositionsOffset;
-      uint16_t PatternsOffset;
-      uint16_t OrnamentsOffset;
-      uint16_t SamplesOffset;
+      le_uint16_t PositionsOffset;
+      le_uint16_t PatternsOffset;
+      le_uint16_t OrnamentsOffset;
+      le_uint16_t SamplesOffset;
       uint8_t FixesCount;
-    } PACK_POST;
-
-    const uint8_t ID[] =
-    {
-      'K', 'S', 'A', ' ', 'S', 'O', 'F', 'T', 'W', 'A', 'R', 'E', ' ',
-      'C', 'O', 'M', 'P', 'I', 'L', 'A', 'T', 'I', 'O', 'N', ' ', 'O', 'F', ' '
     };
 
-    PACK_PRE struct RawId
+    const uint8_t ID[] = {'K', 'S', 'A', ' ', 'S', 'O', 'F', 'T', 'W', 'A', 'R', 'E', ' ', 'C',
+                          'O', 'M', 'P', 'I', 'L', 'A', 'T', 'I', 'O', 'N', ' ', 'O', 'F', ' '};
+
+    struct RawId
     {
       uint8_t Id[sizeof(ID)];
       std::array<char, 25> Title;
@@ -86,46 +78,42 @@ namespace Chiptune
       {
         return 0 == std::memcmp(Id, ID, sizeof(Id));
       }
-    } PACK_POST;
+    };
 
-    PACK_PRE struct RawPositions
+    struct RawPositions
     {
       uint8_t Length;
       uint8_t Loop;
-      PACK_PRE struct PosEntry
+      struct PosEntry
       {
-        uint8_t PatternOffset;//*6
+        uint8_t PatternOffset;  //*6
         int8_t Transposition;
-      } PACK_POST;
+      };
       PosEntry Data[1];
-    } PACK_POST;
+    };
 
-    PACK_PRE struct RawPattern
+    struct RawPattern
     {
-      std::array<uint16_t, 3> Offsets;
-    } PACK_POST;
+      std::array<le_uint16_t, 3> Offsets;
+    };
 
-    PACK_PRE struct RawObject
+    struct RawObject
     {
       int8_t Loop;
       int8_t Size;
 
       uint_t GetSize() const
       {
-        return Size < 0
-          ? 0
-          : Size;
+        return Size < 0 ? 0 : Size;
       }
-      
+
       uint_t GetLoop() const
       {
-        return Loop < 0
-          ? GetSize()
-          : Loop;
+        return Loop < 0 ? GetSize() : Loop;
       }
-    } PACK_POST;
+    };
 
-    PACK_PRE struct RawOrnament : RawObject
+    struct RawOrnament : RawObject
     {
       typedef int8_t Line;
 
@@ -140,16 +128,16 @@ namespace Chiptune
       {
         return sizeof(RawObject) + std::min<std::size_t>(GetSize() * sizeof(Line), 256);
       }
-    } PACK_POST;
+    };
 
-    PACK_PRE struct RawOrnaments
+    struct RawOrnaments
     {
-      std::array<uint16_t, MAX_ORNAMENTS_COUNT> Offsets;
-    } PACK_POST;
+      std::array<le_uint16_t, MAX_ORNAMENTS_COUNT> Offsets;
+    };
 
-    PACK_PRE struct RawSample : RawObject
+    struct RawSample : RawObject
     {
-      PACK_PRE struct Line
+      struct Line
       {
         // NxxTaaaa
         // xxnnnnnE
@@ -164,7 +152,7 @@ namespace Chiptune
         // v - signed vibrato
         uint8_t LevelAndFlags;
         uint8_t NoiseAndFlag;
-        int16_t Vibrato;
+        le_int16_t Vibrato;
 
         uint_t GetLevel() const
         {
@@ -193,9 +181,9 @@ namespace Chiptune
 
         int_t GetVibrato() const
         {
-          return fromLE(Vibrato);
+          return Vibrato;
         }
-      } PACK_POST;
+      };
 
       Line GetLine(uint_t idx) const
       {
@@ -209,24 +197,21 @@ namespace Chiptune
       {
         return sizeof(RawObject) + std::min<std::size_t>(GetSize() * sizeof(Line), 256);
       }
-    } PACK_POST;
+    };
 
-    PACK_PRE struct RawSamples
+    struct RawSamples
     {
-      std::array<uint16_t, MAX_SAMPLES_COUNT> Offsets;
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+      std::array<le_uint16_t, MAX_SAMPLES_COUNT> Offsets;
+    };
 
-    static_assert(sizeof(RawHeader) == 10, "Invalid layout");
-    static_assert(sizeof(RawId) == 53, "Invalid layout");
-    static_assert(sizeof(RawPositions) == 4, "Invalid layout");
-    static_assert(sizeof(RawPattern) == 6, "Invalid layout");
-    static_assert(sizeof(RawOrnament) == 2, "Invalid layout");
-    static_assert(sizeof(RawOrnaments) == 32, "Invalid layout");
-    static_assert(sizeof(RawSample) == 2, "Invalid layout");
-    static_assert(sizeof(RawSamples) == 30, "Invalid layout");
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 10, "Invalid layout");
+    static_assert(sizeof(RawId) * alignof(RawId) == 53, "Invalid layout");
+    static_assert(sizeof(RawPositions) * alignof(RawPositions) == 4, "Invalid layout");
+    static_assert(sizeof(RawPattern) * alignof(RawPattern) == 6, "Invalid layout");
+    static_assert(sizeof(RawOrnament) * alignof(RawOrnament) == 2, "Invalid layout");
+    static_assert(sizeof(RawOrnaments) * alignof(RawOrnaments) == 32, "Invalid layout");
+    static_assert(sizeof(RawSample) * alignof(RawSample) == 2, "Invalid layout");
+    static_assert(sizeof(RawSamples) * alignof(RawSamples) == 30, "Invalid layout");
 
     class StubBuilder : public Builder
     {
@@ -256,9 +241,9 @@ namespace Chiptune
 
     uint_t GetUnfixDelta(const RawHeader& hdr, const RawId& id, const RawPattern& firstPattern)
     {
-      //first pattern is always placed after the header (and optional id);
+      // first pattern is always placed after the header (and optional id);
       const std::size_t hdrSize = sizeof(hdr) + (id.Check() ? sizeof(id) : 0);
-      const std::size_t firstData = fromLE(firstPattern.Offsets[0]);
+      const std::size_t firstData = firstPattern.Offsets[0];
       if (0 != hdr.FixesCount)
       {
         Require(firstData == hdrSize);
@@ -272,7 +257,7 @@ namespace Chiptune
 
     std::size_t GetMaxSize(const RawHeader& hdr)
     {
-      return fromLE(hdr.SamplesOffset) + sizeof(RawSamples);
+      return hdr.SamplesOffset + sizeof(RawSamples);
     }
 
     class RangesMap
@@ -282,8 +267,7 @@ namespace Chiptune
         : ServiceRanges(RangeChecker::CreateShared(limit))
         , TotalRanges(RangeChecker::CreateSimple(limit))
         , FixedRanges(RangeChecker::CreateSimple(limit))
-      {
-      }
+      {}
 
       void AddService(std::size_t offset, std::size_t size) const
       {
@@ -312,6 +296,7 @@ namespace Chiptune
       {
         return FixedRanges->GetAffectedRange();
       }
+
     private:
       const RangeChecker::Ptr ServiceRanges;
       const RangeChecker::Ptr TotalRanges;
@@ -342,7 +327,7 @@ namespace Chiptune
       {
         builder.SetInitialTempo(Source.Tempo);
         MetaBuilder& meta = builder.GetMetaBuilder();
-        meta.SetProgram(Text::SOUNDTRACKERPRO_DECODER_DESCRIPTION);
+        meta.SetProgram(PROGRAM);
         if (Id.Check())
         {
           meta.SetTitle(Strings::OptimizeAscii(Id.Title));
@@ -362,7 +347,7 @@ namespace Chiptune
           dst.Transposition = src.Transposition;
           positions.Lines.push_back(dst);
         }
-        positions.Loop = PeekByte(fromLE(Source.PositionsOffset) + offsetof(RawPositions, Loop));
+        positions.Loop = PeekByte(Source.PositionsOffset + offsetof(RawPositions, Loop));
         Dbg("Positions: %1% entries, loop to %2%", positions.GetSize(), positions.GetLoop());
         builder.SetPositions(std::move(positions));
       }
@@ -394,8 +379,8 @@ namespace Chiptune
           const RawSample& src = GetSample(samIdx);
           builder.SetSample(samIdx, ParseSample(src));
         }
-        //mark possible samples offsets as used
-        const std::size_t samplesOffsets = fromLE(Source.SamplesOffset);
+        // mark possible samples offsets as used
+        const std::size_t samplesOffsets = Source.SamplesOffset;
         Ranges.Add(samplesOffsets, std::min(sizeof(RawSamples), Data.Size() - samplesOffsets));
       }
 
@@ -422,10 +407,11 @@ namespace Chiptune
       {
         return Ranges.GetFixedArea();
       }
+
     private:
       RangeIterator<const RawPositions::PosEntry*> GetPositions() const
       {
-        const std::size_t offset = fromLE(Source.PositionsOffset);
+        const std::size_t offset = Source.PositionsOffset;
         const auto* positions = PeekObject<RawPositions>(offset);
         Require(positions != nullptr);
         const uint_t length = positions->Length;
@@ -438,12 +424,12 @@ namespace Chiptune
 
       const RawPattern& GetPattern(uint_t index) const
       {
-        return GetServiceObject<RawPattern>(index, fromLE(Source.PatternsOffset));
+        return GetServiceObject<RawPattern>(index, Source.PatternsOffset);
       }
 
       const RawSample& GetSample(uint_t index) const
       {
-        const uint16_t offset = fromLE(GetServiceObject<uint16_t>(index, fromLE(Source.SamplesOffset))) - UnfixDelta;
+        const uint16_t offset = GetServiceObject<le_uint16_t>(index, Source.SamplesOffset) - UnfixDelta;
         const auto* obj = PeekObject<RawObject>(offset);
         Require(obj != nullptr);
         const auto* res = safe_ptr_cast<const RawSample*>(obj);
@@ -453,7 +439,7 @@ namespace Chiptune
 
       const RawOrnament& GetOrnament(uint_t index) const
       {
-        const uint16_t offset = fromLE(GetServiceObject<uint16_t>(index, fromLE(Source.OrnamentsOffset))) - UnfixDelta;
+        const uint16_t offset = GetServiceObject<le_uint16_t>(index, Source.OrnamentsOffset) - UnfixDelta;
         const auto* obj = PeekObject<RawObject>(offset);
         Require(obj != nullptr);
         const auto* res = safe_ptr_cast<const RawOrnament*>(obj);
@@ -499,7 +485,7 @@ namespace Chiptune
         {
           for (std::size_t idx = 0; idx != size(); ++idx)
           {
-            const std::size_t offset = fromLE(src.Offsets[idx]);
+            const std::size_t offset = src.Offsets[idx];
             Require(offset >= minOffset + unfixDelta);
             at(idx) = offset - unfixDelta;
           }
@@ -518,14 +504,12 @@ namespace Chiptune
             : Offset()
             , Period()
             , Counter()
-          {
-          }
+          {}
 
           void Skip(uint_t toSkip)
           {
             Counter -= toSkip;
           }
-
 
           static bool CompareByCounter(const ChannelState& lh, const ChannelState& rh)
           {
@@ -567,7 +551,7 @@ namespace Chiptune
         uint_t lineIdx = 0;
         for (; lineIdx < MAX_PATTERN_SIZE; ++lineIdx)
         {
-          //skip lines if required
+          // skip lines if required
           if (const uint_t linesToSkip = state.GetMinCounter())
           {
             state.SkipLines(linesToSkip);
@@ -643,26 +627,26 @@ namespace Chiptune
           {
             continue;
           }
-          else if (cmd <= 0x60)//note
+          else if (cmd <= 0x60)  // note
           {
             builder.SetNote(cmd - 1);
             break;
           }
-          else if (cmd <= 0x6f)//sample
+          else if (cmd <= 0x6f)  // sample
           {
             builder.SetSample(cmd - 0x61);
           }
-          else if (cmd <= 0x7f)//ornament
+          else if (cmd <= 0x7f)  // ornament
           {
             builder.SetOrnament(cmd - 0x70);
             builder.SetNoEnvelope();
             builder.SetGliss(0);
           }
-          else if (cmd <= 0xbf) //skip
+          else if (cmd <= 0xbf)  // skip
           {
             state.Period = cmd - 0x80;
           }
-          else if (cmd <= 0xcf) //envelope
+          else if (cmd <= 0xcf)  // envelope
           {
             if (cmd != 0xc0)
             {
@@ -675,20 +659,20 @@ namespace Chiptune
             builder.SetOrnament(0);
             builder.SetGliss(0);
           }
-          else if (cmd <= 0xdf) //reset
+          else if (cmd <= 0xdf)  // reset
           {
             builder.SetRest();
             break;
           }
-          else if (cmd <= 0xef)//empty
+          else if (cmd <= 0xef)  // empty
           {
             break;
           }
-          else if (cmd == 0xf0)//glissade
+          else if (cmd == 0xf0)  // glissade
           {
             builder.SetGliss(static_cast<int8_t>(PeekByte(state.Offset++)));
           }
-          else //volume
+          else  // volume
           {
             builder.SetVolume(cmd - 0xf1);
           }
@@ -727,6 +711,7 @@ namespace Chiptune
         dst.Loop = std::min(src.GetLoop(), size);
         return dst;
       }
+
     private:
       const Binary::View Data;
       RangesMap Ranges;
@@ -760,10 +745,10 @@ namespace Chiptune
             AddArea(IDENTIFIER, sizeof(header));
           }
         }
-        AddArea(POSITIONS, fromLE(header.PositionsOffset));
-        AddArea(PATTERNS, fromLE(header.PatternsOffset));
-        AddArea(ORNAMENTS, fromLE(header.OrnamentsOffset));
-        AddArea(SAMPLES, fromLE(header.SamplesOffset));
+        AddArea(POSITIONS, header.PositionsOffset);
+        AddArea(PATTERNS, header.PatternsOffset);
+        AddArea(ORNAMENTS, header.OrnamentsOffset);
+        AddArea(SAMPLES, header.SamplesOffset);
         AddArea(END, size);
       }
 
@@ -786,10 +771,10 @@ namespace Chiptune
         const std::size_t requiredSize = sizeof(RawPositions) + (positions - 1) * sizeof(RawPositions::PosEntry);
         if (requiredSize > size)
         {
-          //no place
+          // no place
           return false;
         }
-        //check for possible invalid length in header- real positions should fit place
+        // check for possible invalid length in header- real positions should fit place
         return 0 == (size - requiredSize) % sizeof(RawPositions::PosEntry);
       }
 
@@ -800,7 +785,7 @@ namespace Chiptune
         {
           return false;
         }
-        //samples offsets should be the last region
+        // samples offsets should be the last region
         return IsLast(SAMPLES);
       }
 
@@ -814,6 +799,7 @@ namespace Chiptune
         const std::size_t requiredSize = sizeof(RawOrnaments);
         return requiredSize == size;
       }
+
     private:
       bool IsLast(AreaTypes area) const
       {
@@ -828,15 +814,13 @@ namespace Chiptune
     {
       return rawData.SubView(0, MAX_SIZE);
     }
-    
+
     bool CheckHeader(const RawHeader& hdr)
     {
-      return Math::InRange<uint_t>(hdr.Tempo, 3, 15)
-          && Math::InRange<uint_t>(fromLE(hdr.PositionsOffset), sizeof(hdr), 0x2600)
-          && Math::InRange<uint_t>(fromLE(hdr.PatternsOffset), sizeof(hdr), 0x2700)
-          && Math::InRange<uint_t>(fromLE(hdr.OrnamentsOffset), sizeof(hdr), 0x2700)
-          && Math::InRange<uint_t>(fromLE(hdr.SamplesOffset), sizeof(hdr), 0x2700)
-      ;
+      return Math::InRange<uint_t>(hdr.Tempo, 3, 15) && Math::InRange<uint_t>(hdr.PositionsOffset, sizeof(hdr), 0x2600)
+             && Math::InRange<uint_t>(hdr.PatternsOffset, sizeof(hdr), 0x2700)
+             && Math::InRange<uint_t>(hdr.OrnamentsOffset, sizeof(hdr), 0x2700)
+             && Math::InRange<uint_t>(hdr.SamplesOffset, sizeof(hdr), 0x2700);
     }
 
     bool Check(Binary::View data)
@@ -877,25 +861,25 @@ namespace Chiptune
       return true;
     }
 
-    const std::string FORMAT(
-      "03-0f"  // uint8_t Tempo; 3..15
-      "?00-26" // uint16_t PositionsOffset; 0..MAX_MODULE_SIZE
-      "?00-27" // uint16_t PatternsOffset; 0..MAX_MODULE_SIZE
-      "?00-27" // uint16_t OrnamentsOffset; 0..MAX_MODULE_SIZE
-      "?00-27" // uint16_t SamplesOffset; 0..MAX_MODULE_SIZE
-    );
+    const Char DESCRIPTION[] = "Sound Tracker Pro Compiled";
+    const StringView FORMAT =
+        "03-0f"   // uint8_t Tempo; 3..15
+        "?00-26"  // uint16_t PositionsOffset; 0..MAX_MODULE_SIZE
+        "?00-27"  // uint16_t PatternsOffset; 0..MAX_MODULE_SIZE
+        "?00-27"  // uint16_t OrnamentsOffset; 0..MAX_MODULE_SIZE
+        "?00-27"  // uint16_t SamplesOffset; 0..MAX_MODULE_SIZE
+        ""_sv;
 
     class Decoder : public Formats::Chiptune::SoundTrackerPro::Decoder
     {
     public:
       Decoder()
         : Header(Binary::CreateFormat(FORMAT, MIN_SIZE))
-      {
-      }
+      {}
 
       String GetDescription() const override
       {
-        return Text::SOUNDTRACKERPROCOMPILED_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -903,7 +887,7 @@ namespace Chiptune
         return Header;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Header->Match(rawData) && SoundTrackerProCompiled::Check(rawData);
       }
@@ -918,10 +902,11 @@ namespace Chiptune
       {
         return ParseCompiled(rawData, target);
       }
+
     private:
       const Binary::Format::Ptr Header;
     };
-  }//SoundTrackerProCompiled
+  }  // namespace SoundTrackerProCompiled
 
   namespace SoundTrackerPro
   {
@@ -964,7 +949,8 @@ namespace Chiptune
         Require(format.GetSize() >= MIN_SIZE);
         auto subData = rawData.GetSubcontainer(0, format.GetSize());
         const auto fixedRange = format.GetFixedArea();
-        return CreateCalculatingCrcContainer(std::move(subData), fixedRange.first, fixedRange.second - fixedRange.first);
+        return CreateCalculatingCrcContainer(std::move(subData), fixedRange.first,
+                                             fixedRange.second - fixedRange.first);
       }
       catch (const std::exception&)
       {
@@ -997,9 +983,9 @@ namespace Chiptune
           patch->FixLEWord(offsetof(RawHeader, PatternsOffset), delta);
           patch->FixLEWord(offsetof(RawHeader, OrnamentsOffset), delta);
           patch->FixLEWord(offsetof(RawHeader, SamplesOffset), delta);
-          const std::size_t patternsStart = fromLE(header.PatternsOffset);
+          const std::size_t patternsStart = header.PatternsOffset;
           Indices usedPatterns = statistic.GetUsedPatterns();
-          //first pattern is used to detect fixdelta
+          // first pattern is used to detect fixdelta
           usedPatterns.Insert(0);
           for (Indices::Iterator it = usedPatterns.Items(); it; ++it)
           {
@@ -1008,14 +994,14 @@ namespace Chiptune
             patch->FixLEWord(patOffsets + 2, delta);
             patch->FixLEWord(patOffsets + 4, delta);
           }
-          const std::size_t ornamentsStart = fromLE(header.OrnamentsOffset);
+          const std::size_t ornamentsStart = header.OrnamentsOffset;
           const Indices& usedOrnaments = statistic.GetUsedOrnaments();
           for (Indices::Iterator it = usedOrnaments.Items(); it; ++it)
           {
             const std::size_t ornOffset = ornamentsStart + *it * sizeof(uint16_t);
             patch->FixLEWord(ornOffset, delta);
           }
-          const std::size_t samplesStart = fromLE(header.SamplesOffset);
+          const std::size_t samplesStart = header.SamplesOffset;
           const Indices& usedSamples = statistic.GetUsedSamples();
           for (Indices::Iterator it = usedSamples.Items(); it; ++it)
           {
@@ -1027,11 +1013,10 @@ namespace Chiptune
       }
       return {};
     }
-  }// namespace SoundTrackerPro
+  }  // namespace SoundTrackerPro
 
   Formats::Chiptune::Decoder::Ptr CreateSoundTrackerProCompiledDecoder()
   {
     return SoundTrackerPro::CreateCompiledModulesDecoder();
   }
-}// namespace Chiptune
-}// namespace Formats
+}  // namespace Formats::Chiptune

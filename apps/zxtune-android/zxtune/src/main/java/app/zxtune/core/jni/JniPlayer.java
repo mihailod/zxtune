@@ -2,9 +2,10 @@ package app.zxtune.core.jni;
 
 import java.lang.annotation.Native;
 
+import app.zxtune.TimeStamp;
 import app.zxtune.core.Player;
 
-public final class JniPlayer implements Player {
+final class JniPlayer implements Player {
 
   @Native
   private final int handle;
@@ -28,22 +29,24 @@ public final class JniPlayer implements Player {
   public native int analyze(byte[] levels);
 
   @Override
-  public native int getPosition();
+  public TimeStamp getPosition() {
+    return TimeStamp.fromMilliseconds(getPositionMs());
+  }
+
+  private native int getPositionMs();
 
   @Override
-  public native void setPosition(int pos);
+  public void setPosition(TimeStamp pos) {
+    setPositionMs((int)pos.toMilliseconds());
+  }
+
+  private native void setPositionMs(int pos);
 
   @Override
   public native int getPerformance();
 
   @Override
   public native int getProgress();
-
-  @Override
-  public native long getProperty(String name, long defVal);
-
-  @Override
-  public native String getProperty(String name, String defVal);
 
   @Override
   public native void setProperty(String name, long val);

@@ -1,14 +1,16 @@
 #include <api_dynamic.h>
+#include <async/worker.h>
 #include <contract.h>
-#include <devices/aym/chip.h>
 #include <core/core_parameters.h>
-#include <parameters/container.h>
-#include <module/holder.h>
-#include <sound/mixer_factory.h>
-#include <sound/backends/storage.h>
-#include <sound/backends/backends_list.h>
-#include <sound/sound_parameters.h>
+#include <devices/aym/chip.h>
 #include <iostream>
+#include <make_ptr.h>
+#include <mutex>
+#include <parameters/container.h>
+#include <sound/backends/backends_list.h>
+#include <sound/backends/storage.h>
+#include <sound/mixer_factory.h>
+#include <sound/sound_parameters.h>
 
 namespace
 {
@@ -75,141 +77,165 @@ namespace
     return mixer;
   }
 
-  class StubRenderer : public Module::Renderer
+  class StubState : public Module::State
   {
   public:
-    StubRenderer(std::shared_ptr<Devices::AYM::DataChunk> chunk, Sound::Receiver::Ptr target)
-      : Chunk(chunk)
-      , Chip(Devices::AYM::CreateChip(StubChipParameters::Create(), CreateMixer(), target))
+    Time::AtMillisecond At() const override
     {
+      return {};
     }
 
-    virtual Module::TrackState::Ptr GetTrackState() const
+    Time::Milliseconds Total() const override
     {
-      return Module::TrackState::Ptr();
+      return {};
     }
 
-    virtual Module::Analyzer::Ptr GetAnalyzer() const
+    uint_t LoopCount() const override
     {
-       return Module::Analyzer::Ptr();
+      return 0;
     }
-
-    virtual bool RenderFrame()
-    {
-      static const Devices::AYM::Stamp PERIOD(Parameters::ZXTune::Sound::FRAMEDURATION_DEFAULT);
-      Chunk->TimeStamp += PERIOD;
-      Chip->RenderData(*Chunk);
-      Chunk->Data = Devices::AYM::Registers();
-      return true;
-    }
-
-    virtual void Reset()
-    {
-      *Chunk = Devices::AYM::DataChunk();
-    }
-
-    virtual void SetPosition(uint_t /*frame*/)
-    {
-    }
-  private:
-    const std::shared_ptr<Devices::AYM::DataChunk> Chunk;
-    const Devices::AYM::Chip::Ptr Chip;
   };
 
-  class StubHolder : public Module::Holder
+  class State
   {
   public:
-    explicit StubHolder(std::shared_ptr<Devices::AYM::DataChunk> chunk)
-      : Chunk(chunk)
+    using Ptr = std::shared_ptr<State>;
+
+    void Write(uint_t reg, uint_t val)
     {
+      const std::unique_lock<std::mutex> lock(Mutex);
+      Require(reg < Devices::AYM::Registers::TOTAL);
+      Require(val < 256);
+      Data[static_cast<Devices::AYM::Registers::Index>(reg)] = val;
     }
 
-    virtual Module::Information::Ptr GetModuleInformation() const
+    void Read(Devices::AYM::Registers* out)
     {
-      return Module::Information::Ptr();
+      const std::unique_lock<std::mutex> lock(Mutex);
+      *out = Data;
+      Data = {};
     }
 
-    virtual Parameters::Accessor::Ptr GetModuleProperties() const
-    {
-      return EmptyParams();
-    }
-
-    virtual Module::Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr /*params*/, Sound::Receiver::Ptr target) const
-    {
-      return std::make_shared<StubRenderer>(Chunk, target);
-    }
   private:
-    const std::shared_ptr<Devices::AYM::DataChunk> Chunk;
+    std::mutex Mutex;
+    Devices::AYM::Registers Data;
+  };
+
+  class AsyncWorker : public Async::Worker
+  {
+  public:
+    AsyncWorker(State::Ptr state, Sound::BackendWorker::Ptr worker)
+      : Data(std::move(state))
+      , Worker(std::move(worker))
+      , Chip(Devices::AYM::CreateChip(StubChipParameters::Create(), CreateMixer()))
+    {}
+
+    void Initialize() override
+    {
+      Worker->Startup();
+    }
+
+    void Finalize() override
+    {
+      Worker->Shutdown();
+    }
+
+    void Suspend() override
+    {
+      Worker->Pause();
+    }
+
+    void Resume() override
+    {
+      Worker->Resume();
+    }
+
+    bool IsFinished() const override
+    {
+      return false;
+    }
+
+    void ExecuteCycle() override
+    {
+      static const StubState STATE;
+      static const auto PERIOD = Time::Duration<Devices::AYM::TimeUnit>::FromFrequency(50);
+      Worker->FrameStart(STATE);
+      Data->Read(&Chunk.Data);
+      Chip->RenderData(Chunk);
+      Chunk.TimeStamp += PERIOD;
+      Worker->FrameFinish(Chip->RenderTill(Chunk.TimeStamp));
+    }
+
+  private:
+    const State::Ptr Data;
+    const Sound::BackendWorker::Ptr Worker;
+    const Devices::AYM::Chip::Ptr Chip;
+    Devices::AYM::DataChunk Chunk;
   };
 
   class BackendFactoryHandle : public Sound::BackendsStorage
   {
   public:
-    virtual void Register(const String& /*id*/, const char* /*description*/, uint_t /*caps*/, Sound::BackendWorkerFactory::Ptr factory)
+    virtual void Register(const String& /*id*/, const char* /*description*/, uint_t /*caps*/,
+                          Sound::BackendWorkerFactory::Ptr factory)
     {
       Factory = factory;
     }
 
     virtual void Register(const String& /*id*/, const char* /*description*/, uint_t /*caps*/, const Error& /*status*/)
+    {}
+
+    virtual void Register(const String& /*id*/, const char* /*description*/, uint_t /*caps*/) {}
+
+    Async::Job::Ptr CreatePlayer(State::Ptr state)
     {
+      auto backendWorker = Factory->CreateWorker(EmptyParams(), {});
+      auto asyncWorker = MakePtr<AsyncWorker>(std::move(state), std::move(backendWorker));
+      return Async::CreateJob(std::move(asyncWorker));
     }
 
-    virtual void Register(const String& /*id*/, const char* /*description*/, uint_t /*caps*/)
-    {
-    }
-
-    Sound::Backend::Ptr CreateBackend(Module::Holder::Ptr module)
-    {
-      const Sound::BackendWorker::Ptr worker = Factory->CreateWorker(module->GetModuleProperties(), module);
-      return Sound::CreateBackend(module->GetModuleProperties(), module, Sound::BackendCallback::Ptr(), worker);
-    }
   private:
     Sound::BackendWorkerFactory::Ptr Factory;
   };
 
-  Sound::Backend::Ptr CreateBackend(std::shared_ptr<Devices::AYM::DataChunk> chunk)
+  Async::Job::Ptr CreatePlayer(State::Ptr state)
   {
-    const Module::Holder::Ptr module = std::make_shared<StubHolder>(chunk);
     BackendFactoryHandle factory;
     Sound::RegisterDirectSoundBackend(factory);
-    return factory.CreateBackend(module);
+    return factory.CreatePlayer(std::move(state));
   }
-  
+
   class Gate
   {
   public:
     Gate()
-      : Data(std::make_shared<Devices::AYM::DataChunk>())
-      , Backend(CreateBackend(Data))
-      , Control(Backend->GetPlaybackControl())
-    {
-    }
-    
+      : Data(MakePtr<State>())
+      , Player(CreatePlayer(Data))
+    {}
+
     bool IsStarted() const
     {
-      return Sound::PlaybackControl::STARTED == Control->GetCurrentState();
+      return Player->IsActive();
     }
-    
+
     void Start()
     {
-      Control->Play();
+      Player->Start();
     }
-    
+
     void Stop()
     {
-      Control->Stop();
+      Player->Stop();
     }
-    
+
     void WriteReg(uint_t reg, uint_t val)
     {
-      Require(reg < Devices::AYM::Registers::TOTAL);
-      Require(val < 256);
-      Data->Data[static_cast<Devices::AYM::Registers::Index>(reg)] = val;
+      Data->Write(reg, val);
     }
+
   private:
-    const std::shared_ptr<Devices::AYM::DataChunk> Data;
-    const Sound::Backend::Ptr Backend;
-    const Sound::PlaybackControl::Ptr Control;
+    const State::Ptr Data;
+    const Async::Job::Ptr Player;
   };
 
   std::unique_ptr<Gate> GateInstance;
@@ -239,20 +265,21 @@ namespace
       return 1;
     }
   }
-}
+}  // namespace
 
-//dll part
+// dll part
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
-PUBLIC_API_EXPORT int ay_open();
-PUBLIC_API_EXPORT void ay_close();
-PUBLIC_API_EXPORT int ay_start();
-PUBLIC_API_EXPORT int ay_stop();
-PUBLIC_API_EXPORT int ay_writereg(int idx, int val);
+  PUBLIC_API_EXPORT int ay_open();
+  PUBLIC_API_EXPORT void ay_close();
+  PUBLIC_API_EXPORT int ay_start();
+  PUBLIC_API_EXPORT int ay_stop();
+  PUBLIC_API_EXPORT int ay_writereg(int idx, int val);
 
 #ifdef __cplusplus
-} //extern
+}  // extern
 #endif
 
 int ay_open()
@@ -271,7 +298,7 @@ int ay_open()
 
 void ay_close()
 {
-   GateInstance.reset();
+  GateInstance.reset();
 }
 
 int ay_start()
@@ -286,10 +313,10 @@ int ay_stop()
 
 int ay_writereg(int idx, int val)
 {
-  return call([idx, val](Gate* gate) {gate->WriteReg(idx, val);});
+  return call([idx, val](Gate* gate) { gate->WriteReg(idx, val); });
 }
 
-//exe part
+// exe part
 int main(int /*argc*/, char* /*argv*/[])
 {
   Gate gate;
@@ -298,7 +325,8 @@ int main(int /*argc*/, char* /*argv*/[])
   {
     std::cout << (gate.IsStarted() ? "> " : "# ");
     std::string cmd;
-    while (!(std::cin >> cmd));
+    while (!(std::cin >> cmd))
+      ;
     if (cmd == "exit")
     {
       break;

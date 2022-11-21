@@ -1,21 +1,21 @@
 /**
-*
-* @file
-*
-* @brief  Sound backend interface definition
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Sound backend interface definition
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <error.h>
 #include <iterator.h>
-//library includes
-#include <module/analyzer.h>
+// library includes
 #include <module/state.h>
+#include <sound/analyzer.h>
 #include <sound/gain.h>
 
 namespace Sound
@@ -89,7 +89,7 @@ namespace Sound
     //! @param frame Number of specified frame
     //! @throw Error in case of error
     //! @note If parameter is out of range, playback will be stopped
-    virtual void SetPosition(uint_t frame) = 0;
+    virtual void SetPosition(Time::AtMillisecond request) = 0;
 
     //! @brief Current playback state
     enum State
@@ -119,7 +119,7 @@ namespace Sound
     virtual Module::State::Ptr GetState() const = 0;
 
     //! @brief Getting analyzer interface
-    virtual Module::Analyzer::Ptr GetAnalyzer() const = 0;
+    virtual Analyzer::Ptr GetAnalyzer() const = 0;
 
     //! @brief Gettint playback controller
     virtual PlaybackControl::Ptr GetPlaybackControl() const = 0;
@@ -142,4 +142,4 @@ namespace Sound
     virtual void OnResume() = 0;
     virtual void OnFinish() = 0;
   };
-}
+}  // namespace Sound

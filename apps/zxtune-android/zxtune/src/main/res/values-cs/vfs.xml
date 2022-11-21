@@ -192,4 +192,6 @@
     <!-- errors -->
     <string name="network_inaccessible">Síť není dostupná</string>
     <string name="failed_resolve">Podařilo se zrušit %s</string>
+    <string name="limited_storage_access">Klepnutím udělíte oprávnění k přístupu</string>
+    <string name="no_stored_playlists_access">Klepnutím nastavíte trvalé umístění úložiště</string>
 </resources>

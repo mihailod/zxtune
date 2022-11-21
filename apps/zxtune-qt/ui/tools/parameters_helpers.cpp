@@ -1,21 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief Parameters helpers implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Parameters helpers implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "parameters_helpers.h"
-//common includes
+// common includes
 #include <contract.h>
-//library includes
+// library includes
 #include <debug/log.h>
 #include <math/numeric.h>
-//qt includes
+// qt includes
 #include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QAction>
 #include <QtWidgets/QComboBox>
@@ -34,10 +34,10 @@ namespace
   class BooleanValueImpl : public BooleanValue
   {
   public:
-    BooleanValueImpl(Holder& parent, Parameters::Container& ctr, const Parameters::NameType& name, bool defValue, const Parameters::IntType& oneValue)
+    BooleanValueImpl(Holder& parent, Container& ctr, Identifier name, bool defValue, IntType oneValue)
       : BooleanValue(parent)
       , Parent(parent)
-      , Container(ctr)
+      , Storage(ctr)
       , Name(name)
       , Default(defValue)
       , OneValue(oneValue)
@@ -48,15 +48,15 @@ namespace
 
     void Set(bool value) override
     {
-      const Parameters::IntType val = value ? OneValue : 0;
-      Dbg("%1%=%2%", Name.FullPath(), val);
-      Container.SetValue(Name, val);
+      const IntType val = value ? OneValue : 0;
+      Dbg("%1%=%2%", static_cast<StringView>(Name), val);
+      Storage.SetValue(Name, val);
     }
 
     void Reset() override
     {
       const AutoBlockSignal block(Parent);
-      Container.RemoveValue(Name);
+      Storage.RemoveValue(Name);
       Reload();
     }
 
@@ -64,30 +64,32 @@ namespace
     {
       Parent.setChecked(GetValue());
     }
+
   private:
     bool GetValue() const
     {
-      Parameters::IntType val = Default ? OneValue : 0;
-      Container.FindValue(Name, val);
+      IntType val = Default ? OneValue : 0;
+      Storage.FindValue(Name, val);
       return val != 0;
     }
+
   private:
     Holder& Parent;
-    Parameters::Container& Container;
-    const Parameters::NameType Name;
+    Container& Storage;
+    const Identifier Name;
     const bool Default;
-    const Parameters::IntType OneValue;
+    const IntType OneValue;
   };
 
   class StringSetValue : public ExclusiveValue
   {
   public:
-    StringSetValue(QAbstractButton& parent, Parameters::Container& ctr, const Parameters::NameType& name, Parameters::StringType value)
+    StringSetValue(QAbstractButton& parent, Container& ctr, Identifier name, StringView value)
       : ExclusiveValue(parent)
       , Parent(parent)
-      , Container(ctr)
+      , Storage(ctr)
       , Name(name)
-      , Value(std::move(value))
+      , Value(value.to_string())
     {
       StringSetValue::Reload();
       Require(connect(&parent, SIGNAL(toggled(bool)), SLOT(Set(bool))));
@@ -97,15 +99,15 @@ namespace
     {
       if (value)
       {
-        Dbg("%1%=%2%", Name.FullPath(), Value);
-        Container.SetValue(Name, Value);
+        Dbg("%1%=%2%", static_cast<StringView>(Name), Value);
+        Storage.SetValue(Name, Value);
       }
     }
 
     void Reset() override
     {
       const AutoBlockSignal block(Parent);
-      Container.RemoveValue(Name);
+      Storage.RemoveValue(Name);
       Reload();
     }
 
@@ -113,18 +115,20 @@ namespace
     {
       Parent.setChecked(GetValue() == Value);
     }
+
   private:
-    Parameters::StringType GetValue() const
+    StringType GetValue() const
     {
-      Parameters::StringType value;
-      Container.FindValue(Name, value);
+      StringType value;
+      Storage.FindValue(Name, value);
       return value;
     }
+
   private:
     QAbstractButton& Parent;
-    Parameters::Container& Container;
-    const Parameters::NameType Name;
-    const Parameters::StringType Value;
+    Container& Storage;
+    const Identifier Name;
+    const StringType Value;
   };
 
   template<class Holder>
@@ -153,10 +157,10 @@ namespace
   class IntegerValueImpl : public IntegerValue
   {
   public:
-    IntegerValueImpl(Holder& parent, Parameters::Container& ctr, const Parameters::NameType& name, int defValue)
+    IntegerValueImpl(Holder& parent, Container& ctr, Identifier name, int defValue)
       : IntegerValue(parent)
       , Parent(parent)
-      , Container(ctr)
+      , Storage(ctr)
       , Name(name)
       , Default(defValue)
     {
@@ -166,14 +170,14 @@ namespace
 
     void Set(int value) override
     {
-      Dbg("%1%=%2%", Name.FullPath(), value);
-      Container.SetValue(Name, value);
+      Dbg("%1%=%2%", static_cast<StringView>(Name), value);
+      Storage.SetValue(Name, value);
     }
 
     void Reset() override
     {
       const AutoBlockSignal block(Parent);
-      Container.RemoveValue(Name);
+      Storage.RemoveValue(Name);
       Reload();
     }
 
@@ -181,17 +185,19 @@ namespace
     {
       SetWidgetValue(Parent, GetValue());
     }
+
   private:
     int GetValue() const
     {
-      Parameters::IntType value = Default;
-      Container.FindValue(Name, value);
+      IntType value = Default;
+      Storage.FindValue(Name, value);
       return value;
     }
+
   private:
     Holder& Parent;
-    Parameters::Container& Container;
-    const Parameters::NameType Name;
+    Container& Storage;
+    const Identifier Name;
     const int Default;
   };
 
@@ -224,6 +230,7 @@ namespace
     {
       SetWidgetValue(Parent, Value->Get());
     }
+
   private:
     Holder& Parent;
     const Integer::Ptr Value;
@@ -232,10 +239,10 @@ namespace
   class BigIntegerValueImpl : public BigIntegerValue
   {
   public:
-    BigIntegerValueImpl(QLineEdit& parent, Parameters::Container& ctr, IntegerTraits traits)
+    BigIntegerValueImpl(QLineEdit& parent, Container& ctr, IntegerTraits traits)
       : BigIntegerValue(parent)
       , Parent(parent)
-      , Container(ctr)
+      , Storage(ctr)
       , Traits(std::move(traits))
     {
       BigIntegerValueImpl::Reload();
@@ -243,27 +250,26 @@ namespace
       Require(connect(&parent, SIGNAL(editingFinished()), SLOT(Reload())));
     }
 
-
     void Set(const QString& value) override
     {
-      const Parameters::IntType val = value.toLongLong();
+      const IntType val = value.toLongLong();
       if (Math::InRange(val, Traits.Min, Traits.Max))
       {
-        Dbg("%1%=%2%", Traits.Name.FullPath(), val);
-        Container.SetValue(Traits.Name, val);
+        Dbg("%1%=%2%", static_cast<StringView>(Traits.Name), val);
+        Storage.SetValue(Traits.Name, val);
       }
     }
 
     void Reset() override
     {
       const AutoBlockSignal block(Parent);
-      Container.RemoveValue(Traits.Name);
+      Storage.RemoveValue(Traits.Name);
       Reload();
     }
 
     void Reload() override
     {
-      const Parameters::IntType val = GetValue();
+      const IntType val = GetValue();
       if (Math::InRange(val, Traits.Min, Traits.Max))
       {
         Parent.setText(QString::number(val));
@@ -273,28 +279,30 @@ namespace
         Parent.clear();
       }
     }
+
   private:
-    Parameters::IntType GetValue() const
+    IntType GetValue() const
     {
-      Parameters::IntType value = Traits.Default;
-      Container.FindValue(Traits.Name, value);
+      IntType value = Traits.Default;
+      Storage.FindValue(Traits.Name, value);
       return value;
     }
+
   private:
     QLineEdit& Parent;
-    Parameters::Container& Container;
-    const Parameters::IntegerTraits Traits;
+    Container& Storage;
+    const IntegerTraits Traits;
   };
 
   class StringValueImpl : public StringValue
   {
   public:
-    StringValueImpl(QLineEdit& parent, Parameters::Container& ctr, const Parameters::NameType& name, Parameters::StringType defValue)
+    StringValueImpl(QLineEdit& parent, Container& ctr, Identifier name, StringView defValue)
       : StringValue(parent)
       , Parent(parent)
-      , Container(ctr)
+      , Storage(ctr)
       , Name(name)
-      , Default(std::move(defValue))
+      , Default(defValue.to_string())
     {
       StringValueImpl::Reload();
       Require(connect(&parent, SIGNAL(textChanged(const QString&)), SLOT(Set(const QString&))));
@@ -302,15 +310,15 @@ namespace
 
     void Set(const QString& value) override
     {
-      const Parameters::StringType& val = FromQString(value);
-      Dbg("%1%=%2%", Name.FullPath(), val);
-      Container.SetValue(Name, val);
+      const auto val = FromQString(value);
+      Dbg("%1%=%2%", static_cast<StringView>(Name), val);
+      Storage.SetValue(Name, val);
     }
 
     void Reset() override
     {
       const AutoBlockSignal block(Parent);
-      Container.RemoveValue(Name);
+      Storage.RemoveValue(Name);
       Reload();
     }
 
@@ -318,78 +326,80 @@ namespace
     {
       Parent.setText(ToQString(GetValue()));
     }
+
   private:
-    Parameters::StringType GetValue() const
+    StringType GetValue() const
     {
-      Parameters::StringType value = Default;
-      Container.FindValue(Name, value);
+      StringType value = Default;
+      Storage.FindValue(Name, value);
       return value;
     }
+
   private:
     QLineEdit& Parent;
-    Parameters::Container& Container;
-    const Parameters::NameType Name;
-    const Parameters::StringType Default;
+    Container& Storage;
+    const Identifier Name;
+    const StringType Default;
   };
-}
+}  // namespace
 
 namespace Parameters
 {
-  Value::Value(QObject& parent) : QObject(&parent)
-  {
-  }
+  Value::Value(QObject& parent)
+    : QObject(&parent)
+  {}
 
-  BooleanValue::BooleanValue(QObject& parent) : Value(parent)
-  {
-  }
+  BooleanValue::BooleanValue(QObject& parent)
+    : Value(parent)
+  {}
 
-  ExclusiveValue::ExclusiveValue(QObject& parent) : Value(parent)
-  {
-  }
+  ExclusiveValue::ExclusiveValue(QObject& parent)
+    : Value(parent)
+  {}
 
-  IntegerValue::IntegerValue(QObject& parent) : Value(parent)
-  {
-  }
+  IntegerValue::IntegerValue(QObject& parent)
+    : Value(parent)
+  {}
 
-  BigIntegerValue::BigIntegerValue(QObject &parent) : Value(parent)
-  {
-  }
+  BigIntegerValue::BigIntegerValue(QObject& parent)
+    : Value(parent)
+  {}
 
-  StringValue::StringValue(QObject &parent) : Value(parent)
-  {
-  }
+  StringValue::StringValue(QObject& parent)
+    : Value(parent)
+  {}
 
-  Value* BooleanValue::Bind(QAction& action, Parameters::Container& ctr, const Parameters::NameType& name, bool defValue)
+  Value* BooleanValue::Bind(QAction& action, Container& ctr, Identifier name, bool defValue)
   {
     return new BooleanValueImpl<QAction>(action, ctr, name, defValue, 1);
   }
 
-  Value* BooleanValue::Bind(QAbstractButton& button, Parameters::Container& ctr, const Parameters::NameType& name, bool defValue, const Parameters::IntType& oneValue)
+  Value* BooleanValue::Bind(QAbstractButton& button, Container& ctr, Identifier name, bool defValue, IntType oneValue)
   {
     return new BooleanValueImpl<QAbstractButton>(button, ctr, name, defValue, oneValue);
   }
 
-  Value* BooleanValue::Bind(QGroupBox& box, Parameters::Container& ctr, const Parameters::NameType& name, bool defValue, const Parameters::IntType& oneValue)
+  Value* BooleanValue::Bind(QGroupBox& box, Container& ctr, Identifier name, bool defValue, IntType oneValue)
   {
     return new BooleanValueImpl<QGroupBox>(box, ctr, name, defValue, oneValue);
   }
 
-  Value* ExclusiveValue::Bind(QAbstractButton& button, Parameters::Container& ctr, const Parameters::NameType& name, const Parameters::StringType& value)
+  Value* ExclusiveValue::Bind(QAbstractButton& button, Container& ctr, Identifier name, StringView value)
   {
     return new StringSetValue(button, ctr, name, value);
   }
 
-  Value* IntegerValue::Bind(QComboBox& combo, Parameters::Container& ctr, const Parameters::NameType& name, int defValue)
+  Value* IntegerValue::Bind(QComboBox& combo, Container& ctr, Identifier name, int defValue)
   {
     return new IntegerValueImpl<QComboBox>(combo, ctr, name, defValue);
   }
 
-  Value* IntegerValue::Bind(QSlider& slider, Parameters::Container& ctr, const Parameters::NameType& name, int defValue)
+  Value* IntegerValue::Bind(QSlider& slider, Container& ctr, Identifier name, int defValue)
   {
     return new IntegerValueImpl<QSlider>(slider, ctr, name, defValue);
   }
 
-  Value* IntegerValue::Bind(QSpinBox& spinbox, Parameters::Container& ctr, const Parameters::NameType& name, int defValue)
+  Value* IntegerValue::Bind(QSpinBox& spinbox, Container& ctr, Identifier name, int defValue)
   {
     return new IntegerValueImpl<QSpinBox>(spinbox, ctr, name, defValue);
   }
@@ -399,13 +409,13 @@ namespace Parameters
     return new IntegerValueControl<QComboBox>(combo, val);
   }
 
-  Value* BigIntegerValue::Bind(QLineEdit& edit, Parameters::Container& ctr, const IntegerTraits& traits)
+  Value* BigIntegerValue::Bind(QLineEdit& edit, Container& ctr, const IntegerTraits& traits)
   {
     return new BigIntegerValueImpl(edit, ctr, traits);
   }
 
-  Value* StringValue::Bind(QLineEdit& edit, Parameters::Container& ctr, const Parameters::NameType& name, const Parameters::StringType& defValue)
+  Value* StringValue::Bind(QLineEdit& edit, Container& ctr, Identifier name, StringView defValue)
   {
     return new StringValueImpl(edit, ctr, name, defValue);
   }
-}
+}  // namespace Parameters

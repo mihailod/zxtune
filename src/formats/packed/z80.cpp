@@ -1,81 +1,74 @@
 /**
-* 
-* @file
-*
-* @brief  Z80 snapshots support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Z80 snapshots support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/packed/container.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 #include <binary/input_stream.h>
 #include <formats/packed.h>
-//std includes
+// std includes
 #include <array>
 #include <numeric>
 #include <utility>
-//text includes
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace Z80
   {
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
     struct Version1_45
     {
-      PACK_PRE struct Header
+      struct Header
       {
-        uint16_t RegFA;
-        uint16_t RegBC;
-        uint16_t RegHL;
-        uint16_t RegPC;
-        uint16_t RegSP;
-        uint16_t RegRI;
-        //0 - R7
-        //1..3 - border
-        //4 - basic SamRam
-        //5 - compressed
-        //6..7 - not used
-        //if Flag1 == 255 then Flag1 = 1;
+        le_uint16_t RegFA;
+        le_uint16_t RegBC;
+        le_uint16_t RegHL;
+        le_uint16_t RegPC;
+        le_uint16_t RegSP;
+        le_uint16_t RegRI;
+        // 0 - R7
+        // 1..3 - border
+        // 4 - basic SamRam
+        // 5 - compressed
+        // 6..7 - not used
+        // if Flag1 == 255 then Flag1 = 1;
         uint8_t Flag1;
-        uint16_t RegDE;
-        uint16_t RegBC_;
-        uint16_t RegDE_;
-        uint16_t RegHL_;
-        uint16_t RegFA_;
-        uint16_t RegIY;
-        uint16_t RegIX;
+        le_uint16_t RegDE;
+        le_uint16_t RegBC_;
+        le_uint16_t RegDE_;
+        le_uint16_t RegHL_;
+        le_uint16_t RegFA_;
+        le_uint16_t RegIY;
+        le_uint16_t RegIX;
         uint8_t Iff1;
         uint8_t Iff2;
-        //0..1 - im mode
-        //2 - spectrum2 emulation
-        //3 - double int freq
-        //4..5 - videosync type
-        //6..7 - joystick type
+        // 0..1 - im mode
+        // 2 - spectrum2 emulation
+        // 3 - double int freq
+        // 4..5 - videosync type
+        // 6..7 - joystick type
         uint8_t Flag2;
-        //48kb of data
+        // 48kb of data
 
         enum
         {
           COMPRESSED = 32
         };
-      } PACK_POST;
+      };
 
-      static const String DESCRIPTION;
-      static const std::string HEADER;
-      static const std::string FOOTER;
+      static const StringView DESCRIPTION;
+      static const StringView HEADER;
+      static const StringView FOOTER;
       static const std::size_t MIN_SIZE;
       static const std::size_t MAX_SIZE;
 
@@ -84,31 +77,31 @@ namespace Packed
 
     struct Version2_0
     {
-      PACK_PRE struct Header : Version1_45::Header
+      struct Header : Version1_45::Header
       {
-        uint16_t AdditionalSize;
-        uint16_t PC;
+        le_uint16_t AdditionalSize;
+        le_uint16_t PC;
         uint8_t HardwareMode;
         uint8_t Port7ffd;
-        uint8_t Interface2ROM;//00/ff
-        //0 - R emulated
-        //1 - LDIR emulated
+        uint8_t Interface2ROM;  // 00/ff
+        // 0 - R emulated
+        // 1 - LDIR emulated
         uint8_t Flag3;
         uint8_t Portfffd;
         uint8_t AYRegisters[16];
 
-        //16kb pages of data
+        // 16kb pages of data
 
-        static const std::string FORMAT;
-      } PACK_POST;
+        static const StringView FORMAT;
+      };
 
-      PACK_PRE struct MemoryPage
+      struct MemoryPage
       {
         static const std::size_t UNCOMPRESSED = 0xffff;
 
-        uint16_t DataSize;
+        le_uint16_t DataSize;
         uint8_t Number;
-      } PACK_POST;
+      };
 
       enum HardwareTypes
       {
@@ -117,13 +110,13 @@ namespace Packed
         Ver_SamRam,
         Ver128k,
         Ver128k_iface1,
-        //some of the emulators write such hardware in ver2 snapshots
+        // some of the emulators write such hardware in ver2 snapshots
         Ver_Pentagon = 9,
-        Ver_Scorpion //16 pages
+        Ver_Scorpion  // 16 pages
       };
 
-      static const String DESCRIPTION;
-      static const std::string FORMAT;
+      static const StringView DESCRIPTION;
+      static const StringView FORMAT;
       static const std::size_t MIN_SIZE;
       static const std::size_t ADDITIONAL_SIZE = 23;
 
@@ -132,122 +125,121 @@ namespace Packed
 
     struct Version3_0
     {
-      PACK_PRE struct Header : Version2_0::Header
+      struct Header : Version2_0::Header
       {
-        uint16_t TicksLo;
+        le_uint16_t TicksLo;
         uint8_t TicksHi;
-        uint8_t Flag4;//00
-        uint8_t GordonROM;  //00/ff
-        uint8_t M128ROM;//00
-        uint8_t Rom0000;//00/ff
-        uint8_t Rom2000;//00/ff
+        uint8_t Flag4;      // 00
+        uint8_t GordonROM;  // 00/ff
+        uint8_t M128ROM;    // 00
+        uint8_t Rom0000;    // 00/ff
+        uint8_t Rom2000;    // 00/ff
         uint8_t CustomJoystick[10];
         uint8_t CustomJoystickKbd[10];
-        uint8_t GordonType;//00/01/10
-        uint8_t InhibitKeyStatus;//00/ff
-        uint8_t InhibitIfaceStatus;//00/ff
-      } PACK_POST;
+        uint8_t GordonType;          // 00/01/10
+        uint8_t InhibitKeyStatus;    // 00/ff
+        uint8_t InhibitIfaceStatus;  // 00/ff
+      };
 
       enum HardwareTypes
       {
         Ver_48k = 0,
         Ver_48k_iface1,
-        //according to http://www.worldofspectrum.org/faq/reference/z80format.htm, SamRam == 2
+        // according to http://www.worldofspectrum.org/faq/reference/z80format.htm, SamRam == 2
         Ver_SamRam,
         Ver_48k_mgt,
         Ver_128k,
         Ver_128k_iface1,
         Ver_128k_mgt,
-        //added by XZX
+        // added by XZX
         Ver_Plus3,
         Ver_Plus3_alt,
         Ver_Pentagon,
-        Ver_Scorpion //16 pages
+        Ver_Scorpion  // 16 pages
       };
 
-      static const String DESCRIPTION;
-      static const std::string FORMAT;
+      static const StringView DESCRIPTION;
+      static const StringView FORMAT;
       static const std::size_t MIN_SIZE;
 
       static Formats::Packed::Container::Ptr Decode(Binary::InputStream& stream);
     };
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
 
-    const String Version1_45::DESCRIPTION = Text::Z80V145_DECODER_DESCRIPTION;
-    const std::string Version1_45::HEADER(
-      "(\?\?){6}"    //skip registers
-      "%001xxxxx"  //take into account only compressed data
-      "(\?\?){7}"    //skip registers
-      "00|01|ff"      //iff1
-      "00|01|ff"      //iff2
-      "%xxxxxx00|%xxxxxx01|%xxxxxx10" //im3 cannot be
-    );
-    const std::string Version1_45::FOOTER("00eded00");
+    const StringView Version1_45::DESCRIPTION = "Z80 v1.45"_sv;
+    const StringView Version1_45::HEADER =
+        "(\?\?){6}"                      // skip registers
+        "%001xxxxx"                      // take into account only compressed data
+        "(\?\?){7}"                      // skip registers
+        "00|01|ff"                       // iff1
+        "00|01|ff"                       // iff2
+        "%xxxxxx00|%xxxxxx01|%xxxxxx10"  // im3 cannot be
+        ""_sv;
+    const StringView Version1_45::FOOTER = "00eded00"_sv;
 
-    //even if all 48kb are compressed, minimal compressed size is 4 bytes for each 255 sequenced bytes + final marker
+    // even if all 48kb are compressed, minimal compressed size is 4 bytes for each 255 sequenced bytes + final marker
     const std::size_t Version1_45::MIN_SIZE = sizeof(Version1_45::Header) + 4 * (49152 / 255) + 4;
     const std::size_t Version1_45::MAX_SIZE = sizeof(Version1_45::Header) + 49152 + 4;
 
-    const String Version2_0::DESCRIPTION = Text::Z80V20_DECODER_DESCRIPTION;
-    const std::string Version2_0::FORMAT(
-      "(\?\?){3}"  //skip registers
-      "0000"       //PC is 0
-      "(\?\?){2}"
-      "%00xxxxxx"
-      "(\?\?){7}"  //skip registers
-      "00|01|ff"   //iff1
-      "00|01|ff"   //iff2
-      "%xxxxxx00|%xxxxxx01|%xxxxxx10" //im3 cannot be
-      "1700"       //additional size is 23
-      "\?\?"       //PC
-      "00-04|09"   //Mode
-      "\?"         //7ffd
-      "00|ff"      //Interface2ROM
-      "%000000xx"  //Flag3
-      "\?"         //fffd
-      "\?{16}"     //AYPorts
-    );
+    const StringView Version2_0::DESCRIPTION = "Z80 v2.x"_sv;
+    const StringView Version2_0::FORMAT =
+        "(\?\?){3}"  // skip registers
+        "0000"       // PC is 0
+        "(\?\?){2}"
+        "%00xxxxxx"
+        "(\?\?){7}"                      // skip registers
+        "00|01|ff"                       // iff1
+        "00|01|ff"                       // iff2
+        "%xxxxxx00|%xxxxxx01|%xxxxxx10"  // im3 cannot be
+        "1700"                           // additional size is 23
+        "\?\?"                           // PC
+        "00-04|09"                       // Mode
+        "\?"                             // 7ffd
+        "00|ff"                          // Interface2ROM
+        "%000000xx"                      // Flag3
+        "\?"                             // fffd
+        "\?{16}"                         // AYPorts
+        ""_sv;
 
-    //at least 3 pages by 16384 bytes each
-    const std::size_t Version2_0::MIN_SIZE = sizeof(Version2_0::Header) + 3 * (sizeof(Version2_0::MemoryPage) + 4 * (16384 / 255));
+    // at least 3 pages by 16384 bytes each
+    const std::size_t Version2_0::MIN_SIZE =
+        sizeof(Version2_0::Header) + 3 * (sizeof(Version2_0::MemoryPage) + 4 * (16384 / 255));
 
-    const String Version3_0::DESCRIPTION = Text::Z80V30_DECODER_DESCRIPTION;
-    const std::string Version3_0::FORMAT(
-      "(\?\?){3}"    //skip registers
-      "0000"       //PC is 0
-      "(\?\?){2}"
-      "%00xxxxxx"
-      "(\?\?){7}"    //skip registers
-      "00|01|ff"      //iff1
-      "00|01|ff"      //iff2
-      "%xxxxxx00|%xxxxxx01|%xxxxxx10" //im3 cannot be
-      "36|3700"    //additional size is 54 or 55 for XZX files
-      "\?\?"       //PC
-      "00-0a"      //Mode
-      "\?"         //7ffd
-      "00|ff"      //Interface2ROM
-      "%000000xx"  //Flag3
-      "\?"         //fffd
-      "\?{16}"     //AYPorts
-      "\?\?\?"     //Ticks
-      "00"         //Flag4
-      "00|ff"      //GordonROM
-      "00"         //M128ROM
-      "00|ff{2}"   //ROM/Cache
-      "\?{20}"     //joystick
-      "00|01|10"   //GordonType
-      "00|ff{2}"   //Inhibitstate
-    );
+    const StringView Version3_0::DESCRIPTION = "Z80 v3.x"_sv;
+    const StringView Version3_0::FORMAT =
+        "(\?\?){3}"  // skip registers
+        "0000"       // PC is 0
+        "(\?\?){2}"
+        "%00xxxxxx"
+        "(\?\?){7}"                      // skip registers
+        "00|01|ff"                       // iff1
+        "00|01|ff"                       // iff2
+        "%xxxxxx00|%xxxxxx01|%xxxxxx10"  // im3 cannot be
+        "36|3700"                        // additional size is 54 or 55 for XZX files
+        "\?\?"                           // PC
+        "00-0a"                          // Mode
+        "\?"                             // 7ffd
+        "00|ff"                          // Interface2ROM
+        "%000000xx"                      // Flag3
+        "\?"                             // fffd
+        "\?{16}"                         // AYPorts
+        "\?\?\?"                         // Ticks
+        "00"                             // Flag4
+        "00|ff"                          // GordonROM
+        "00"                             // M128ROM
+        "00|ff{2}"                       // ROM/Cache
+        "\?{20}"                         // joystick
+        "00|01|10"                       // GordonType
+        "00|ff{2}"                       // Inhibitstate
+        ""_sv;
 
-    //at least 3 pages by 16384 bytes each
-    const std::size_t Version3_0::MIN_SIZE = sizeof(Version3_0::Header) + 3 * (sizeof(Version2_0::MemoryPage) + 4 * (16384 / 255));
+    // at least 3 pages by 16384 bytes each
+    const std::size_t Version3_0::MIN_SIZE =
+        sizeof(Version3_0::Header) + 3 * (sizeof(Version2_0::MemoryPage) + 4 * (16384 / 255));
 
-    static_assert(sizeof(Version1_45::Header) == 30, "Invalid layout");
-    static_assert(sizeof(Version2_0::Header) == 55, "Invalid layout");
-    static_assert(sizeof(Version2_0::MemoryPage) == 3, "Invalid layout");
-    static_assert(sizeof(Version3_0::Header) == 86, "Invalid layout");
+    static_assert(sizeof(Version1_45::Header) * alignof(Version1_45::Header) == 30, "Invalid layout");
+    static_assert(sizeof(Version2_0::Header) * alignof(Version2_0::Header) == 55, "Invalid layout");
+    static_assert(sizeof(Version2_0::MemoryPage) * alignof(Version2_0::MemoryPage) == 3, "Invalid layout");
+    static_assert(sizeof(Version3_0::Header) * alignof(Version3_0::Header) == 86, "Invalid layout");
 
     std::size_t DecodeBlock(const uint8_t* src, std::size_t srcSize, uint8_t* dst, std::size_t dstSize)
     {
@@ -278,7 +270,7 @@ namespace Packed
       return srcSize - restIn;
     }
 
-    void DecodeBlock(Binary::InputStream& stream, std::size_t srcSize, Dump& dst)
+    void DecodeBlock(Binary::InputStream& stream, std::size_t srcSize, Binary::Dump& dst)
     {
       const auto src = stream.PeekRawData(srcSize);
       const auto used = DecodeBlock(src, srcSize, dst.data(), dst.size());
@@ -287,7 +279,7 @@ namespace Packed
 
     Formats::Packed::Container::Ptr Version1_45::Decode(Binary::InputStream& stream)
     {
-      const Version1_45::Header hdr = stream.ReadField<Version1_45::Header>();
+      const auto& hdr = stream.Read<Version1_45::Header>();
       const std::size_t restSize = stream.GetRestSize();
       const std::size_t TARGET_SIZE = 49152;
       const uint32_t FOOTER = 0x00eded00;
@@ -298,9 +290,9 @@ namespace Packed
         return CreateContainer(rest->GetSubcontainer(0, TARGET_SIZE), sizeof(hdr) + TARGET_SIZE);
       }
       Require(restSize > sizeof(FOOTER));
-      std::unique_ptr<Dump> res(new Dump(TARGET_SIZE));
+      std::unique_ptr<Binary::Dump> res(new Binary::Dump(TARGET_SIZE));
       DecodeBlock(stream, restSize - sizeof(FOOTER), *res);
-      const auto footer = stream.ReadLE<uint32_t>();
+      const uint32_t footer = stream.Read<le_uint32_t>();
       Require(footer == FOOTER);
       return CreateContainer(std::move(res), stream.GetPosition());
     }
@@ -337,10 +329,9 @@ namespace Packed
 
       int_t PageNumber(uint_t idx) const
       {
-        return idx < Numbers.size()
-          ? Numbers[idx]
-          : -1;
+        return idx < Numbers.size() ? Numbers[idx] : -1;
       }
+
     private:
       static bool Is48kLocked(uint_t port)
       {
@@ -349,17 +340,14 @@ namespace Packed
 
       void Fill48kTraits()
       {
-        static const int_t VER48_PAGES[] =
-        {
-          NO_PAGE, //ROM not need
-          NO_PAGE, //interface rom is not available
-          NO_PAGE,
-          NO_PAGE,
-          1,  //p4 to 4000
-          2,  //p5 to 8000
-          NO_PAGE,
-          NO_PAGE,
-          0   //p8 to 0000
+        static const int_t VER48_PAGES[] = {
+            NO_PAGE,  // ROM not need
+            NO_PAGE,  // interface rom is not available
+            NO_PAGE, NO_PAGE,
+            1,  // p4 to 4000
+            2,  // p5 to 8000
+            NO_PAGE, NO_PAGE,
+            0  // p8 to 0000
         };
 
         Pages = 3;
@@ -368,17 +356,16 @@ namespace Packed
 
       void FillSamRamTraits()
       {
-        static const int_t SAMRAM_PAGES[] =
-        {    
-          NO_PAGE, //ROM not need
-          NO_PAGE, //interface ROM not need
-          NO_PAGE, //SamRam basic ROM not need
-          NO_PAGE, //SamRam monitor ROM not need
-          1,  //p4 to 4000
-          2,  //p5 to 8000
-          3,  //p6 to c000 (shadow)
-          4,  //p7 to 10000 (shadow)
-          0   //p8 to 0000
+        static const int_t SAMRAM_PAGES[] = {
+            NO_PAGE,  // ROM not need
+            NO_PAGE,  // interface ROM not need
+            NO_PAGE,  // SamRam basic ROM not need
+            NO_PAGE,  // SamRam monitor ROM not need
+            1,        // p4 to 4000
+            2,        // p5 to 8000
+            3,        // p6 to c000 (shadow)
+            4,        // p7 to 10000 (shadow)
+            0         // p8 to 0000
         };
 
         Pages = 5;
@@ -387,19 +374,18 @@ namespace Packed
 
       void Fill128kTraits()
       {
-        static const int_t VER128_PAGES[] =
-        {
-          NO_PAGE, //old ROM not need
-          NO_PAGE, //interface ROM not need
-          NO_PAGE, //new ROM not need
-          2,  //p3(0)  to  8000
-          3,  //p4(1)  to  c000
-          1,  //p5(2)  to  4000
-          4,  //p6(3)  to 10000
-          5,  //p7(4)  to 14000
-          0,  //p8(5)  to  0000
-          6,  //p9(6)  to 18000
-          7,  //p10(7) to 1c000
+        static const int_t VER128_PAGES[] = {
+            NO_PAGE,  // old ROM not need
+            NO_PAGE,  // interface ROM not need
+            NO_PAGE,  // new ROM not need
+            2,        // p3(0)  to  8000
+            3,        // p4(1)  to  c000
+            1,        // p5(2)  to  4000
+            4,        // p6(3)  to 10000
+            5,        // p7(4)  to 14000
+            0,        // p8(5)  to  0000
+            6,        // p9(6)  to 18000
+            7,        // p10(7) to 1c000
         };
         Pages = 8;
         Numbers.assign(VER128_PAGES, std::end(VER128_PAGES));
@@ -407,27 +393,19 @@ namespace Packed
 
       void Fill256kTraits()
       {
-        static const int_t VER256_PAGES[] =
-        {
-          NO_PAGE, //old ROM not need
-          NO_PAGE, //interface ROM not need
-          NO_PAGE, //new ROM not need
-          2,  //p3(0)  to  8000
-          3,  //p4(1)  to  c000
-          1,  //p5(2)  to  4000
-          4,  //p6(3)  to 10000
-          5,  //p7(4)  to 14000
-          0,  //p8(5)  to  0000
-          6,  //p9(6)  to 18000
-          7,  //p10(7) to 1c000
-          8,
-          9,
-          10,
-          11,
-          12,
-          13,
-          14,
-          15,
+        static const int_t VER256_PAGES[] = {
+            NO_PAGE,  // old ROM not need
+            NO_PAGE,  // interface ROM not need
+            NO_PAGE,  // new ROM not need
+            2,        // p3(0)  to  8000
+            3,        // p4(1)  to  c000
+            1,        // p5(2)  to  4000
+            4,        // p6(3)  to 10000
+            5,        // p7(4)  to 14000
+            0,        // p8(5)  to  0000
+            6,        // p9(6)  to 18000
+            7,        // p10(7) to 1c000
+            8,       9, 10, 11, 12, 13, 14, 15,
         };
         Pages = 16;
         Numbers.assign(VER256_PAGES, std::end(VER256_PAGES));
@@ -481,6 +459,7 @@ namespace Packed
           break;
         }
       }
+
     private:
       uint_t MinPages;
       uint_t Pages;
@@ -490,14 +469,14 @@ namespace Packed
     Formats::Packed::Container::Ptr DecodeNew(Binary::InputStream& stream)
     {
       const std::size_t ZX_PAGE_SIZE = 16384;
-      const Version2_0::Header hdr = stream.ReadField<Version2_0::Header>();
-      const std::size_t additionalSize = fromLE(hdr.AdditionalSize);
+      const auto& hdr = stream.Read<Version2_0::Header>();
+      const std::size_t additionalSize = hdr.AdditionalSize;
       const std::size_t readAdditionalSize = sizeof(hdr) - sizeof(Version1_45::Header) - sizeof(hdr.AdditionalSize);
       Require(additionalSize >= readAdditionalSize);
       stream.Skip(additionalSize - readAdditionalSize);
       const PlatformTraits traits(additionalSize, hdr.HardwareMode, hdr.Port7ffd);
-      std::unique_ptr<Dump> res(new Dump(ZX_PAGE_SIZE * traits.PagesCount()));
-      Dump curPage(ZX_PAGE_SIZE);
+      std::unique_ptr<Binary::Dump> res(new Binary::Dump(ZX_PAGE_SIZE * traits.PagesCount()));
+      Binary::Dump curPage(ZX_PAGE_SIZE);
       for (uint_t idx = 0; idx != traits.PagesCount(); ++idx)
       {
         const bool isPageRequired = idx < traits.MinimalPagesCount();
@@ -505,7 +484,7 @@ namespace Packed
         {
           break;
         }
-        const Version2_0::MemoryPage page = stream.ReadField<Version2_0::MemoryPage>();
+        const auto& page = stream.Read<Version2_0::MemoryPage>();
         const int_t pageNumber = traits.PageNumber(page.Number);
         const bool isPageValid = pageNumber != PlatformTraits::NO_PAGE;
         if (!isPageRequired && !isPageValid)
@@ -513,7 +492,7 @@ namespace Packed
           break;
         }
         Require(isPageValid);
-        const std::size_t pageSize = fromLE(page.DataSize);
+        const std::size_t pageSize = page.DataSize;
         const uint8_t* pageSource = nullptr;
         if (pageSize == page.UNCOMPRESSED)
         {
@@ -540,7 +519,7 @@ namespace Packed
     {
       return DecodeNew(stream);
     }
-  }//namespace Z80
+  }  // namespace Z80
 
   template<class Version>
   class Z80Decoder : public Decoder
@@ -548,17 +527,15 @@ namespace Packed
   public:
     Z80Decoder()
       : Format(Binary::CreateFormat(Version::FORMAT, Version::MIN_SIZE))
-    {
-    }
+    {}
 
     explicit Z80Decoder(Binary::Format::Ptr format)
       : Format(std::move(format))
-    {
-    }
+    {}
 
     String GetDescription() const override
     {
-      return Version::DESCRIPTION;
+      return Version::DESCRIPTION.to_string();
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -582,6 +559,7 @@ namespace Packed
         return Container::Ptr();
       }
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -590,7 +568,8 @@ namespace Packed
   {
     const Binary::Format::Ptr header = Binary::CreateFormat(Z80::Version1_45::HEADER, Z80::Version1_45::MIN_SIZE);
     const Binary::Format::Ptr footer = Binary::CreateFormat(Z80::Version1_45::FOOTER);
-    const Binary::Format::Ptr format = Binary::CreateCompositeFormat(header, footer, Z80::Version1_45::MIN_SIZE - 4, Z80::Version1_45::MAX_SIZE - 4);
+    const Binary::Format::Ptr format =
+        Binary::CreateCompositeFormat(header, footer, Z80::Version1_45::MIN_SIZE - 4, Z80::Version1_45::MAX_SIZE - 4);
     return MakePtr<Z80Decoder<Z80::Version1_45> >(format);
   }
 
@@ -603,5 +582,4 @@ namespace Packed
   {
     return MakePtr<Z80Decoder<Z80::Version3_0> >();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

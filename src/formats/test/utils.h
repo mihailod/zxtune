@@ -1,34 +1,34 @@
 /**
-*
-* @file
-*
-* @brief  Common test code
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Common test code
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-#include <pointers.h>
-#include <types.h>
 #include <binary/container_factories.h>
-#include <formats/archived/decoders.h>
-#include <formats/packed/decoders.h>
-#include <list>
-#include <map>
-#include <cstring>
-#include <stdexcept>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <boost/lexical_cast.hpp>
+#include <cstring>
+#include <formats/archived/decoders.h>
+#include <formats/packed/decoders.h>
+#include <fstream>
+#include <iostream>
+#include <list>
+#include <map>
+#include <pointers.h>
+#include <sstream>
+#include <stdexcept>
+#include <types.h>
 
 namespace Test
 {
-  void OpenFile(const std::string& name, Dump& result)
+  void OpenFile(const std::string& name, Binary::Dump& result)
   {
     std::vector<std::string> elements;
     boost::algorithm::split(elements, name, boost::algorithm::is_from_range(':', ':'));
@@ -46,24 +46,25 @@ namespace Test
     const std::size_t fileSize = stream.tellg();
     const std::size_t size = sizeStr.empty() ? fileSize - offset : boost::lexical_cast<std::size_t>(sizeStr);
     stream.seekg(offset);
-    Dump tmp(size);
+    Binary::Dump tmp(size);
     stream.read(safe_ptr_cast<char*>(tmp.data()), tmp.size());
     if (!stream)
     {
       throw std::runtime_error("Failed to read from file");
     }
     result.swap(tmp);
-    //std::cout << "Read " << size << " bytes from " << name << std::endl;
+    // std::cout << "Read " << size << " bytes from " << name << std::endl;
   }
 
-  void TestPacked(const Formats::Packed::Decoder& decoder, const Dump& etalonDump, const std::map<std::string, Dump>& tests, bool checkCorrupted = true)
+  void TestPacked(const Formats::Packed::Decoder& decoder, const Binary::Dump& etalonDump,
+                  const std::map<std::string, Binary::Dump>& tests, bool checkCorrupted = true)
   {
     std::cout << "Test for packed '" << decoder.GetDescription() << "'" << std::endl;
     const Binary::Container::Ptr etalon = Binary::CreateContainer(etalonDump);
-    for (const auto & test : tests)
+    for (const auto& test : tests)
     {
       const std::string& testname = test.first;
-      const Dump& testdataDump = test.second;
+      const auto& testdataDump = test.second;
       const Binary::Container::Ptr testdata = Binary::CreateContainer(testdataDump);
       std::cout << " testing " << testname << std::endl;
       const Binary::Format::Ptr format = decoder.GetFormat();
@@ -71,18 +72,20 @@ namespace Test
       {
         throw std::runtime_error("Failed to check for sanity.");
       }
-      //positive test
+      // positive test
       if (const Formats::Packed::Container::Ptr unpacked = decoder.Decode(*testdata))
       {
-        if (unpacked->Size() != etalon->Size() &&
-            0 != std::memcmp(etalon->Start(), unpacked->Start(), etalon->Size()))
+        if (unpacked->Size() != etalon->Size() && 0 != std::memcmp(etalon->Start(), unpacked->Start(), etalon->Size()))
         {
           std::ofstream output((testname + "_decoded").c_str(), std::ios::binary);
           output.write(static_cast<const char*>(unpacked->Start()), unpacked->Size());
           std::ostringstream str;
           str << "Invalid decode:\n"
-            "ref size=" << etalon->Size() << "\n"
-            "unpacked size=" << unpacked->Size();
+                 "ref size="
+              << etalon->Size()
+              << "\n"
+                 "unpacked size="
+              << unpacked->Size();
           throw std::runtime_error(str.str());
         }
         if (unpacked->PackedSize() != testdata->Size())
@@ -106,7 +109,7 @@ namespace Test
       }
       if (checkCorrupted)
       {
-        std::unique_ptr<Dump> corruptedDump(new Dump(testdataDump));
+        std::unique_ptr<Binary::Dump> corruptedDump(new Binary::Dump(testdataDump));
         for (std::size_t count = 0, size = corruptedDump->size(); count != size * 7 / 100; ++count)
         {
           corruptedDump->at(rand() % size) ^= 0xff;
@@ -124,12 +127,13 @@ namespace Test
     }
   }
 
-  void TestPacked(const Formats::Packed::Decoder& decoder, const std::string& etalon, const std::vector<std::string>& tests, bool checkCorrupted = true)
+  void TestPacked(const Formats::Packed::Decoder& decoder, const std::string& etalon,
+                  const std::vector<std::string>& tests, bool checkCorrupted = true)
   {
-    Dump reference;
+    Binary::Dump reference;
     OpenFile(etalon, reference);
-    std::map<std::string, Dump> testData;
-    for (const auto & test : tests)
+    std::map<std::string, Binary::Dump> testData;
+    for (const auto& test : tests)
     {
       OpenFile(test, testData[test]);
     }
@@ -139,11 +143,10 @@ namespace Test
   class ArchiveWalker : public Formats::Archived::Container::Walker
   {
   public:
-    ArchiveWalker(const std::vector<std::string>& files, const Dump& etalon)
+    ArchiveWalker(const std::vector<std::string>& files, const Binary::Dump& etalon)
       : Files(files.begin(), files.end())
       , Etalon(etalon)
-    {
-    }
+    {}
 
     void OnFile(const Formats::Archived::File& file) const override
     {
@@ -157,31 +160,35 @@ namespace Test
         throw std::runtime_error("Invalid file size");
       }
       const Binary::Container::Ptr unpacked = file.GetData();
-      if (unpacked->Size() != Etalon.size() ||
-          0 != std::memcmp(&Etalon[0], unpacked->Start(), unpacked->Size()))
+      if (unpacked->Size() != Etalon.size() || 0 != std::memcmp(&Etalon[0], unpacked->Start(), unpacked->Size()))
       {
         std::ofstream output((Files.front() + "_decoded").c_str(), std::ios::binary);
         output.write(static_cast<const char*>(unpacked->Start()), unpacked->Size());
         std::ostringstream str;
         str << "Invalid decode:\n"
-          "ref size=" << Etalon.size() << "\n"
-          "unpacked size=" << unpacked->Size();
+               "ref size="
+            << Etalon.size()
+            << "\n"
+               "unpacked size="
+            << unpacked->Size();
         throw std::runtime_error(str.str());
       }
       Files.pop_front();
     }
+
   private:
     mutable std::list<std::string> Files;
-    const Dump& Etalon;
+    const Binary::Dump& Etalon;
   };
 
-  void TestArchived(const Formats::Archived::Decoder& decoder, const std::string& etalon, const std::string& test, const std::vector<std::string>& testNames)
+  void TestArchived(const Formats::Archived::Decoder& decoder, const std::string& etalon, const std::string& test,
+                    const std::vector<std::string>& testNames)
   {
-    Dump reference;
+    Binary::Dump reference;
     OpenFile(etalon, reference);
     std::cout << "Test for container '" << decoder.GetDescription() << "'" << std::endl;
     std::cout << " test " << test << " etalon is " << etalon << std::endl;
-    Dump archive;
+    Binary::Dump archive;
     OpenFile(test, archive);
     const Binary::Container::Ptr testData = Binary::CreateContainer(archive);
 
@@ -191,7 +198,7 @@ namespace Test
       throw std::runtime_error("Failed to check for sanity.");
     }
 
-    //positive test
+    // positive test
     if (Formats::Archived::Container::Ptr container = decoder.Decode(*testData))
     {
       if (container->CountFiles() != testNames.size())
@@ -214,4 +221,4 @@ namespace Test
       throw std::runtime_error("Failed to decode");
     }
   }
-}
+}  // namespace Test

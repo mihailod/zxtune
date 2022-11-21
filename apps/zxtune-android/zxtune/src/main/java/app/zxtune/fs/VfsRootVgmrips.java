@@ -4,7 +4,9 @@ import android.content.Context;
 import android.net.Uri;
 import android.util.SparseIntArray;
 
+import androidx.annotation.DrawableRes;
 import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
 import androidx.core.util.Pair;
 
 import java.io.IOException;
@@ -13,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.TimeUnit;
 
 import app.zxtune.Log;
 import app.zxtune.R;
@@ -24,8 +25,8 @@ import app.zxtune.fs.vgmrips.Identifier;
 import app.zxtune.fs.vgmrips.Pack;
 import app.zxtune.fs.vgmrips.RemoteCatalog;
 import app.zxtune.fs.vgmrips.Track;
+import app.zxtune.utils.ProgressCallback;
 
-@Icon(R.drawable.ic_browser_vfs_vgmrips)
 final class VfsRootVgmrips extends StubObject implements VfsRoot {
 
   private static final String TAG = VfsRootVgmrips.class.getName();
@@ -69,6 +70,15 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
   @Override
   public VfsObject getParent() {
     return parent;
+  }
+
+  @Override
+  public Object getExtension(String id) {
+    if (VfsExtensions.ICON.equals(id)) {
+      return R.drawable.ic_browser_vfs_vgmrips;
+    } else {
+      return super.getExtension(id);
+    }
   }
 
   @Override
@@ -149,10 +159,16 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
 
     private final String category;
     private final Catalog.Grouping grouping;
+    @StringRes
+    private final int nameRes;
+    @DrawableRes
+    private final int iconRes;
 
-    GroupingDir(String category, Catalog.Grouping grouping) {
+    GroupingDir(String category, Catalog.Grouping grouping, @StringRes int nameRes, @DrawableRes int iconRes) {
       this.category = category;
       this.grouping = grouping;
+      this.nameRes = nameRes;
+      this.iconRes = iconRes;
     }
 
     @Override
@@ -161,18 +177,27 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
     }
 
     @Override
+    public String getName() {
+      return context.getString(nameRes);
+    }
+
+    @Override
     public VfsObject getParent() {
       return VfsRootVgmrips.this;
     }
 
     @Override
+    public Object getExtension(String id) {
+      if (VfsExtensions.ICON.equals(id)) {
+        return iconRes;
+      } else {
+        return super.getExtension(id);
+      }
+    }
+
+    @Override
     public void enumerate(final Visitor visitor) throws IOException {
-      grouping.query(new Catalog.Visitor<Group>() {
-        @Override
-        public void accept(Group obj) {
-          visitor.onDir(makeChild(obj));
-        }
-      });
+      grouping.query(obj -> visitor.onDir(makeChild(obj)));
     }
 
     final String getCategory() {
@@ -189,73 +214,48 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
     }
   }
 
-  @Icon(R.drawable.ic_browser_vfs_vgmrips_companies)
   private class CompaniesDir extends GroupingDir {
 
     CompaniesDir() {
-      super(Identifier.CATEGORY_COMPANY, catalog.companies());
-    }
-
-    @Override
-    public String getName() {
-      return context.getString(R.string.vfs_vgmrips_companies_name);
+      super(Identifier.CATEGORY_COMPANY, catalog.companies(),
+          R.string.vfs_vgmrips_companies_name, R.drawable.ic_browser_vfs_vgmrips_companies);
     }
   }
 
-  @Icon(R.drawable.ic_browser_vfs_vgmrips_composers)
   private class ComposersDir extends GroupingDir {
 
     ComposersDir() {
-      super(Identifier.CATEGORY_COMPOSER, catalog.composers());
-    }
-
-    @Override
-    public String getName() {
-      return context.getString(R.string.vfs_vgmrips_composers_name);
+      super(Identifier.CATEGORY_COMPOSER, catalog.composers(),
+          R.string.vfs_vgmrips_composers_name, R.drawable.ic_browser_vfs_vgmrips_composers);
     }
   }
 
-  @Icon(R.drawable.ic_browser_vfs_vgmrips_chips)
   private class ChipsDir extends GroupingDir {
 
     ChipsDir() {
-      super(Identifier.CATEGORY_CHIP, catalog.chips());
-    }
-
-    @Override
-    public String getName() {
-      return context.getString(R.string.vfs_vgmrips_chips_name);
+      super(Identifier.CATEGORY_CHIP, catalog.chips(),
+          R.string.vfs_vgmrips_chips_name, R.drawable.ic_browser_vfs_vgmrips_chips);
     }
   }
 
-  @Icon(R.drawable.ic_browser_vfs_vgmrips_systems)
   private class SystemsDir extends GroupingDir {
 
     SystemsDir() {
-      super(Identifier.CATEGORY_SYSTEM, catalog.systems());
-    }
-
-    @Override
-    public String getName() {
-      return context.getString(R.string.vfs_vgmrips_systems_name);
+      super(Identifier.CATEGORY_SYSTEM, catalog.systems(),
+          R.string.vfs_vgmrips_systems_name, R.drawable.ic_browser_vfs_vgmrips_systems);
     }
   }
 
-  @Icon(R.drawable.ic_browser_vfs_radio)
   private class RandomDir extends GroupingDir {
     RandomDir() {
       super(Identifier.CATEGORY_RANDOM, new Catalog.Grouping() {
-        @Override
-        public void query(Catalog.Visitor<Group> visitor) {}
+            @Override
+            public void query(Catalog.Visitor<Group> visitor) {}
 
-        @Override
-        public void queryPacks(String id, Catalog.Visitor<Pack> visitor, ProgressCallback progress) {}
-      });
-    }
-
-    @Override
-    public String getName() {
-      return context.getString(R.string.vfs_vgmrips_random_name);
+            @Override
+            public void queryPacks(String id, Catalog.Visitor<Pack> visitor, ProgressCallback progress) {}
+          },
+          R.string.vfs_vgmrips_random_name, R.drawable.ic_browser_vfs_radio);
     }
 
     @Override
@@ -309,12 +309,9 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
     private Pair<Pack, Track> loadNextTrack() throws IOException {
       final ArrayList<Track> tracks = new ArrayList<>();
       final int[] duration = {0};
-      final Pack pack = catalog.findRandomPack(new Catalog.Visitor<Track>() {
-        @Override
-        public void accept(Track obj) {
-          tracks.add(obj);
-          duration[0] += obj.duration.convertTo(TimeUnit.SECONDS);
-        }
+      final Pack pack = catalog.findRandomPack(obj -> {
+        tracks.add(obj);
+        duration[0] += obj.getDuration().toSeconds();
       });
       if (pack == null || 0 == duration[0]) {
         return null;
@@ -322,7 +319,7 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
       final int hit = random.nextInt(duration[0]);
       int bound = 0;
       for (Track trk : tracks) {
-        bound += trk.duration.convertTo(TimeUnit.SECONDS);
+        bound += trk.getDuration().toSeconds();
         if (hit < bound) {
           return new Pair<>(pack, trk);
         }
@@ -331,9 +328,9 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
     }
 
     private boolean canPlay(Pack pack) {
-      final int key = pack.id.hashCode();
+      final int key = pack.getId().hashCode();
       int donePlays = history.get(key, 0);
-      if (++donePlays > pack.songs) {
+      if (++donePlays > pack.getSongs()) {
         return false;
       }
       history.put(key, donePlays);
@@ -358,12 +355,12 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return group.title;
+      return group.getTitle();
     }
 
     @Override
     public String getDescription() {
-      return context.getResources().getQuantityString(R.plurals.packs, group.packs, group.packs);
+      return context.getResources().getQuantityString(R.plurals.packs, group.getPacks(), group.getPacks());
     }
 
     @Override
@@ -373,13 +370,8 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
 
     @Override
     public void enumerate(final Visitor visitor) throws IOException {
-      parent.grouping.queryPacks(group.id, new Catalog.Visitor<Pack>() {
-
-        @Override
-        public void accept(Pack obj) {
-          visitor.onDir(new PackDir(GroupDir.this, obj));
-        }
-      }, visitor);
+      parent.grouping.queryPacks(group.getId(), obj -> visitor.onDir(new PackDir(GroupDir.this, obj)),
+          visitor);
     }
 
     @Override
@@ -410,22 +402,17 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return pack.title;
+      return pack.getTitle();
     }
 
     @Override
     public String getDescription() {
-      return context.getResources().getQuantityString(R.plurals.tracks, pack.songs, pack.songs);
+      return context.getResources().getQuantityString(R.plurals.tracks, pack.getSongs(), pack.getSongs());
     }
 
     @Override
     public void enumerate(final Visitor visitor) throws IOException {
-      catalog.findPack(pack.id, new Catalog.Visitor<Track>() {
-        @Override
-        public void accept(Track obj) {
-          visitor.onFile(new TrackFile(PackDir.this, obj));
-        }
-      });
+      catalog.findPack(pack.getId(), obj -> visitor.onFile(new TrackFile(PackDir.this, obj)));
     }
 
     @Override
@@ -459,12 +446,12 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return track.title;
+      return track.getTitle();
     }
 
     @Override
     public String getSize() {
-      return track.duration.toString();
+      return track.getDuration().toString();
     }
 
     @Override
@@ -476,7 +463,7 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
     @Override
     public Object getExtension(String id) {
       if (VfsExtensions.CACHE_PATH.equals(id)) {
-        return parent.pack.id + '/' + track.title;
+        return parent.pack.getId() + '/' + track.getTitle();
       } else if (VfsExtensions.DOWNLOAD_URIS.equals(id)) {
         return RemoteCatalog.getRemoteUris(track);
       } else {
@@ -493,7 +480,7 @@ final class VfsRootVgmrips extends StubObject implements VfsRoot {
     public int compare(VfsObject o1, VfsObject o2) {
       final TrackFile lh = (TrackFile) o1;
       final TrackFile rh = (TrackFile) o2;
-      return lh.track.number < rh.track.number ? -1 : 1;
+      return lh.track.getNumber() < rh.track.getNumber() ? -1 : 1;
     }
   }
 }

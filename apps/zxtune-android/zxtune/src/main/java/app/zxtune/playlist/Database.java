@@ -16,12 +16,14 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteOpenHelper;
-import androidx.annotation.Nullable;
 import android.util.SparseIntArray;
+
+import androidx.annotation.Nullable;
 
 import java.util.Locale;
 
 import app.zxtune.Log;
+import app.zxtune.fs.dbhelpers.Utils;
 
 /*
  * Playlist DB model.
@@ -151,6 +153,7 @@ public class Database {
 
   public Database(Context context) {
     this.dbHelper = new DBHelper(context);
+    Utils.sendStatistics(dbHelper);
   }
   
   // ! @return Cursor with statistics

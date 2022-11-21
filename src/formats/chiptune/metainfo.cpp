@@ -1,28 +1,27 @@
 /**
-*
-* @file
-*
-* @brief  Metainfo operating implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Metainfo operating implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/chiptune/metainfo.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <contract.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/container_factories.h>
-//std includes
-#include <set>
+#include <binary/dump.h>
+// std includes
 #include <map>
+#include <set>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   class Patcher : public PatchedDataBuilder
   {
@@ -30,8 +29,7 @@ namespace Chiptune
     explicit Patcher(Binary::View src)
       : Source(src)
       , SizeAddon(0)
-    {
-    }
+    {}
 
     void InsertData(std::size_t offset, Binary::View data) override
     {
@@ -54,14 +52,15 @@ namespace Chiptune
     Binary::Container::Ptr GetResult() const override
     {
       const auto* srcData = Source.As<uint8_t>();
-      std::unique_ptr<Dump> result(new Dump(srcData, srcData + Source.Size()));
+      std::unique_ptr<Binary::Dump> result(new Binary::Dump(srcData, srcData + Source.Size()));
       ApplyFixes(*result);
       ApplyOverwrites(*result);
       ApplyInsertions(*result);
       return Binary::CreateContainer(std::move(result));
     }
+
   private:
-    void ApplyFixes(Dump& result) const
+    void ApplyFixes(Binary::Dump& result) const
     {
       for (const auto& fix : LEWordFixes)
       {
@@ -72,13 +71,11 @@ namespace Chiptune
     template<class T>
     static void Fix(void* data, int_t delta)
     {
-      T* const ptr = static_cast<T*>(data);
-      const T val = fromLE(*ptr);
-      const T fixedVal = static_cast<T>(val + delta);
-      *ptr = fromLE(fixedVal);
+      auto* ptr = safe_ptr_cast<LE<T>*>(data);
+      *ptr = static_cast<T>(*ptr + delta);
     }
 
-    void ApplyOverwrites(Dump& result) const
+    void ApplyOverwrites(Binary::Dump& result) const
     {
       for (const auto& over : Overwrites)
       {
@@ -86,13 +83,13 @@ namespace Chiptune
       }
     }
 
-    void ApplyInsertions(Dump& result) const
+    void ApplyInsertions(Binary::Dump& result) const
     {
       if (0 == SizeAddon)
       {
         return;
       }
-      Dump tmp(result.size() + SizeAddon);
+      Binary::Dump tmp(result.size() + SizeAddon);
       auto src = result.begin();
       const auto srcEnd = result.end();
       auto dst = tmp.begin();
@@ -112,6 +109,7 @@ namespace Chiptune
       std::copy(src, srcEnd, dst);
       result.swap(tmp);
     }
+
   private:
     const Binary::View Source;
     typedef std::map<std::size_t, Binary::View> BlobsMap;
@@ -121,8 +119,7 @@ namespace Chiptune
     FixesMap LEWordFixes;
     std::size_t SizeAddon;
   };
-}
-}
+}  // namespace Formats::Chiptune
 
 namespace Formats
 {
@@ -132,5 +129,5 @@ namespace Formats
     {
       return MakePtr<Patcher>(data);
     }
-  }
-}
+  }  // namespace Chiptune
+}  // namespace Formats

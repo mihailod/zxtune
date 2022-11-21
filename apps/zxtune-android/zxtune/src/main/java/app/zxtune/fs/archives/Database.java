@@ -13,14 +13,13 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.net.Uri;
 
+import java.io.IOException;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import app.zxtune.BuildConfig;
 import app.zxtune.Log;
 import app.zxtune.fs.dbhelpers.DBProvider;
 import app.zxtune.fs.dbhelpers.Objects;
-import app.zxtune.fs.dbhelpers.Transaction;
 import app.zxtune.fs.dbhelpers.Utils;
 
 /*
@@ -202,7 +201,7 @@ class Database {
       }
 
       final void add(Track obj) {
-        add(obj.path.toString(), obj.description, obj.duration.convertTo(TimeUnit.MILLISECONDS));
+        add(obj.path.toString(), obj.description, obj.duration.toMilliseconds());
       }
     }
 
@@ -288,8 +287,8 @@ class Database {
     this.tracks = new Tables.Tracks(dbHelper);
   }
 
-  final Transaction startTransaction() {
-    return Transaction.create(dbHelper.getWritableDatabase());
+  final void runInTransaction(Utils.ThrowingRunnable cmd) throws IOException {
+    Utils.runInTransaction(dbHelper, cmd);
   }
 
   final Cursor queryArchive(Uri path) {

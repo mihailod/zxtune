@@ -1,28 +1,27 @@
 /**
-* 
-* @file
-*
-* @brief  Track modules support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Track modules support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/tracking.h"
-//common includes
-#include <pointers.h>
+// common includes
 #include <make_ptr.h>
-//library includes
+#include <pointers.h>
+// library includes
 #include <sound/loop.h>
 
 namespace Module
 {
   class StubPattern : public Pattern
   {
-    StubPattern()
-    {
-    }
+    StubPattern() {}
+
   public:
     const Line* GetLine(uint_t /*row*/) const override
     {
@@ -51,9 +50,13 @@ namespace Module
     uint_t Tempo;
 
     PlainTrackState()
-      : Frame(), Position(), Pattern(), Line(), Quirk(), Tempo()
-    {
-    }
+      : Frame()
+      , Position()
+      , Pattern()
+      , Line()
+      , Quirk()
+      , Tempo()
+    {}
   };
 
   class TrackStateCursor : public TrackModelState
@@ -61,8 +64,9 @@ namespace Module
   public:
     typedef std::shared_ptr<TrackStateCursor> Ptr;
 
-    explicit TrackStateCursor(TrackModel::Ptr model)
-      : Model(std::move(model))
+    TrackStateCursor(Time::Microseconds frameDuration, TrackModel::Ptr model)
+      : FrameDuration(frameDuration)
+      , Model(std::move(model))
       , Order(Model->GetOrder())
       , Patterns(Model->GetPatterns())
       , Loops()
@@ -70,10 +74,15 @@ namespace Module
       Reset();
     }
 
-    //State
-    uint_t Frame() const override
+    // State
+    Time::AtMillisecond At() const override
     {
-      return Plain.Frame;
+      return Time::AtMillisecond() + (FrameDuration * Plain.Frame).CastTo<Time::Millisecond>();
+    }
+
+    Time::Milliseconds Total() const override
+    {
+      return TotalPlayed.CastTo<Time::Millisecond>();
     }
 
     uint_t LoopCount() const override
@@ -81,7 +90,7 @@ namespace Module
       return Loops;
     }
 
-    //TrackState
+    // TrackState
     uint_t Position() const override
     {
       return Plain.Position;
@@ -112,7 +121,7 @@ namespace Module
       return CurLineObject ? CurLineObject->CountActiveChannels() : 0;
     }
 
-    //TrackModelState
+    // TrackModelState
     const class Pattern* PatternObject() const override
     {
       return CurPatternObject;
@@ -123,7 +132,7 @@ namespace Module
       return CurLineObject;
     }
 
-    //navigation
+    // navigation
     bool IsValid() const
     {
       return Plain.Position < Order.GetSize();
@@ -139,6 +148,7 @@ namespace Module
       Plain.Frame = 0;
       Plain.Tempo = Model->GetInitialTempo();
       SetPosition(0);
+      TotalPlayed = {};
       Loops = 0;
     }
 
@@ -154,8 +164,7 @@ namespace Module
 
     void Seek(uint_t position)
     {
-      if (Plain.Position > position ||
-          (Plain.Position == position && (0 != Plain.Line || 0 != Plain.Quirk)))
+      if (Plain.Position > position || (Plain.Position == position && (0 != Plain.Line || 0 != Plain.Quirk)))
       {
         Reset();
       }
@@ -171,13 +180,22 @@ namespace Module
 
     bool NextFrame()
     {
-      return NextQuirk() || NextLine() || NextPosition();
+      if (NextQuirk() || NextLine() || NextPosition())
+      {
+        TotalPlayed += FrameDuration;
+        return true;
+      }
+      else
+      {
+        return false;
+      }
     }
 
     void DoneLoop()
     {
       ++Loops;
     }
+
   private:
     void SetPosition(uint_t pos)
     {
@@ -237,28 +255,30 @@ namespace Module
       SetPosition(Plain.Position + 1);
       return IsValid();
     }
+
   private:
-    //context
+    // context
+    const Time::Microseconds FrameDuration;
     const TrackModel::Ptr Model;
     const OrderList& Order;
     const PatternsSet& Patterns;
-    //state
+    // state
     PlainTrackState Plain;
     const class Pattern* CurPatternObject;
     const class Line* CurLineObject;
+    Time::Microseconds TotalPlayed;
     uint_t Loops;
   };
 
   class TrackStateIteratorImpl : public TrackStateIterator
   {
   public:
-    explicit TrackStateIteratorImpl(TrackModel::Ptr model)
+    TrackStateIteratorImpl(Time::Microseconds frameDuration, TrackModel::Ptr model)
       : Model(model)
-      , Cursor(MakePtr<TrackStateCursor>(model))
-    {
-    }
+      , Cursor(MakePtr<TrackStateCursor>(frameDuration, model))
+    {}
 
-    //iterator functions
+    // iterator functions
     void Reset() override
     {
       Cursor->Reset();
@@ -285,6 +305,7 @@ namespace Module
     {
       return Cursor;
     }
+
   private:
     void MoveToLoop()
     {
@@ -300,6 +321,7 @@ namespace Module
       }
       Cursor->DoneLoop();
     }
+
   private:
     const TrackModel::Ptr Model;
     const TrackStateCursor::Ptr Cursor;
@@ -309,11 +331,24 @@ namespace Module
   class TrackInformationImpl : public TrackInformation
   {
   public:
-    TrackInformationImpl(TrackModel::Ptr model, uint_t channels)
-      : Model(std::move(model))
+    TrackInformationImpl(Time::Microseconds frameDuration, TrackModel::Ptr model, uint_t channels)
+      : FrameDuration(frameDuration)
+      , Model(std::move(model))
       , Channels(channels)
-      , Frames(), LoopFrameNum()
+      , Frames()
+      , LoopFrameNum()
+    {}
+
+    Time::Milliseconds Duration() const override
     {
+      Initialize();
+      return (FrameDuration * Frames).CastTo<Time::Millisecond>();
+    }
+
+    Time::Milliseconds LoopDuration() const override
+    {
+      Initialize();
+      return (FrameDuration * (Frames - LoopFrameNum)).CastTo<Time::Millisecond>();
     }
 
     uint_t PositionsCount() const override
@@ -326,54 +361,41 @@ namespace Module
       return Model->GetOrder().GetLoopPosition();
     }
 
-    uint_t FramesCount() const override
-    {
-      Initialize();
-      return Frames;
-    }
-
-    uint_t LoopFrame() const override
-    {
-      Initialize();
-      return LoopFrameNum;
-    }
-
     uint_t ChannelsCount() const override
     {
       return Channels;
     }
 
-    uint_t Tempo() const override
-    {
-      return Model->GetInitialTempo();
-    }
   private:
     void Initialize() const
     {
       if (Frames)
       {
-        return;//initialized
+        return;  // initialized
       }
-      TrackStateCursor cursor(Model);
+      TrackStateCursor cursor({}, Model);
       cursor.Seek(Model->GetOrder().GetLoopPosition());
       LoopFrameNum = cursor.GetState().Frame;
       cursor.Seek(Model->GetOrder().GetSize());
       Frames = cursor.GetState().Frame;
     }
+
   private:
+    const Time::Microseconds FrameDuration;
     const TrackModel::Ptr Model;
     const uint_t Channels;
     mutable uint_t Frames;
     mutable uint_t LoopFrameNum;
   };
 
-  TrackInformation::Ptr CreateTrackInfo(TrackModel::Ptr model, uint_t channels)
+  TrackInformation::Ptr CreateTrackInfoFixedChannels(Time::Microseconds frameDuration, TrackModel::Ptr model,
+                                                     uint_t channels)
   {
-    return MakePtr<TrackInformationImpl>(std::move(model), channels);
+    return MakePtr<TrackInformationImpl>(frameDuration, std::move(model), channels);
   }
 
-  TrackStateIterator::Ptr CreateTrackStateIterator(TrackModel::Ptr model)
+  TrackStateIterator::Ptr CreateTrackStateIterator(Time::Microseconds frameDuration, TrackModel::Ptr model)
   {
-    return MakePtr<TrackStateIteratorImpl>(std::move(model));
+    return MakePtr<TrackStateIteratorImpl>(frameDuration, std::move(model));
   }
-}
+}  // namespace Module

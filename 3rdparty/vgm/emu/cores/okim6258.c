@@ -19,6 +19,7 @@
 #include "../snddef.h"
 #include "../EmuHelper.h"
 #include "../EmuCores.h"
+#include "../logging.h"
 #include "okim6258.h"
 
 
@@ -34,11 +35,13 @@ static UINT32 okim6258_get_vclk(void *chip);
 static UINT8 okim6258_status_r(void *chip, UINT8 offset);
 static void okim6258_data_w(void *chip, UINT8 data);
 static void okim6258_ctrl_w(void *chip, UINT8 data);
+static void okim6258_pan_w(void *chip, UINT8 data);
 static void okim6258_write(void *chip, UINT8 offset, UINT8 data);
 
 static void okim6258_set_options(void *chip, UINT32 Options);
 static void okim6258_set_srchg_cb(void *chip, DEVCB_SRATE_CHG CallbackFunc, void* DataPtr);
 static void okim6258_set_mute_mask(void *chip, UINT32 MuteMask);
+static void okim6258_set_log_cb(void* chip, DEVCB_LOG func, void* param);
 
 
 static DEVDEF_RWFUNC devFunc[] =
@@ -47,6 +50,7 @@ static DEVDEF_RWFUNC devFunc[] =
 	{RWF_REGISTER | RWF_READ, DEVRW_A8D8, 0, okim6258_status_r},
 	{RWF_CLOCK | RWF_WRITE, DEVRW_VALUE, 0, okim6258_set_clock},
 	{RWF_SRATE | RWF_READ, DEVRW_VALUE, 0, okim6258_get_vclk},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, okim6258_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef =
@@ -62,6 +66,7 @@ static DEV_DEF devDef =
 	okim6258_set_mute_mask,
 	NULL,	// SetPanning
 	okim6258_set_srchg_cb,	// SetSampleRateChangeCallback
+	okim6258_set_log_cb,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs
@@ -86,6 +91,7 @@ typedef struct _okim6258_state okim6258_state;
 struct _okim6258_state
 {
 	DEV_DATA _devData;
+	DEV_LOGGER logger;
 
 	UINT8  status;
 
@@ -117,7 +123,7 @@ struct _okim6258_state
 	UINT8 pan;
 	INT16 last_smpl;
 
-	UINT8 clock_buffer[0x04];
+	UINT8 clock_buffer[4];
 	UINT32 initial_clock;
 	
 	UINT8 Muted;
@@ -134,6 +140,22 @@ static int diff_lookup[49*16];
 
 /* tables computed? */
 static int tables_computed = 0;
+
+
+INLINE UINT32 ReadLE32(const UINT8* buffer)
+{
+	return	(buffer[0] <<  0) | (buffer[1] <<  8) |
+			(buffer[2] << 16) | (buffer[3] << 24);
+}
+
+INLINE void WriteLE32(UINT8* buffer, UINT32 value)
+{
+	buffer[0] = (value >>  0) & 0xFF;
+	buffer[1] = (value >>  8) & 0xFF;
+	buffer[2] = (value >> 16) & 0xFF;
+	buffer[3] = (value >> 24) & 0xFF;
+	return;
+}
 
 /**********************************************************************************************
 
@@ -296,7 +318,7 @@ static void okim6258_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 
 ***********************************************************************************************/
 
-static UINT32 get_vclk(okim6258_state* info)
+INLINE UINT32 get_vclk(okim6258_state* info)
 {
 	UINT32 clk_rnd;
 	
@@ -322,6 +344,7 @@ static UINT8 device_start_okim6258(const OKIM6258_CFG* cfg, DEV_INFO* retDevInf)
 	compute_tables();
 
 	info->master_clock = info->initial_clock;
+	WriteLE32(info->clock_buffer, info->master_clock);
 	info->divider = dividers[info->start_divider];
 	info->SmpRateFunc = NULL;
 
@@ -361,10 +384,7 @@ static void device_reset_okim6258(void *chip)
 	okim6258_state *info = (okim6258_state *)chip;
 
 	info->master_clock = info->initial_clock;
-	info->clock_buffer[0x00] = (info->initial_clock & 0x000000FF) >>  0;
-	info->clock_buffer[0x01] = (info->initial_clock & 0x0000FF00) >>  8;
-	info->clock_buffer[0x02] = (info->initial_clock & 0x00FF0000) >> 16;
-	info->clock_buffer[0x03] = (info->initial_clock & 0xFF000000) >> 24;
+	WriteLE32(info->clock_buffer, info->master_clock);
 	info->divider = dividers[info->start_divider];
 	if (info->SmpRateFunc != NULL)
 		info->SmpRateFunc(info->SmpRateData, get_vclk(info));
@@ -409,18 +429,9 @@ static void okim6258_set_clock(void *chip, UINT32 clock)
 	okim6258_state *info = (okim6258_state *)chip;
 
 	if (clock)
-	{
-		// set to specific value
-		info->master_clock = clock;
-	}
+		info->master_clock = clock;	// set to parameter
 	else
-	{
-		// set to value from buffer
-		info->master_clock =	(info->clock_buffer[0x00] <<  0) |
-								(info->clock_buffer[0x01] <<  8) |
-								(info->clock_buffer[0x02] << 16) |
-								(info->clock_buffer[0x03] << 24);
-	}
+		info->master_clock = ReadLE32(info->clock_buffer);	// set to value from buffer
 	if (info->SmpRateFunc != NULL)
 		info->SmpRateFunc(info->SmpRateData, get_vclk(info));
 }
@@ -432,7 +443,7 @@ static void okim6258_set_clock(void *chip, UINT32 clock)
 
 ***********************************************************************************************/
 
-UINT32 okim6258_get_vclk(void *chip)
+static UINT32 okim6258_get_vclk(void *chip)
 {
 	okim6258_state *info = (okim6258_state *)chip;
 
@@ -474,7 +485,7 @@ static void okim6258_data_w(void *chip, UINT8 data)
 	info->data_buf_pos &= 0xF7;
 	if ((info->data_buf_pos >> 4) == (info->data_buf_pos & 0x0F))
 	{
-		logerror("Warning: FIFO full!\n");
+		emu_logf(&info->logger, DEVLOG_WARN, "FIFO full!\n");
 		info->data_buf_pos = (info->data_buf_pos & 0xF0) | ((info->data_buf_pos-1) & 0x07);
 	}
 	info->data_empty = 0x00;
@@ -522,22 +533,13 @@ static void okim6258_ctrl_w(void *chip, UINT8 data)
 
 	if (data & COMMAND_RECORD)
 	{
-		logerror("M6258: Record enabled\n");
+		emu_logf(&info->logger, DEVLOG_ERROR, "Record enabled\n");
 		info->status |= STATUS_RECORDING;
 	}
 	else
 	{
 		info->status &= ~STATUS_RECORDING;
 	}
-}
-
-static void okim6258_set_clock_byte(void *chip, UINT8 offset, UINT8 val)
-{
-	okim6258_state *info = (okim6258_state *)chip;
-	
-	info->clock_buffer[offset] = val;
-	
-	return;
 }
 
 static void okim6258_pan_w(void *chip, UINT8 data)
@@ -552,6 +554,7 @@ static void okim6258_pan_w(void *chip, UINT8 data)
 
 static void okim6258_write(void *chip, UINT8 offset, UINT8 data)
 {
+	okim6258_state *info = (okim6258_state *)chip;
 	switch(offset)
 	{
 	case 0x00:
@@ -566,11 +569,11 @@ static void okim6258_write(void *chip, UINT8 offset, UINT8 data)
 	case 0x08:
 	case 0x09:
 	case 0x0A:
-		okim6258_set_clock_byte(chip, offset & 0x03, data);
+		info->clock_buffer[offset & 0x03] = data;
 		break;
 	case 0x0B:
-		okim6258_set_clock_byte(chip, offset & 0x03, data);
-		okim6258_set_clock(chip, 0);	// refresh clock
+		info->clock_buffer[offset & 0x03] = data;
+		okim6258_set_clock(chip, 0);	// refresh clock from clock_buffer
 		break;
 	case 0x0C:
 		okim6258_set_divider(chip, data);
@@ -611,5 +614,12 @@ static void okim6258_set_mute_mask(void *chip, UINT32 MuteMask)
 	
 	info->Muted = MuteMask & 0x01;
 	
+	return;
+}
+
+static void okim6258_set_log_cb(void* chip, DEVCB_LOG func, void* param)
+{
+	okim6258_state *info = (okim6258_state *)chip;
+	dev_logger_set(&info->logger, info, func, param);
 	return;
 }

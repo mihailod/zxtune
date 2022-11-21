@@ -1,46 +1,47 @@
 /**
-*
-* @file
-*
-* @brief  Serialization-related implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Serialization-related implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//library includes
+// library includes
 #include <parameters/accessor.h>
 #include <parameters/convert.h>
 #include <parameters/serialize.h>
 #include <parameters/visitor.h>
-//std includes
+// std includes
 #include <algorithm>
 
 namespace
 {
   using namespace Parameters;
 
-  class StringConvertor : public Strings::Map
-                        , public Visitor
+  class StringConvertor
+    : public Strings::Map
+    , public Visitor
   {
   public:
-    void SetValue(const NameType& name, IntType val) override
+    void SetValue(Identifier name, IntType val) override
     {
-      insert(value_type(name.FullPath(), ConvertToString(val)));
+      emplace(name.AsString(), ConvertToString(val));
     }
 
-    void SetValue(const NameType& name, const StringType& val) override
+    void SetValue(Identifier name, StringView val) override
     {
-      insert(value_type(name.FullPath(), ConvertToString(val)));
+      emplace(name.AsString(), ConvertToString(val));
     }
 
-    void SetValue(const NameType& name, const DataType& val) override
+    void SetValue(Identifier name, Binary::View val) override
     {
-      insert(value_type(name.FullPath(), ConvertToString(val)));
+      emplace(name.AsString(), ConvertToString(val));
     }
   };
 
-  void SetValue(Visitor& visitor, const NameType& name, const String& val)
+  void SetValue(Visitor& visitor, StringView name, StringView val)
   {
     IntType asInt;
     DataType asData;
@@ -58,7 +59,7 @@ namespace
       visitor.SetValue(name, asString);
     }
   }
-}
+}  // namespace
 
 namespace Parameters
 {
@@ -76,4 +77,4 @@ namespace Parameters
     ac.Process(cnv);
     cnv.swap(strings);
   }
-}
+}  // namespace Parameters

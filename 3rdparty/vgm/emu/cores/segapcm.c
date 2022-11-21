@@ -38,6 +38,7 @@ static DEVDEF_RWFUNC devFunc[] =
 	{RWF_REGISTER | RWF_READ, DEVRW_A16D8, 0, sega_pcm_r},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_BLOCK, 0, sega_pcm_write_rom},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_MEMSIZE, 0, sega_pcm_alloc_rom},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, segapcm_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef =
@@ -53,6 +54,7 @@ static DEV_DEF devDef =
 	segapcm_set_mute_mask,
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	NULL,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs
@@ -91,6 +93,8 @@ static void SEGAPCM_update(void *chip, UINT32 samples, DEV_SMPL **outputs)
 	/* clear the buffers */
 	memset(outputs[0], 0, samples*sizeof(DEV_SMPL));
 	memset(outputs[1], 0, samples*sizeof(DEV_SMPL));
+	if (spcm->rom == NULL)
+		return;
 
 	// reg      function
 	// ------------------------------------------------

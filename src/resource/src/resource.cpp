@@ -1,25 +1,25 @@
 /**
-*
-* @file
-*
-* @brief  ZIP-based resources implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ZIP-based resources implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
+// common includes
 #include <error_tools.h>
 #include <make_ptr.h>
 #include <pointers.h>
-//library includes
+// library includes
 #include <binary/container_factories.h>
 #include <debug/log.h>
 #include <formats/archived/decoders.h>
 #include <l10n/api.h>
-#include <resource/api.h>
 #include <platform/tools.h>
-//std includes
+#include <resource/api.h>
+// std includes
 #include <fstream>
 
 #define FILE_TAG 82AE713A
@@ -28,7 +28,7 @@ namespace
 {
   const L10n::TranslateFunctor translate = L10n::TranslateFunctor("resource");
   const Debug::Stream Dbg("Resource");
-}
+}  // namespace
 
 namespace
 {
@@ -38,8 +38,7 @@ namespace
     LightweightBinaryContainer(const uint8_t* data, std::size_t size)
       : RawData(data)
       , RawSize(size)
-    {
-    }
+    {}
 
     const void* Start() const override
     {
@@ -53,9 +52,11 @@ namespace
 
     Ptr GetSubcontainer(std::size_t offset, std::size_t size) const override
     {
-      std::unique_ptr<Dump> copy(new Dump(RawData + offset, RawData + std::min(RawSize, offset + size)));
+      std::unique_ptr<Binary::Dump> copy(
+          new Binary::Dump(RawData + offset, RawData + std::min(RawSize, offset + size)));
       return Binary::CreateContainer(std::move(copy));
     }
+
   private:
     const uint8_t* const RawData;
     const std::size_t RawSize;
@@ -68,8 +69,7 @@ namespace
   public:
     explicit CompositeArchive(ArchivesSet delegates)
       : Delegates(std::move(delegates))
-    {
-    }
+    {}
 
     const void* Start() const override
     {
@@ -115,19 +115,20 @@ namespace
       }
       return res;
     }
+
   private:
     const ArchivesSet Delegates;
   };
-}
+}  // namespace
 
 namespace
 {
-  std::string GetArchiveContainerName()
+  String GetArchiveContainerName()
   {
     return Platform::GetCurrentImageFilename();
   }
 
-  Binary::Container::Ptr ReadFile(const std::string& filename)
+  Binary::Container::Ptr ReadFile(const String& filename)
   {
     std::ifstream file(filename.c_str(), std::ios::binary);
     if (!file)
@@ -137,14 +138,14 @@ namespace
     file.seekg(0, std::ios_base::end);
     const std::size_t size = static_cast<std::size_t>(file.tellg());
     file.seekg(0);
-    std::unique_ptr<Dump> tmp(new Dump(size));
+    std::unique_ptr<Binary::Dump> tmp(new Binary::Dump(size));
     file.read(safe_ptr_cast<char*>(tmp->data()), size);
     return Binary::CreateContainer(std::move(tmp));
   }
 
   Binary::Container::Ptr LoadArchiveContainer()
   {
-    const std::string filename = GetArchiveContainerName();
+    const auto filename = GetArchiveContainerName();
     return ReadFile(filename);
   }
 
@@ -154,7 +155,7 @@ namespace
     const std::size_t dataSize = data.Size();
     const uint8_t* const dataStart = static_cast<const uint8_t*>(data.Start());
     ArchivesSet result;
-    for (std::size_t offset = 0; offset < dataSize; )
+    for (std::size_t offset = 0; offset < dataSize;)
     {
       const LightweightBinaryContainer archData(dataStart + offset, dataSize - offset);
       if (format->Match(archData))
@@ -173,7 +174,8 @@ namespace
     return result;
   }
 
-  Formats::Archived::Container::Ptr FindArchive(const Binary::Container& data, const Formats::Archived::Decoder& decoder)
+  Formats::Archived::Container::Ptr FindArchive(const Binary::Container& data,
+                                                const Formats::Archived::Decoder& decoder)
   {
     const ArchivesSet archives = FindArchives(data, decoder);
     switch (archives.size())
@@ -199,8 +201,7 @@ namespace
   public:
     EmbeddedArchive()
       : Archive(LoadEmbeddedArchive())
-    {
-    }
+    {}
 
     Binary::Container::Ptr Load(const String& name) const
     {
@@ -222,26 +223,28 @@ namespace
       static const EmbeddedArchive self;
       return self;
     }
+
   private:
     class ResourceVisitorAdapter : public Formats::Archived::Container::Walker
     {
     public:
       explicit ResourceVisitorAdapter(Resource::Visitor& delegate)
         : Delegate(delegate)
-      {
-      }
+      {}
 
       void OnFile(const Formats::Archived::File& file) const override
       {
         return Delegate.OnResource(file.GetName());
       }
+
     private:
       Resource::Visitor& Delegate;
     };
+
   private:
     const Formats::Archived::Container::Ptr Archive;
   };
-}
+}  // namespace
 
 namespace Resource
 {
@@ -254,4 +257,4 @@ namespace Resource
   {
     return EmbeddedArchive::Instance().Enumerate(visitor);
   }
-}
+}  // namespace Resource

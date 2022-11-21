@@ -1,18 +1,20 @@
 /**
-*
-* @file
-*
-* @brief    Localization support API
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief    Localization support API
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <types.h>
-//std includes
+// library includes
+#include <binary/dump.h>
+// std includes
 #include <memory>
 
 namespace L10n
@@ -46,10 +48,10 @@ namespace L10n
 
   struct Translation
   {
-    std::string Domain;
-    std::string Language;
-    std::string Type;
-    Dump Data;
+    String Domain;
+    String Language;
+    String Type;
+    Binary::Dump Data;
   };
 
   class Library
@@ -59,10 +61,10 @@ namespace L10n
 
     virtual void AddTranslation(const Translation& trans) = 0;
 
-    virtual void SelectTranslation(const std::string& translation) = 0;
+    virtual void SelectTranslation(const String& translation) = 0;
 
-    virtual Vocabulary::Ptr GetVocabulary(const std::string& domain) const = 0;
+    virtual Vocabulary::Ptr GetVocabulary(const String& domain) const = 0;
 
     static Library& Instance();
   };
-}
+}  // namespace L10n

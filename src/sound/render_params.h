@@ -1,16 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  Rendering parameters definition. Used as POD-helper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Rendering parameters definition. Used as POD-helper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <parameters/accessor.h>
 #include <parameters/modifier.h>
 #include <sound/loop.h>
@@ -30,16 +30,12 @@ namespace Sound
 
     //! Rendering sound frequency
     virtual uint_t SoundFreq() const = 0;
-    //! Frame duration in us
-    virtual Time::Microseconds FrameDuration() const = 0;
     //! Loop mode
     virtual LoopParameters Looped() const = 0;
-    //! Sound samples count per one frame
-    virtual uint_t SamplesPerFrame() const = 0;
 
     static Ptr Create(Parameters::Accessor::Ptr soundParameters);
   };
-  
-  Time::Microseconds GetFrameDuration(const Parameters::Accessor& params);
-  void SetFrameDuration(Parameters::Modifier& params, Time::Microseconds duration);
-}
+
+  LoopParameters GetLoopParameters(const Parameters::Accessor& params);
+  uint_t GetSoundFrequency(const Parameters::Accessor& params);
+}  // namespace Sound

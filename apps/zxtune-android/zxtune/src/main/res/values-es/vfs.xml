@@ -189,6 +189,8 @@
     <string name="vfs_vgmrips_systems_name">Sistemas</string>
     <string name="vfs_vgmrips_random_name">Melodías aleatorias</string>
     <!--errors-->
-  <string name="network_inaccessible">La red no es accesible</string>
-  <string name="failed_resolve">No se pudo resolver %s</string>
+    <string name="network_inaccessible">La red no es accesible</string>
+    <string name="failed_resolve">No se pudo resolver %s</string>
+    <string name="limited_storage_access">Toque para otorgar permiso de acceso</string>
+    <string name="no_stored_playlists_access">Toque para configurar la ubicación de almacenamiento persistente</string>
 </resources>

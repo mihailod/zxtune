@@ -7,25 +7,8 @@
 package app.zxtune.playback.service;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.net.Uri;
-import app.zxtune.analytics.Analytics;
-import app.zxtune.Log;
-import app.zxtune.Preferences;
-import app.zxtune.Releaseable;
-import app.zxtune.TimeStamp;
-import app.zxtune.core.Properties;
-import app.zxtune.core.jni.GlobalOptions;
-import app.zxtune.device.sound.SoundOutputSamplesTarget;
-import app.zxtune.playback.*;
-import app.zxtune.playback.stubs.IteratorStub;
-import app.zxtune.playback.stubs.PlayableItemStub;
-import app.zxtune.playback.stubs.VisualizerStub;
-import app.zxtune.sound.AsyncPlayer;
-import app.zxtune.sound.PlayerEventsListener;
-import app.zxtune.sound.SamplesSource;
-import app.zxtune.sound.SamplesTarget;
-import app.zxtune.sound.StubSamplesSource;
+import android.os.Bundle;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -35,6 +18,32 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import app.zxtune.Log;
+import app.zxtune.Releaseable;
+import app.zxtune.TimeStamp;
+import app.zxtune.analytics.Analytics;
+import app.zxtune.core.Properties;
+import app.zxtune.device.sound.SoundOutputSamplesTarget;
+import app.zxtune.playback.Callback;
+import app.zxtune.playback.CompositeCallback;
+import app.zxtune.playback.Item;
+import app.zxtune.playback.Iterator;
+import app.zxtune.playback.IteratorFactory;
+import app.zxtune.playback.PlayableItem;
+import app.zxtune.playback.PlaybackControl;
+import app.zxtune.playback.PlaybackService;
+import app.zxtune.playback.SeekControl;
+import app.zxtune.playback.Visualizer;
+import app.zxtune.playback.stubs.IteratorStub;
+import app.zxtune.playback.stubs.PlayableItemStub;
+import app.zxtune.playback.stubs.VisualizerStub;
+import app.zxtune.preferences.DataStore;
+import app.zxtune.sound.AsyncPlayer;
+import app.zxtune.sound.PlayerEventsListener;
+import app.zxtune.sound.SamplesSource;
+import app.zxtune.sound.SamplesTarget;
+import app.zxtune.sound.StubSamplesSource;
+
 public class PlaybackServiceLocal implements PlaybackService, Releaseable {
 
   private static final String TAG = PlaybackServiceLocal.class.getName();
@@ -43,6 +52,7 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
   private static final String PREF_LAST_PLAYED_POSITION = "last_played_position";
 
   private final Context context;
+  private final DataStore prefs;
   private final ExecutorService executor;
   private final CompositeCallback callbacks;
   private final NavigateCommand navigateCmd;
@@ -58,8 +68,9 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
     void execute() throws Exception;
   }
 
-  public PlaybackServiceLocal(Context context) {
+  public PlaybackServiceLocal(Context context, DataStore prefs) {
     this.context = context;
+    this.prefs = prefs;
     this.executor = Executors.newCachedThreadPool();
     this.callbacks = new CompositeCallback();
     this.navigateCmd = new NavigateCommand();
@@ -67,7 +78,7 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
     this.playback = new DispatchedPlaybackControl();
     this.seek = new DispatchedSeekControl();
     this.visualizer = new DispatchedVisualizer();
-    final SamplesTarget target = SoundOutputSamplesTarget.create();
+    final SamplesTarget target = SoundOutputSamplesTarget.create(context);
     final PlayerEventsListener events = new PlaybackEvents(callbacks, playback, seek);
     this.iterator = new AtomicReference<>(IteratorStub.instance());
     this.holder = new AtomicReference<>(Holder.instance());
@@ -88,12 +99,12 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
       final Uri nowPlaying = getNowPlaying().getId();
       if (!Uri.EMPTY.equals(nowPlaying)) {
         final String path = nowPlaying.toString();
-        final long position = getSeekControl().getPosition().convertTo(TimeUnit.MILLISECONDS);
+        final long position = getSeekControl().getPosition().toMilliseconds();
         Log.d(TAG, "Save last played item '%s' at %dms", path, position);
-        final SharedPreferences.Editor editor = Preferences.getDefaultSharedPreferences(context).edit();
-        editor.putString(PREF_LAST_PLAYED_PATH, path);
-        editor.putLong(PREF_LAST_PLAYED_POSITION, position);
-        editor.apply();
+        final Bundle bundle = new Bundle();
+        bundle.putString(PREF_LAST_PLAYED_PATH, path);
+        bundle.putLong(PREF_LAST_PLAYED_POSITION, position);
+        prefs.putBatch(bundle);
       }
     } catch (Exception e) {
       Log.w(TAG, e, "Failed to store session");
@@ -101,7 +112,6 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
   }
 
   public final void restoreSession() {
-    final SharedPreferences prefs = Preferences.getDefaultSharedPreferences(context);
     final String path = prefs.getString(PREF_LAST_PLAYED_PATH, null);
     if (path != null) {
       final long position = prefs.getLong(PREF_LAST_PLAYED_POSITION, 0);
@@ -110,7 +120,7 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
         public void run() {
           try {
             Log.d(TAG, "Restore last played item '%s' at %dms", path, position);
-            restoreSession(Uri.parse(path), TimeStamp.createFrom(position, TimeUnit.MILLISECONDS));
+            restoreSession(Uri.parse(path), TimeStamp.fromMilliseconds(position));
           } catch (Exception e) {
             Log.w(TAG, e, "Failed to restore session");
           }
@@ -122,13 +132,13 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
   private void restoreSession(Uri uri, TimeStamp position) throws Exception {
     final Iterator iter = IteratorFactory.createIterator(context, uri);
     final PlayableItem newItem = iter.getItem();
-    final Holder newHolder = new Holder(newItem);
-    newHolder.source.initialize(player.getSampleRate());
+    final Holder newHolder = new Holder(newItem, player.getSampleRate());
     newHolder.source.setPosition(position);
     if (iterator.compareAndSet(IteratorStub.instance(), iter)) {
       setNewHolder(newHolder);
     } else {
       Log.d(TAG, "Drop stale session restore");
+      newHolder.release();
     }
   }
 
@@ -159,7 +169,7 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
             break;
           }
         } catch (Exception e) {
-          if (batch.compareAndSet(uri, null)) {
+          if (batch.compareAndSet(uri, null) || batch.compareAndSet(null, null)) {
             throw e;
           }
         }
@@ -168,7 +178,7 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
   }
 
   private void setNewItem(PlayableItem newItem) {
-    final Holder newHolder = new Holder(newItem);
+    final Holder newHolder = new Holder(newItem, player.getSampleRate());
     setNewHolder(newHolder);
   }
 
@@ -196,13 +206,8 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
   }
 
   @Override
-  public void subscribe(Callback callback) {
-    callbacks.add(callback);
-  }
-
-  @Override
-  public void unsubscribe(Callback callback) {
-    callbacks.remove(callback);
+  public Releaseable subscribe(Callback callback) {
+    return callbacks.add(callback);
   }
 
   @Override
@@ -243,24 +248,16 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
   }
 
   private void executeCommandImpl(final Command cmd) {
-    executor.execute(new Runnable() {
-      @Override
-      public void run() {
-        try {
-          cmd.execute();
-        } catch (Exception e) {//IOException|InterruptedException
-          Log.w(TAG, e, cmd.getClass().getName());
-          final Throwable cause = e.getCause();
-          final String msg = cause != null ? cause.getMessage() : e.getMessage();
-          callbacks.onError(msg);
-        }
+    executor.execute(() -> {
+      try {
+        cmd.execute();
+      } catch (Exception e) {//IOException|InterruptedException
+        Log.w(TAG, e, cmd.getClass().getName());
+        final Throwable cause = e.getCause();
+        final String msg = cause != null ? cause.getMessage() : e.getMessage();
+        callbacks.onError(msg);
       }
     });
-  }
-
-  private void saveProperty(String name, long value) {
-    final SharedPreferences prefs = Preferences.getDefaultSharedPreferences(context);
-    prefs.edit().putLong(name, value).apply();
   }
 
   private static class Holder {
@@ -277,9 +274,9 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
       this.visualizer = VisualizerStub.instance();
     }
 
-    Holder(PlayableItem item) {
+    Holder(PlayableItem item, int samplerate) {
       this.item = item;
-      this.player = item.getModule().createPlayer();
+      this.player = item.getModule().createPlayer(samplerate);
       this.source = new SeekableSamplesSource(player);
       this.visualizer = new PlaybackVisualizer(player);
     }
@@ -366,7 +363,7 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
     private final IteratorFactory.NavigationMode navigation;
 
     DispatchedPlaybackControl() {
-      this.navigation = new IteratorFactory.NavigationMode(context);
+      this.navigation = new IteratorFactory.NavigationMode(prefs);
     }
 
     @Override
@@ -376,12 +373,7 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
 
     @Override
     public void stop() {
-      executeCommand(new Command() {
-        @Override
-        public void execute() {
-          stopSync();
-        }
-      });
+      executeCommand(PlaybackServiceLocal.this::stopSync);
     }
 
     @Override
@@ -396,15 +388,14 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
 
     @Override
     public TrackMode getTrackMode() {
-      final long val = GlobalOptions.instance().getProperty(Properties.Sound.LOOPED, 0);
+      final long val = prefs.getLong(Properties.Sound.LOOPED, 0);
       return val != 0 ? TrackMode.LOOPED : TrackMode.REGULAR;
     }
 
     @Override
     public void setTrackMode(TrackMode mode) {
       final long val = mode == TrackMode.LOOPED ? 1 : 0;
-      GlobalOptions.instance().setProperty(Properties.Sound.LOOPED, val);
-      saveProperty(Properties.Sound.LOOPED, val);
+      prefs.putLong(Properties.Sound.LOOPED, val);
     }
 
     @Override

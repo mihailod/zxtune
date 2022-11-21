@@ -1,21 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief  Beeper support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Beeper support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <types.h>
-//library includes
-#include <sound/receiver.h>
+// library includes
+#include <sound/chunk.h>
 #include <time/instant.h>
-//std includes
+// std includes
 #include <memory>
 
 namespace Devices
@@ -27,12 +27,13 @@ namespace Devices
 
     struct DataChunk
     {
-      DataChunk() : TimeStamp(), Level()
-      {
-      }
+      DataChunk(Stamp stamp, bool level)
+        : TimeStamp(stamp)
+        , Level(level)
+      {}
 
       Stamp TimeStamp;
-      bool Level;
+      bool Level = false;
     };
 
     class Device
@@ -47,12 +48,14 @@ namespace Devices
       /// reset internal state to initial
       virtual void Reset() = 0;
     };
-    
-    //TODO: add StateSource if required
+
+    // TODO: add StateSource if required
     class Chip : public Device
     {
     public:
-      typedef std::shared_ptr<Chip> Ptr;
+      using Ptr = std::shared_ptr<Chip>;
+
+      virtual Sound::Chunk RenderTill(Stamp till) = 0;
     };
 
     class ChipParameters
@@ -68,6 +71,6 @@ namespace Devices
     };
 
     /// Virtual constructors
-    Chip::Ptr CreateChip(ChipParameters::Ptr params, Sound::Receiver::Ptr target);
-  }
-}
+    Chip::Ptr CreateChip(ChipParameters::Ptr params);
+  }  // namespace Beeper
+}  // namespace Devices

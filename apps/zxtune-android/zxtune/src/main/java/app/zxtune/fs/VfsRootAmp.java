@@ -8,7 +8,6 @@ package app.zxtune.fs;
 
 import android.content.Context;
 import android.net.Uri;
-import android.text.format.Formatter;
 
 import androidx.annotation.Nullable;
 
@@ -16,6 +15,7 @@ import java.io.IOException;
 import java.util.List;
 
 import app.zxtune.R;
+import app.zxtune.Util;
 import app.zxtune.fs.amp.Author;
 import app.zxtune.fs.amp.CachingCatalog;
 import app.zxtune.fs.amp.Catalog;
@@ -27,7 +27,6 @@ import app.zxtune.fs.amp.RemoteCatalog;
 import app.zxtune.fs.amp.Track;
 import app.zxtune.fs.http.MultisourceHttpProvider;
 
-@Icon(R.drawable.ic_browser_vfs_amp)
 final class VfsRootAmp extends StubObject implements VfsRoot {
 
   private static final String TAG = VfsRootAmp.class.getName();
@@ -42,9 +41,9 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
     this.context = context;
     this.catalog = Catalog.create(context, http);
     this.groupings = new GroupingDir[]{
-            new HandlesDir(),
-            new CountriesDir(),
-            new GroupsDir()
+        new HandlesDir(),
+        new CountriesDir(),
+        new GroupsDir()
     };
   }
 
@@ -73,6 +72,8 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
     if (VfsExtensions.SEARCH_ENGINE.equals(id)) {
       //assume root will search by authors
       return new AuthorsSearchEngine();
+    } else if (VfsExtensions.ICON.equals(id)) {
+      return R.drawable.ic_browser_vfs_amp;
     } else {
       return super.getExtension(id);
     }
@@ -224,6 +225,10 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
     @Override
     public void enumerate(final Visitor visitor) throws IOException {
       catalog.queryAuthors(letter, new Catalog.AuthorsVisitor() {
+        //TODO: remove
+        @Override
+        public void setCountHint(int count) {}
+
         @Override
         public void accept(Author obj) {
           visitor.onDir(makeSubdir(obj));
@@ -281,7 +286,7 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return country.name;
+      return country.getName();
     }
 
     @Override
@@ -355,7 +360,7 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return group.name;
+      return group.getName();
     }
 
     @Override
@@ -396,12 +401,12 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return author.handle;
+      return author.getHandle();
     }
 
     @Override
     public String getDescription() {
-      return author.realName;
+      return author.getRealName();
     }
 
     @Override
@@ -439,7 +444,7 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
     }
     // cut uri here
     return new AuthorDir(Identifier.forAuthor(grouping.getUri().buildUpon(), author).build(),
-            author);
+        author);
   }
 
   private class TrackFile extends StubObject implements VfsFile {
@@ -459,7 +464,7 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return track.filename;
+      return track.getFilename();
     }
 
     @Override
@@ -470,15 +475,15 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
 
     @Override
     public String getSize() {
-      return Formatter.formatShortFileSize(context, track.size * 1024);
+      return Util.formatSize(track.getSize() * 1024L);
     }
 
     @Override
     public Object getExtension(String id) {
       if (VfsExtensions.CACHE_PATH.equals(id)) {
-        return Integer.toString(track.id);
+        return Integer.toString(track.getId());
       } else if (VfsExtensions.DOWNLOAD_URIS.equals(id)) {
-        return RemoteCatalog.getTrackUris(track.id);
+        return RemoteCatalog.getTrackUris(track.getId());
       } else {
         return super.getExtension(id);
       }
@@ -491,11 +496,15 @@ final class VfsRootAmp extends StubObject implements VfsRoot {
     public void find(String query, final Visitor visitor) throws IOException {
       catalog.findTracks(query, new Catalog.FoundTracksVisitor() {
 
+        // TODO: remove
+        @Override
+        public void setCountHint(int count) {}
+
         @Override
         public void accept(Author author, Track track) {
-          final String letter = author.handle.substring(0, 1);
+          final String letter = author.getHandle().substring(0, 1);
           final Uri.Builder categoryUri = Identifier.forHandleLetter(Identifier.isHandleLetter(letter)
-                  ? letter : Catalog.NON_LETTER_FILTER);
+              ? letter : Catalog.NON_LETTER_FILTER);
           final Uri.Builder authorsUri = Identifier.forAuthor(categoryUri, author);
           final Uri.Builder trackUri = Identifier.forTrack(authorsUri, track);
           visitor.onFile(new TrackFile(trackUri.build(), track));

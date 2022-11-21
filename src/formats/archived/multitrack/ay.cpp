@@ -1,30 +1,27 @@
 /**
-* 
-* @file
-*
-* @brief  AY/EMUL containers support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AY/EMUL containers support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/container_base.h>
 #include <binary/format_factories.h>
 #include <formats/archived/decoders.h>
+#include <formats/archived/multitrack/filename.h>
 #include <formats/chiptune/emulation/ay.h>
 #include <strings/prefixed_index.h>
-//std includes
+// std includes
 #include <algorithm>
 #include <utility>
-//text includes
-#include <formats/text/archived.h>
 
-namespace Formats
-{
-namespace Archived
+namespace Formats::Archived
 {
   namespace MultiAY
   {
@@ -34,8 +31,7 @@ namespace Archived
       File(String name, Binary::Container::Ptr data)
         : Name(std::move(name))
         , Data(std::move(data))
-      {
-      }
+      {}
 
       String GetName() const override
       {
@@ -51,6 +47,7 @@ namespace Archived
       {
         return Data;
       }
+
     private:
       const String Name;
       const Binary::Container::Ptr Data;
@@ -61,8 +58,7 @@ namespace Archived
     public:
       explicit Container(Binary::Container::Ptr data)
         : BaseContainer(std::move(data))
-      {
-      }
+      {}
 
       void ExploreFiles(const Container::Walker& walker) const override
       {
@@ -71,7 +67,7 @@ namespace Archived
           const Formats::Chiptune::AY::BlobBuilder::Ptr builder = Formats::Chiptune::AY::CreateFileBuilder();
           if (const Formats::Chiptune::Container::Ptr parsed = Formats::Chiptune::AY::Parse(*Delegate, idx, *builder))
           {
-            const String subPath = Strings::PrefixedIndex(Text::MULTITRACK_FILENAME_PREFIX, idx).ToString();
+            const String subPath = MultitrackArchives::CreateFilename(idx);
             const Binary::Container::Ptr subData = builder->Result();
             const File file(subPath, subData);
             walker.OnFile(file);
@@ -81,21 +77,21 @@ namespace Archived
 
       File::Ptr FindFile(const String& name) const override
       {
-        const Strings::PrefixedIndex rawName(Text::AY_RAW_FILENAME_PREFIX, name);
-        const Strings::PrefixedIndex ayName(Text::MULTITRACK_FILENAME_PREFIX, name);
-        if (!rawName.IsValid() && !ayName.IsValid())
+        const Strings::PrefixedIndex rawName("@"_sv, name);
+        const auto ayIndex = MultitrackArchives::ParseFilename(name);
+        if (!rawName.IsValid() && !ayIndex)
         {
           return File::Ptr();
         }
-        const uint_t index = rawName.IsValid() ? rawName.GetIndex() : ayName.GetIndex();
+        const uint_t index = rawName.IsValid() ? rawName.GetIndex() : *ayIndex;
         const uint_t subModules = Formats::Chiptune::AY::GetModulesCount(*Delegate);
         if (subModules < index)
         {
           return File::Ptr();
         }
         const Formats::Chiptune::AY::BlobBuilder::Ptr builder = rawName.IsValid()
-          ? Formats::Chiptune::AY::CreateMemoryDumpBuilder()
-          : Formats::Chiptune::AY::CreateFileBuilder();
+                                                                    ? Formats::Chiptune::AY::CreateMemoryDumpBuilder()
+                                                                    : Formats::Chiptune::AY::CreateFileBuilder();
         if (!Formats::Chiptune::AY::Parse(*Delegate, index, *builder))
         {
           return File::Ptr();
@@ -110,23 +106,23 @@ namespace Archived
       }
     };
 
-    const std::string HEADER_FORMAT(
-      "'Z'X'A'Y" // uint8_t Signature[4];
-      "'E'M'U'L" // only one type is supported now
-    );
-  }//namespace MultiAY
+    const Char DESCRIPTION[] = "Multi-AY/EMUL";
+    const auto HEADER_FORMAT =
+        "'Z'X'A'Y"  // uint8_t Signature[4];
+        "'E'M'U'L"  // only one type is supported now
+        ""_sv;
+  }  // namespace MultiAY
 
   class MultiAYDecoder : public Decoder
   {
   public:
     MultiAYDecoder()
       : Format(Binary::CreateFormat(MultiAY::HEADER_FORMAT))
-    {
-    }
+    {}
 
     String GetDescription() const override
     {
-      return Text::AY_ARCHIVE_DECODER_DESCRIPTION;
+      return MultiAY::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -160,6 +156,7 @@ namespace Archived
         return Container::Ptr();
       }
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -168,5 +165,4 @@ namespace Archived
   {
     return MakePtr<MultiAYDecoder>();
   }
-}//namespace Archived
-}//namespace Formats
+}  // namespace Formats::Archived

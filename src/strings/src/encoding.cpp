@@ -1,25 +1,27 @@
 /**
-*
-* @file
-*
-* @brief  Encoding-related implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Encoding-related implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "strings/src/utf8.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <iterator.h>
 #include <types.h>
-//library includes
+// library includes
 #include <math/bitops.h>
 #include <strings/encoding.h>
-//std includes
+// std includes
 #include <algorithm>
 #include <cassert>
+#include <limits>
+#include <vector>
 
 namespace Strings
 {
@@ -33,47 +35,46 @@ namespace Strings
       Graphic,
       Numeric,
       Alphabetic,
-      CategoriesCount,//limiter
-    
-      //letter flags
+      CategoriesCount,  // limiter
+
+      // letter flags
       Capital = 8,
       Vowel = 16,
     };
-    
+
     static bool IsAlphabetic(uint8_t trait)
     {
       return Alphabetic == GetCategory(trait);
     }
-    
+
     static uint8_t GetCategory(uint8_t trait)
     {
       return trait & 7;
     }
   };
-  
+
   struct Letter
   {
     uint16_t Upper;
     uint16_t Lower;
     uint32_t Traits;
-    
-    bool operator == (const Letter& rh) const
+
+    bool operator==(const Letter& rh) const
     {
-      return Upper == rh.Upper
-          && Lower == rh.Lower;
+      return Upper == rh.Upper && Lower == rh.Lower;
     }
 
-    bool operator != (const Letter& rh) const
+    bool operator!=(const Letter& rh) const
     {
-      return Upper != rh.Upper
-          || Lower != rh.Lower;
+      return Upper != rh.Upper || Lower != rh.Lower;
     }
   };
 
   static const Letter LIMITER = {0, 0, 0};
-  
-  //http://www.geocities.ws/click2speak/languages.html
-  
+
+  // http://www.geocities.ws/click2speak/languages.html
+
+  // clang-format off
   //https://en.wikipedia.org/wiki/Spanish_orthography#Alphabet_in_Spanish
   static const Letter SPANISH[] =
   {
@@ -457,7 +458,8 @@ namespace Strings
     {0x005a, 0x007a, 0},                //LATIN LETTER Z
     LIMITER
   };
-  
+  // clang-format on
+
   class UnicodeTraits
   {
   public:
@@ -476,7 +478,7 @@ namespace Strings
       Spanish = 512,
       Japanese = 1024
     };
-    
+
     uint8_t GetTraits(uint32_t sym) const
     {
       if (sym < Traits.size())
@@ -504,7 +506,7 @@ namespace Strings
         return CharTraits::Alphabetic;
       }
     }
-    
+
     uint_t GetLanguages(uint32_t sym) const
     {
       if (sym < Languages.size())
@@ -520,16 +522,17 @@ namespace Strings
         return Unknown;
       }
     }
-    
+
     static const UnicodeTraits& Instance()
     {
       static const UnicodeTraits instance;
       return instance;
     }
+
   private:
     static const std::size_t TOTAL_SYMBOLS = 0x2000;
     static const std::size_t TOTAL_ALPHABETIC = 0x2000;
-  
+
     UnicodeTraits()
     {
       AddTrait(CharTraits::Control, 0x00, 0x1f);
@@ -554,7 +557,7 @@ namespace Strings
       AddLanguage(DanishNorway, DANISH_NORWAY);
       AddLanguage(Spanish, SPANISH);
     }
-    
+
     void AddTrait(uint_t trait, uint_t first, uint_t last)
     {
       for (uint_t idx = first; idx <= last; ++idx)
@@ -562,7 +565,7 @@ namespace Strings
         Traits[idx] = trait;
       }
     }
-    
+
     void AddLanguage(LanguagesMask lang, const Letter* alphabet)
     {
       for (auto it = alphabet; *it != LIMITER; ++it)
@@ -574,10 +577,13 @@ namespace Strings
         Languages.at(letter.Lower) |= lang;
       }
     }
+
   private:
     std::array<uint8_t, TOTAL_SYMBOLS> Traits;
     std::array<uint16_t, TOTAL_ALPHABETIC> Languages;
   };
+
+  // clang-format off
   
   /*
     CP866:
@@ -665,23 +671,24 @@ namespace Strings
       return sym < 0x80 ? sym : UNICODES[sym - 0x80];
     }
   };
-  
+  // clang-format on
+
   uint_t GetPenalty(const std::vector<uint32_t>& symbols)
   {
     enum
     {
       PrevIsVowel = 1,
       CurrIsVowel = 2,
-    
+
       ConsCons = 0,
       VowCons = PrevIsVowel,
       ConsVow = CurrIsVowel,
       VowVow = PrevIsVowel + CurrIsVowel,
-      
+
       PairsTypes,
     };
     uint_t categories[CharTraits::CategoriesCount] = {0};
-    uint_t pairs[PairsTypes] = {0};//2*curIsVowel + 1*prevIsVowel;
+    uint_t pairs[PairsTypes] = {0};  // 2*curIsVowel + 1*prevIsVowel;
     uint_t languagesStrong = ~0;
     uint_t languagesWeak = 0;
     uint8_t prev = CharTraits::Undefined;
@@ -691,7 +698,7 @@ namespace Strings
       const auto curr = unicode.GetTraits(sym);
       if (!curr)
       {
-        return std::numeric_limits<uint_t>::max();//don't known how to recode
+        return std::numeric_limits<uint_t>::max();  // don't known how to recode
       }
       const auto cat = CharTraits::GetCategory(curr);
       ++categories[cat];
@@ -712,33 +719,24 @@ namespace Strings
     }
     const auto strongLangsCount = Math::CountBits(languagesStrong);
     const auto weakLangsCount = Math::CountBits(languagesWeak);
-    const auto strongLangsPenalty = strongLangsCount > 1
-      ? strongLangsCount * 8
-      : (strongLangsCount == 1 ? 0 : 1024);
-    const auto weakLangsPenalty = weakLangsCount > 1
-      ? weakLangsCount * 4
-      : (weakLangsCount == 1 ? 0 : 2);
+    const auto strongLangsPenalty = strongLangsCount > 1 ? strongLangsCount * 8 : (strongLangsCount == 1 ? 0 : 1024);
+    const auto weakLangsPenalty = weakLangsCount > 1 ? weakLangsCount * 4 : (weakLangsCount == 1 ? 0 : 2);
     const auto ctrlPenalty = categories[CharTraits::Control] * 512;
     const auto graphPenalty = categories[CharTraits::Graphic] * 256;
     const auto punctPenalty = categories[CharTraits::Punctuation] * 128;
     const auto pairsPenalty = (pairs[ConsCons] + pairs[VowVow]) * 64;
-    return ctrlPenalty
-      + graphPenalty
-      + punctPenalty
-      + pairsPenalty
-      + strongLangsPenalty + weakLangsPenalty
-    ;
+    return ctrlPenalty + graphPenalty + punctPenalty + pairsPenalty + strongLangsPenalty + weakLangsPenalty;
   }
 
   class Codepage
   {
   public:
     virtual ~Codepage() = default;
-    
+
     virtual bool Check(StringView str) const = 0;
     virtual std::vector<uint32_t> Translate(StringView str) const = 0;
   };
-  
+
   template<class Traits>
   class Codepage8Bit : public Codepage
   {
@@ -747,26 +745,25 @@ namespace Strings
     {
       return true;
     }
-  
+
     std::vector<uint32_t> Translate(StringView str) const override
     {
       std::vector<uint32_t> result(str.size());
       std::transform(str.begin(), str.end(), result.begin(), &Traits::GetUnicode);
       return result;
     }
-      
+
     static const Codepage& Instance()
     {
       static const Codepage8Bit<Traits> instance;
       return instance;
     }
+
   private:
-    Codepage8Bit()
-    {
-    }
+    Codepage8Bit() {}
   };
-  
-  //https://en.wikipedia.org/wiki/Shift_JIS
+
+  // https://en.wikipedia.org/wiki/Shift_JIS
   class ShiftJIS : public Codepage
   {
   public:
@@ -777,17 +774,17 @@ namespace Strings
         const uint8_t s1 = *it;
         if (s1 == 0x80 || s1 == 0xa0 || s1 >= 0xf0)
         {
-          //unused as first byte
+          // unused as first byte
           return false;
         }
         else if (s1 < 0x80)
         {
-          //non-altered
+          // non-altered
           continue;
         }
         else if (s1 > 0xa0 && s1 < 0xe0)
         {
-          //do not support half-width katakana due to detection problem
+          // do not support half-width katakana due to detection problem
           return false;
         }
         else if (++it == str.end())
@@ -797,13 +794,13 @@ namespace Strings
         const uint8_t s2 = *it;
         if (s2 < 0x40 || s2 == 0x7f || s2 > 0xfc)
         {
-          //unused as second byte
+          // unused as second byte
           return false;
         }
       }
       return true;
     }
-    
+
     std::vector<uint32_t> Translate(StringView str) const override
     {
       std::vector<uint32_t> result;
@@ -835,16 +832,15 @@ namespace Strings
       }
       return result;
     }
-    
+
     static const Codepage& Instance()
     {
       static const ShiftJIS instance;
       return instance;
     }
+
   private:
-    ShiftJIS()
-    {
-    }
+    ShiftJIS() {}
 
     static uint32_t GetUnicode(uint_t s1, uint_t s2)
     {
@@ -862,18 +858,13 @@ namespace Strings
       }
     }
   };
-  
-  std::string Decode(StringView str)
+
+  String Decode(StringView str)
   {
-    static const Codepage* CODEPAGES[] =
-    {
-      &Codepage8Bit<CP866>::Instance(),
-      &Codepage8Bit<CP1251>::Instance(),
-      &Codepage8Bit<CP1250>::Instance(),
-      &Codepage8Bit<CP1252>::Instance(),
-      &ShiftJIS::Instance()
-    };
-    
+    static const Codepage* CODEPAGES[] = {&Codepage8Bit<CP866>::Instance(), &Codepage8Bit<CP1251>::Instance(),
+                                          &Codepage8Bit<CP1250>::Instance(), &Codepage8Bit<CP1252>::Instance(),
+                                          &ShiftJIS::Instance()};
+
     std::vector<uint32_t> bestUnicode;
     uint_t minPenalty = std::numeric_limits<uint_t>::max();
     for (const auto cp : CODEPAGES)
@@ -896,15 +887,16 @@ namespace Strings
     }
     return Utf8Builder(bestUnicode.begin(), bestUnicode.end()).GetResult();
   }
-}
+}  // namespace Strings
 
 namespace Strings
 {
-  std::string ToAutoUtf8(StringView str)
+  String ToAutoUtf8(StringView str)
   {
+    static_assert(sizeof(str[0]) == 1, "8-bit encodings only supported");
     if (str.empty())
     {
-      return std::string();
+      return {};
     }
     else if (IsUtf8(str))
     {
@@ -912,9 +904,10 @@ namespace Strings
     }
     else if (IsUtf16(str))
     {
-      const auto begin = safe_ptr_cast<const uint16_t*>(str.begin());
-      const auto end = safe_ptr_cast<const uint16_t*>(str.end());
-      return Utf16ToUtf8({begin, end});
+      std::vector<uint16_t> aligned(str.size() / 2);
+      auto* target = aligned.data();
+      std::memcpy(target, str.data(), aligned.size() * sizeof(*target));
+      return Utf16ToUtf8({target, target + aligned.size()});
     }
     else
     {
@@ -922,7 +915,7 @@ namespace Strings
     }
   }
 
-  std::string Utf16ToUtf8(basic_string_view<uint16_t> str)
+  String Utf16ToUtf8(basic_string_view<uint16_t> str)
   {
     static const uint16_t BOM = 0xfeff;
     Strings::Utf8Builder builder;
@@ -943,7 +936,7 @@ namespace Strings
       }
       else if (sym >= 0xd800 && sym <= 0xdfff && it != str.end())
       {
-        //surrogate pairs
+        // surrogate pairs
         const uint32_t addon = needSwap ? swapBytes(*it) : (*it);
         if (addon >= 0xdc00 && addon <= 0xdfff)
         {
@@ -956,4 +949,4 @@ namespace Strings
     }
     return builder.GetResult();
   }
-}
+}  // namespace Strings

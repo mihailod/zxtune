@@ -1,17 +1,18 @@
 /**
-*
-* @file
-*
-* @brief  Core parameters names
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Core parameters names
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <parameters/types.h>
+#include <zxtune.h>
 
 namespace Parameters
 {
@@ -21,13 +22,13 @@ namespace Parameters
     namespace Core
     {
       //! @brief Parameters#ZXTune#Core namespace prefix
-      extern const NameType PREFIX;
+      const auto PREFIX = ZXTune::PREFIX + "core"_id;
 
       //! @brief AYM-chip related parameters namespace
       namespace AYM
       {
         //! @brief Parameters#ZXTune#Core#AYM namespace prefix
-        extern const NameType PREFIX;
+        const auto PREFIX = Core::PREFIX + "aym"_id;
 
         //@{
         //! @name PSG clockrate in Hz
@@ -37,7 +38,7 @@ namespace Parameters
         const IntType CLOCKRATE_MIN = 1000000;
         const IntType CLOCKRATE_MAX = UINT64_C(10000000);
         //! Parameter name
-        extern const NameType CLOCKRATE;
+        const auto CLOCKRATE = PREFIX + "clockrate"_id;
         //@}
 
         //@{
@@ -47,7 +48,7 @@ namespace Parameters
         //! Default is AY
         const IntType TYPE_DEFAULT = TYPE_AY;
         //! Parameter name
-        extern const NameType TYPE;
+        const auto TYPE = PREFIX + "type"_id;
         //@}
 
         //@{
@@ -58,12 +59,12 @@ namespace Parameters
         //! Default is HQ
         const IntType INTERPOLATION_DEFAULT = INTERPOLATION_HQ;
         //! Parameter name
-        extern const NameType INTERPOLATION;
+        const auto INTERPOLATION = PREFIX + "interpolation"_id;
         //@}
 
         //! @brief Frequency table for ay-based plugins
         //! @details String- table name or dump @see freq_tables.h
-        extern const NameType TABLE;
+        const auto TABLE = PREFIX + "table"_id;
 
         //@{
         //! @name Duty cycle in percents
@@ -72,7 +73,7 @@ namespace Parameters
         // Default is 50%
         const IntType DUTY_CYCLE_DEFAULT = 50;
         //! Parameter name
-        extern const NameType DUTY_CYCLE;
+        const auto DUTY_CYCLE = PREFIX + "duty_cycle"_id;
         //@}
 
         //@{
@@ -80,7 +81,7 @@ namespace Parameters
         //! @details @see core/devices/aym.h
         const IntType DUTY_CYCLE_MASK_DEFAULT = 0;
         //! Parameter name
-        extern const NameType DUTY_CYCLE_MASK;
+        const auto DUTY_CYCLE_MASK = PREFIX + "duty_cycle_mask"_id;
         //@}
 
         //@{
@@ -94,17 +95,17 @@ namespace Parameters
         const IntType LAYOUT_CBA = 5;
         const IntType LAYOUT_MONO = 6;
         //! Default is ABC
-        const IntType LAYOUT_DEFAULT = 0;
+        const IntType LAYOUT_DEFAULT = LAYOUT_ABC;
         //! Parameter name
-        extern const NameType LAYOUT;
+        const auto LAYOUT = PREFIX + "layout"_id;
         //@}
-      }
+      }  // namespace AYM
 
       //! @brief DAC-related parameters namespace
       namespace DAC
       {
         //! @brief Parameters#ZXTune#Core#DAC namespace prefix
-        extern const NameType PREFIX;
+        const auto PREFIX = Core::PREFIX + "dac"_id;
 
         //@{
         //! @name Interpolation mode
@@ -113,20 +114,20 @@ namespace Parameters
         //! Default is LQ
         const IntType INTERPOLATION_DEFAULT = INTERPOLATION_NO;
         //! Parameter name
-        extern const NameType INTERPOLATION;
+        const auto INTERPOLATION = PREFIX + "interpolation"_id;
         //@}
 
         const IntType SAMPLES_FREQUENCY_MIN = 800;
         const IntType SAMPLES_FREQUENCY_MAX = 16000;
         //! @brief Base samples frequency for C-1 (32.7Hz)
-        extern const NameType SAMPLES_FREQUENCY;
-      }
+        const auto SAMPLES_FREQUENCY = PREFIX + "samples_frequency"_id;
+      }  // namespace DAC
 
       //! @brief Z80-related parameters namespace
       namespace Z80
       {
         //! @brief Parameters#ZXTune#Core#Z80 namespace prefix
-        extern const NameType PREFIX;
+        const auto PREFIX = Core::PREFIX + "z80"_id;
 
         //@{
         //! @name CPU int duration in ticks
@@ -134,10 +135,10 @@ namespace Parameters
         //! Default value
         const IntType INT_TICKS_DEFAULT = 24;
         //! Parameter name
-        extern const NameType INT_TICKS;
+        const auto INT_TICKS = PREFIX + "int_ticks"_id;
         //@}
 
-          //@{
+        //@{
         //! @name CPU clockrate in Hz
 
         //! Default value- 3.5MHz
@@ -145,15 +146,15 @@ namespace Parameters
         const IntType CLOCKRATE_MIN = 1000000;
         const IntType CLOCKRATE_MAX = UINT64_C(10000000);
         //! Parameter name
-        extern const NameType CLOCKRATE;
+        const auto CLOCKRATE = PREFIX + "clockrate"_id;
         //@}
-      }
+      }  // namespace Z80
 
       //! @brief FM-related parameters namespace
       namespace FM
       {
         //! @brief Parameters#ZXTune#Core#FM namespace prefix
-        extern const NameType PREFIX;
+        const auto PREFIX = Core::PREFIX + "fm"_id;
 
         //@{
         //! @name FM clockrate in Hz
@@ -161,15 +162,15 @@ namespace Parameters
         //! Default value- 3.5MHz
         const IntType CLOCKRATE_DEFAULT = UINT64_C(3500000);
         //! Parameter name
-        extern const NameType CLOCKRATE;
+        const auto CLOCKRATE = PREFIX + "clockrate"_id;
         //@}
-      }
+      }  // namespace FM
 
       //! @brief SAA-related parameters namespace
       namespace SAA
       {
         //! @brief Parameters#ZXTune#Core#SAA namespace prefix
-        extern const NameType PREFIX;
+        const auto PREFIX = Core::PREFIX + "saa"_id;
 
         //@{
         //! @name SAA clockrate in Hz
@@ -179,7 +180,7 @@ namespace Parameters
         const IntType CLOCKRATE_MIN = UINT64_C(4000000);
         const IntType CLOCKRATE_MAX = UINT64_C(16000000);
         //! Parameter name
-        extern const NameType CLOCKRATE;
+        const auto CLOCKRATE = PREFIX + "clockrate"_id;
         //@}
 
         //@{
@@ -190,15 +191,15 @@ namespace Parameters
         //! Default is LQ
         const IntType INTERPOLATION_DEFAULT = INTERPOLATION_LQ;
         //! Parameter name
-        extern const NameType INTERPOLATION;
+        const auto INTERPOLATION = PREFIX + "interpolation"_id;
         //@}
-      }
+      }  // namespace SAA
 
       //! @brief SID-related parameters namespace
       namespace SID
       {
         //! @brief Parameters#ZXTune#Core#SID namespace prefix
-        extern const NameType PREFIX;
+        const auto PREFIX = Core::PREFIX + "sid"_id;
 
         //@{
         //! @name SID filter emulation
@@ -207,7 +208,7 @@ namespace Parameters
         //! Default is enabled
         const IntType FILTER_DEFAULT = FILTER_ENABLED;
         //! Parameter name
-        extern const NameType FILTER;
+        const auto FILTER = PREFIX + "filter"_id;
         //@}
 
         //@{
@@ -218,9 +219,9 @@ namespace Parameters
         //! Default is LQ
         const IntType INTERPOLATION_DEFAULT = INTERPOLATION_NONE;
         //! Parameter name
-        extern const NameType INTERPOLATION;
+        const auto INTERPOLATION = PREFIX + "interpolation"_id;
         //@}
-      }
-    }
-  }
-}
+      }  // namespace SID
+    }    // namespace Core
+  }      // namespace ZXTune
+}  // namespace Parameters

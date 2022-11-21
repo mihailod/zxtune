@@ -1,22 +1,25 @@
 /**
-* 
-* @file
-*
-* @brief Version functions interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Version functions interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <types.h>
 
 namespace Platform
 {
   namespace Version
   {
+    // Should be defined in app
+    extern const Char PROGRAM_NAME[];
+
     String GetProgramTitle();
     String GetProgramVersion();
     String GetBuildDate();
@@ -24,5 +27,5 @@ namespace Platform
     String GetBuildArchitecture();
     String GetBuildArchitectureVersion();
     String GetProgramVersionString();
-  }
-}
+  }  // namespace Version
+}  // namespace Platform

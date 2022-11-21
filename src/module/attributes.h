@@ -1,81 +1,91 @@
 /**
-*
-* @file
-*
-* @brief  Module attributes names
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Module attributes names
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//std includes
-#include <string>
+// common includes
+#include <types.h>
 
 namespace Module
 {
   //@{
+  //! @name Base constants
+
+  //! Delimiter for subpath components
+  constexpr const Char SUBPATH_DELIMITER = '/';
+
+  //! Delimiter for 'Container' attribute components
+  constexpr const Char CONTAINERS_DELIMITER = '>';
+  //@}
+
+  //@{
   //! @name Built-in attributes
 
   //! %Module type attribute @see PluginInformation#Id
-  extern const std::string ATTR_TYPE;
+  constexpr const auto ATTR_TYPE = "Type"_sv;
   //! %Module title
-  extern const std::string ATTR_TITLE;
+  constexpr const auto ATTR_TITLE = "Title"_sv;
   //! %Module author
-  extern const std::string ATTR_AUTHOR;
+  constexpr const auto ATTR_AUTHOR = "Author"_sv;
   //! %Module program produced at
-  extern const std::string ATTR_PROGRAM;
-  //! %Module computer 
-  extern const std::string ATTR_COMPUTER;
+  constexpr const auto ATTR_PROGRAM = "Program"_sv;
+  //! %Module computer
+  constexpr const auto ATTR_COMPUTER = "Computer"_sv;
   //! %Module creating date
-  extern const std::string ATTR_DATE;
+  constexpr const auto ATTR_DATE = "Date"_sv;
   //! %Module comment
-  extern const std::string ATTR_COMMENT;
+  constexpr const auto ATTR_COMMENT = "Comment"_sv;
   //! Internal format version 10 * major + minor
-  extern const std::string ATTR_VERSION;
+  constexpr const auto ATTR_VERSION = "Version"_sv;
   //! Strings (e.g. from sample names)
-  extern const std::string ATTR_STRINGS;
+  constexpr const auto ATTR_STRINGS = "Strings"_sv;
   //! Platform id
-  extern const std::string ATTR_PLATFORM;
+  constexpr const auto ATTR_PLATFORM = "Platform"_sv;
   //@}
 
   //@{
   //! @name Storage-related attributes
 
   //! Raw module data crc32 checksum
-  extern const std::string ATTR_CRC;
+  constexpr const auto ATTR_CRC = "CRC"_sv;
   //! Constant  module data crc32 checksum
-  extern const std::string ATTR_FIXEDCRC;
+  constexpr const auto ATTR_FIXEDCRC = "FixedCRC"_sv;
   //! Raw module size in bytes
-  extern const std::string ATTR_SIZE;
+  constexpr const auto ATTR_SIZE = "Size"_sv;
   //@}
 
   //@{
   //! @name Named storage-related attributes
 
   //! %Module containers chain
-  extern const std::string ATTR_CONTAINER;
+  constexpr const auto ATTR_CONTAINER = "Container"_sv;
   //! %Module path in top-level data dump
-  extern const std::string ATTR_SUBPATH;
+  constexpr const auto ATTR_SUBPATH = "Subpath"_sv;
   //! Module's input data filename extension
-  extern const std::string ATTR_EXTENSION;
+  constexpr const auto ATTR_EXTENSION = "Extension"_sv;
   //! Module's input data filename
-  extern const std::string ATTR_FILENAME;
+  constexpr const auto ATTR_FILENAME = "Filename"_sv;
   //! Path of module's input data
-  extern const std::string ATTR_PATH;
+  constexpr const auto ATTR_PATH = "Path"_sv;
   //! Full path of module including path of input data and subpath
-  extern const std::string ATTR_FULLPATH;
+  constexpr const auto ATTR_FULLPATH = "Fullpath"_sv;
   //@}
 
   //@{
   //! @name Runtime attributes
 
   //! Current module position
-  extern const std::string ATTR_CURRENT_POSITION;
+  constexpr const auto ATTR_CURRENT_POSITION = "CurPosition"_sv;
   //! Current module pattern
-  extern const std::string ATTR_CURRENT_PATTERN;
+  constexpr const auto ATTR_CURRENT_PATTERN = "CurPattern"_sv;
   //! Current module line
-  extern const std::string ATTR_CURRENT_LINE;
+  constexpr const auto ATTR_CURRENT_LINE = "CurLine"_sv;
   //@}
-}
+}  // namespace Module

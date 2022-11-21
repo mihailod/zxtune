@@ -1,18 +1,18 @@
 /**
-*
-* @file
-*
-* @brief  Matching-only format implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Matching-only format implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "binary/format/static_expression.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 
 namespace Binary
@@ -33,30 +33,18 @@ namespace Binary
       : Offset(offset)
       , MinSize(std::max(minSize, mtx.GetSize() + offset))
       , Pattern(std::move(mtx))
-    {
-    }
+    {}
 
     bool Match(View data) const override
     {
-      if (data.Size() < MinSize)
-      {
-        return false;
-      }
-      const uint8_t* const typedData = static_cast<const uint8_t*>(data.Start()) + Offset;
-      for (std::size_t idx = 0, lim = Pattern.GetSize(); idx != lim; ++idx)
-      {
-        if (!Pattern.Get(idx).Match(typedData[idx]))
-        {
-          return false;
-        }
-      }
-      return true;
+      return data.Size() >= MinSize && Pattern.Match(data.SubView(Offset).As<uint8_t>());
     }
 
     static Ptr Create(FormatDSL::StaticPattern expr, std::size_t startOffset, std::size_t minSize)
     {
       return MakePtr<FuzzyMatchOnlyFormat>(std::move(expr), startOffset, minSize);
     }
+
   private:
     const std::size_t Offset;
     const std::size_t MinSize;
@@ -72,8 +60,7 @@ namespace Binary
       : Offset(offset)
       , MinSize(std::max(minSize, mtx.size() + offset))
       , Pattern(std::move(mtx))
-    {
-    }
+    {}
 
     bool Match(View data) const override
     {
@@ -105,6 +92,7 @@ namespace Binary
       }
       return MakePtr<ExactMatchOnlyFormat>(std::move(tmp), startOffset, minSize);
     }
+
   private:
     const std::size_t Offset;
     const std::size_t MinSize;
@@ -124,18 +112,18 @@ namespace Binary
       return FuzzyMatchOnlyFormat::Create(std::move(pattern), startOffset, minSize);
     }
   }
-}
+}  // namespace Binary
 
 namespace Binary
 {
-  Format::Ptr CreateMatchOnlyFormat(const std::string& pattern)
+  Format::Ptr CreateMatchOnlyFormat(StringView pattern)
   {
     return CreateMatchOnlyFormat(pattern, 0);
   }
 
-  Format::Ptr CreateMatchOnlyFormat(const std::string& pattern, std::size_t minSize)
+  Format::Ptr CreateMatchOnlyFormat(StringView pattern, std::size_t minSize)
   {
-    const FormatDSL::Expression::Ptr expr = FormatDSL::Expression::Parse(pattern);
+    const auto expr = FormatDSL::Expression::Parse(pattern);
     return CreateMatchingFormatFromPredicates(*expr, minSize);
   }
-}
+}  // namespace Binary

@@ -1,26 +1,24 @@
 /**
-* 
-* @file
-*
-* @brief  TurboSound chip implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TurboSound chip implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "devices/aym/src/psg.h"
 #include "devices/aym/src/soundchip.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <devices/turbosound.h>
-//std includes
+// std includes
 #include <utility>
 
-namespace Devices
-{
-namespace TurboSound
+namespace Devices::TurboSound
 {
   class PSG
   {
@@ -28,8 +26,7 @@ namespace TurboSound
     explicit PSG(const AYM::MultiVolumeTable& table)
       : Chip0(table)
       , Chip1(table)
-    {
-    }
+    {}
 
     void SetDutyCycle(uint_t value, uint_t mask)
     {
@@ -63,11 +60,6 @@ namespace TurboSound
       return Sound::Sample::FastAdd(s0, s1);
     }
 
-    void GetState(const Details::AnalysisMap& analyzer, DeviceState& state) const
-    {
-      Chip0.GetState(analyzer, state);
-      Chip1.GetState(analyzer, state);
-    }
   private:
     AYM::PSG Chip0;
     AYM::PSG Chip1;
@@ -87,23 +79,22 @@ namespace TurboSound
     explicit HalfLevelMixer(MixerType::Ptr delegate)
       : Delegate(std::move(delegate))
       , DelegateRef(*Delegate)
-    {
-    }
+    {}
 
     Sound::Sample ApplyData(const MixerType::InDataType& in) const override
     {
       const Sound::Sample out = DelegateRef.ApplyData(in);
       return Sound::Sample(out.Left() / 2, out.Right() / 2);
     }
+
   private:
     const MixerType::Ptr Delegate;
     const MixerType& DelegateRef;
   };
 
-  Chip::Ptr CreateChip(ChipParameters::Ptr params, MixerType::Ptr mixer, Sound::Receiver::Ptr target)
+  Chip::Ptr CreateChip(ChipParameters::Ptr params, MixerType::Ptr mixer)
   {
-    const MixerType::Ptr halfMixer = MakePtr<HalfLevelMixer>(mixer);
-    return MakePtr<AYM::SoundChip<Traits> >(params, halfMixer, target);
+    auto halfMixer = MakePtr<HalfLevelMixer>(mixer);
+    return MakePtr<AYM::SoundChip<Traits> >(std::move(params), std::move(halfMixer));
   }
-}
-}
+}  // namespace Devices::TurboSound

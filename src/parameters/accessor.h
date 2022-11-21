@@ -1,18 +1,19 @@
 /**
-*
-* @file
-*
-* @brief  Parameters accessor interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Parameters accessor interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
+#include <parameters/identifier.h>
 #include <parameters/types.h>
-//std includes
+// std includes
 #include <memory>
 
 namespace Parameters
@@ -31,13 +32,13 @@ namespace Parameters
     virtual uint_t Version() const = 0;
 
     //! Accessing integer parameters
-    virtual bool FindValue(const NameType& name, IntType& val) const = 0;
+    virtual bool FindValue(Identifier name, IntType& val) const = 0;
     //! Accessing string parameters
-    virtual bool FindValue(const NameType& name, StringType& val) const = 0;
+    virtual bool FindValue(Identifier name, StringType& val) const = 0;
     //! Accessing data parameters
-    virtual bool FindValue(const NameType& name, DataType& val) const = 0;
+    virtual bool FindValue(Identifier name, DataType& val) const = 0;
 
     //! Valk along the stored values
     virtual void Process(class Visitor& visitor) const = 0;
   };
-}
+}  // namespace Parameters

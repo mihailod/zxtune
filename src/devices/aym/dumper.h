@@ -1,20 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief  AY/YM dumper interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AY/YM dumper interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
+#include <binary/dump.h>
 #include <devices/aym.h>
 #include <time/duration.h>
 
-//supporting for AY/YM-based modules
+// supporting for AY/YM-based modules
 namespace Devices
 {
   namespace AYM
@@ -25,7 +26,7 @@ namespace Devices
     public:
       typedef std::shared_ptr<Dumper> Ptr;
 
-      virtual void GetDump(Dump& result) const = 0;
+      virtual void GetDump(Binary::Dump& result) const = 0;
     };
 
     class DumperParameters
@@ -61,5 +62,5 @@ namespace Devices
     };
 
     Dumper::Ptr CreateFYMDumper(FYMDumperParameters::Ptr params);
-  }
-}
+  }  // namespace AYM
+}  // namespace Devices

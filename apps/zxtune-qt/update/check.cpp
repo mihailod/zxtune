@@ -1,33 +1,33 @@
 /**
-* 
-* @file
-*
-* @brief Update checking implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Update checking implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "check.h"
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/utils.h"
+#include "apps/zxtune-qt/urls.h"
 #include "downloads.h"
 #include "parameters.h"
 #include "product.h"
-#include "apps/zxtune-qt/text/text.h"
-#include "apps/zxtune-qt/supp/options.h"
-#include "apps/zxtune-qt/ui/utils.h"
-//common includes
+// common includes
 #include <error.h>
 #include <progress_callback.h>
-//library includes
+// library includes
 #include <debug/log.h>
 #include <io/api.h>
 #include <io/providers_parameters.h>
 #include <platform/version/fields.h>
-//std includes
+// std includes
 #include <ctime>
 #include <utility>
-//qt includes
+// qt includes
 #include <QtCore/QTimer>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QFileDialog>
@@ -46,19 +46,16 @@ namespace
   public:
     explicit IOParameters(String userAgent)
       : UserAgent(std::move(userAgent))
-    {
-    }
+    {}
 
-    IOParameters()
-    {
-    }
+    IOParameters() {}
 
     uint_t Version() const override
     {
       return 1;
     }
 
-    bool FindValue(const Parameters::NameType& name, Parameters::IntType& val) const override
+    bool FindValue(Parameters::Identifier name, Parameters::IntType& val) const override
     {
       if (name == Parameters::ZXTune::IO::Providers::File::OVERWRITE_EXISTING)
       {
@@ -71,7 +68,7 @@ namespace
       }
     }
 
-    bool FindValue(const Parameters::NameType& name, Parameters::StringType& val) const override
+    bool FindValue(Parameters::Identifier name, Parameters::StringType& val) const override
     {
       if (!UserAgent.empty() && name == Parameters::ZXTune::IO::Providers::Network::Http::USERAGENT)
       {
@@ -84,7 +81,7 @@ namespace
       }
     }
 
-    bool FindValue(const Parameters::NameType& /*name*/, Parameters::DataType& /*val*/) const override
+    bool FindValue(Parameters::Identifier /*name*/, Parameters::DataType& /*val*/) const override
     {
       return false;
     }
@@ -97,11 +94,13 @@ namespace
         visitor.SetValue(Parameters::ZXTune::IO::Providers::Network::Http::USERAGENT, UserAgent);
       }
     }
+
   private:
     const String UserAgent;
   };
 
-  class Canceled {};
+  class Canceled
+  {};
 
   class DialogProgressCallback : public Log::ProgressCallback
   {
@@ -129,6 +128,7 @@ namespace
     {
       OnProgress(current);
     }
+
   private:
     QProgressDialog Progress;
   };
@@ -136,7 +136,7 @@ namespace
   String GetUserAgent()
   {
     const std::unique_ptr<Strings::FieldsSource> fields = Platform::Version::CreateVersionFieldsSource();
-    return Strings::Template::Instantiate(Text::HTTP_USERAGENT, *fields);
+    return Strings::Template::Instantiate("[Program]/[Version] ([Platform]-[Arch])", *fields);
   }
 
   Binary::Data::Ptr Download(const QUrl& url, Log::ProgressCallback& cb)
@@ -156,10 +156,7 @@ namespace
   QDate VersionToDate(const QString& str, const QDate& fallback)
   {
     const QDate asDate = QDate::fromString(str, "yyyyMMdd");
-    return asDate.isValid()
-      ? asDate
-      : fallback
-    ;
+    return asDate.isValid() ? asDate : fallback;
   }
 
   unsigned short VersionToRevision(const QString& str)
@@ -185,14 +182,14 @@ namespace
     Version()
       : AsDate()
       , AsRev()
-    {
-    }
+    {}
 
     explicit Version(const QString& ver, const QDate& date)
       : AsDate(VersionToDate(ver, date))
       , AsRev(VersionToRevision(ver))
     {
-      Dbg("Version(%1%, %2%) = (date=%3%, rev=%4%)", FromQString(ver), FromQString(date.toString()), FromQString(AsDate.toString()), AsRev);
+      Dbg("Version(%1%, %2%) = (date=%3%, rev=%4%)", FromQString(ver), FromQString(date.toString()),
+          FromQString(AsDate.toString()), AsRev);
     }
 
     bool IsMoreRecentThan(const Version& rh) const
@@ -211,7 +208,7 @@ namespace
         const bool rhValid = rh.AsRev || rh.AsDate.isValid();
         if (thisValid && !rhValid)
         {
-          //prefer much more valid
+          // prefer much more valid
           return true;
         }
         else
@@ -232,6 +229,7 @@ namespace
         return AsDate == rh.AsDate;
       }
     }
+
   private:
     QDate AsDate;
     unsigned short AsRev;
@@ -254,9 +252,11 @@ namespace
 
     void OnDownload(Product::Update::Ptr update) override
     {
-      const Product::Update::TypeTag type = Product::GetUpdateType(update->Platform(), update->Architecture(), update->Packaging());
+      const Product::Update::TypeTag type =
+          Product::GetUpdateType(update->Platform(), update->Architecture(), update->Packaging());
       Dbg("Update %1%, type %2%", FromQString(update->Title()), type);
-      const std::vector<Product::Update::TypeTag>::const_iterator it = std::find(CurTypes.begin(), CurTypes.end(), type);
+      const std::vector<Product::Update::TypeTag>::const_iterator it =
+          std::find(CurTypes.begin(), CurTypes.end(), type);
       if (CurTypes.end() == it)
       {
         Dbg(" unsupported");
@@ -266,9 +266,8 @@ namespace
       if (version.IsMoreRecentThan(CurVersion))
       {
         const std::size_t rank = std::distance(CurTypes.begin(), it);
-        if (!Update
-         || version.IsMoreRecentThan(UpdateVersion)
-         || (version.EqualsTo(UpdateVersion) && rank < UpdateRank))
+        if (!Update || version.IsMoreRecentThan(UpdateVersion)
+            || (version.EqualsTo(UpdateVersion) && rank < UpdateRank))
         {
           Update = update;
           UpdateRank = rank;
@@ -290,6 +289,7 @@ namespace
     {
       return Update;
     }
+
   private:
     const Version CurVersion;
     const std::vector<Product::Update::TypeTag> CurTypes;
@@ -303,8 +303,7 @@ namespace
   public:
     explicit FileTransaction(const QString& name)
       : Info(name)
-    {
-    }
+    {}
 
     ~FileTransaction()
     {
@@ -331,6 +330,7 @@ namespace
         Dbg("Remove failed saving: %1%", res);
       }
     }
+
   private:
     const QFileInfo Info;
     Binary::OutputStream::Ptr Object;
@@ -343,12 +343,11 @@ namespace
   public:
     explicit UpdateParameters(Parameters::Container::Ptr params)
       : Params(std::move(params))
-    {
-    }
+    {}
 
     String GetFeedUrl() const
     {
-      Parameters::StringType url = Text::DOWNLOADS_XML_URL;
+      Parameters::StringType url = Urls::DownloadsFeed();
       Params->FindValue(Parameters::ZXTuneQT::Update::FEED, url);
       return url;
     }
@@ -371,6 +370,7 @@ namespace
     {
       Params->SetValue(Parameters::ZXTuneQT::Update::LAST_CHECK, time);
     }
+
   private:
     const Parameters::Container::Ptr Params;
   };
@@ -403,8 +403,7 @@ namespace
         }
       }
       catch (const Canceled&)
-      {
-      }
+      {}
       catch (const Error& e)
       {
         emit ErrorOccurred(e);
@@ -415,7 +414,7 @@ namespace
     {
       try
       {
-        //If check was performed before
+        // If check was performed before
         if (!CheckPeriodExpired())
         {
           return;
@@ -429,13 +428,13 @@ namespace
         }
       }
       catch (const Canceled&)
-      {
-      }
+      {}
       catch (const Error&)
       {
-        //Do not bother with implicit check errors
+        // Do not bother with implicit check errors
       }
     }
+
   private:
     Product::Update::Ptr GetAvailableUpdate() const
     {
@@ -453,7 +452,7 @@ namespace
       const QUrl feedUrl(ToQString(Params.GetFeedUrl()));
       const Binary::Data::Ptr feedData = Download(feedUrl, cb);
       UpdateState state;
-      const std::unique_ptr<RSS::Visitor> rss = Downloads::CreateFeedVisitor(Text::DOWNLOADS_PROJECT_NAME, state);
+      const std::unique_ptr<RSS::Visitor> rss = Downloads::CreateFeedVisitor("ZXTune", state);
       RSS::Parse(QByteArray(static_cast<const char*>(feedData->Start()), feedData->Size()), *rss);
       StoreLastCheckTime();
       return state.GetUpdate();
@@ -472,16 +471,19 @@ namespace
       msg.append(update.Title());
       if (const int ageInDays = update.Date().daysTo(QDate::currentDate()))
       {
-        msg.append(Update::CheckOperation::tr("%1 (%n day(s) ago)", nullptr, ageInDays).arg(update.Date().toString(Qt::DefaultLocaleLongDate)));
+        msg.append(Update::CheckOperation::tr("%1 (%n day(s) ago)", "", ageInDays)
+                       .arg(update.Date().toString(Qt::DefaultLocaleLongDate)));
       }
-      msg.append(QString("<a href=\"%1\">%2</a>").arg(update.Description().toString()).arg(Update::CheckOperation::tr("Download manually")));
+      msg.append(QString("<a href=\"%1\">%2</a>")
+                     .arg(update.Description().toString())
+                     .arg(Update::CheckOperation::tr("Download manually")));
       return QMessageBox::question(&Parent, title, msg.join("<br/>"), QMessageBox::Save | QMessageBox::Cancel);
     }
 
     void ApplyUpdate(const Product::Update& update) const
     {
       const QUrl packageUrl = update.Package();
-      //do not use UI::SaveFileDialog
+      // do not use UI::SaveFileDialog
       QFileDialog dialog(&Parent, QString(), packageUrl.toString(), QLatin1String("*"));
       dialog.setOption(QFileDialog::DontUseNativeDialog, true);
       dialog.setOption(QFileDialog::HideNameFilterDetails, true);
@@ -519,11 +521,12 @@ namespace
         return false;
       }
     }
+
   private:
     QWidget& Parent;
     mutable UpdateParameters Params;
   };
-}
+}  // namespace
 
 namespace Update
 {
@@ -539,8 +542,7 @@ namespace Update
       }
     }
     catch (const Error&)
-    {
-    }
+    {}
     return nullptr;
   }
-};
+};  // namespace Update

@@ -1,59 +1,55 @@
 /**
-*
-* @file
-*
-* @brief  USF chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  USF chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/xsf/usf.h"
 #include "module/players/xsf/xsf.h"
 #include "module/players/xsf/xsf_factory.h"
-//common includes
+// common includes
 #include <contract.h>
 #include <error_tools.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <debug/log.h>
 #include <module/attributes.h>
-#include <module/players/analyzer.h>
-#include <module/players/fading.h>
+#include <module/players/platforms.h>
 #include <module/players/streaming.h>
-#include <parameters/tracking_helper.h>
-#include <sound/chunk_builder.h>
-#include <sound/render_params.h>
 #include <sound/resampler.h>
-#include <sound/sound_parameters.h>
-//std includes
+// std includes
 #include <list>
-//3rdparty includes
+// 3rdparty includes
 #include <3rdparty/lazyusf2/usf/usf.h>
-//text includes
-#include <module/text/platforms.h>
 
 #define FILE_TAG 59F6FD73
 
-namespace Module
-{
-namespace USF
+namespace Module::USF
 {
   const Debug::Stream Dbg("Module::USF");
-  
+
   struct ModuleData
   {
     using Ptr = std::shared_ptr<const ModuleData>;
     using RWPtr = std::shared_ptr<ModuleData>;
-    
+
     ModuleData() = default;
     ModuleData(const ModuleData&) = delete;
-    
+
     std::list<Binary::Data::Ptr> Sections;
     XSF::MetaInformation::Ptr Meta;
+
+    uint_t GetRefreshRate() const
+    {
+      return Meta->RefreshRate ? Meta->RefreshRate : 50;
+    }
   };
-  
+
   class UsfHolder
   {
   public:
@@ -62,20 +58,20 @@ namespace USF
     {
       ::usf_clear(GetRaw());
     }
-    
+
     UsfHolder(const UsfHolder&) = delete;
-    UsfHolder& operator = (const UsfHolder&) = delete;
-    
+    UsfHolder& operator=(const UsfHolder&) = delete;
+
     ~UsfHolder()
     {
       ::usf_shutdown(GetRaw());
     }
-    
+
     void* GetRaw()
     {
       return Data.get();
     }
-    
+
     /*usf_state* GetInternal()
     {
       return safe_ptr_cast<usf_state*>(Data.get());
@@ -83,7 +79,7 @@ namespace USF
   private:
     std::unique_ptr<uint8_t[]> Data;
   };
-  
+
   class USFEngine
   {
   public:
@@ -98,7 +94,7 @@ namespace USF
       DetectSoundFrequency();
       Dbg("Used sound frequency is %1%", SoundFrequency);
     }
-    
+
     void Reset()
     {
       ::usf_restart(Emu.GetRaw());
@@ -108,11 +104,11 @@ namespace USF
     {
       return SoundFrequency;
     }
-    
+
     Sound::Chunk Render(uint_t samples)
     {
       Sound::Chunk result(samples);
-      for (uint32_t doneSamples = 0; doneSamples < samples; )
+      for (uint32_t doneSamples = 0; doneSamples < samples;)
       {
         const auto toRender = std::min<uint32_t>(samples - doneSamples, 1024);
         const auto dst = safe_ptr_cast<short int*>(&result[doneSamples]);
@@ -124,10 +120,10 @@ namespace USF
       }
       return result;
     }
-    
+
     void Skip(uint_t samples)
     {
-      for (uint32_t skippedSamples = 0; skippedSamples < samples; )
+      for (uint32_t skippedSamples = 0; skippedSamples < samples;)
       {
         const auto toSkip = std::min<uint32_t>(samples - skippedSamples, 1024);
         if (const auto res = ::usf_render(Emu.GetRaw(), nullptr, toSkip, nullptr))
@@ -137,6 +133,7 @@ namespace USF
         skippedSamples += toSkip;
       }
     }
+
   private:
     void SetupSections(const std::list<Binary::Data::Ptr>& sections)
     {
@@ -148,7 +145,7 @@ namespace USF
         }
       }
     }
-    
+
     void SetupEnvironment(const XSF::MetaInformation& meta)
     {
       for (const auto& tag : meta.Tags)
@@ -164,7 +161,7 @@ namespace USF
       }
       ::usf_set_hle_audio(Emu.GetRaw(), true);
     }
-    
+
     void DetectSoundFrequency()
     {
       int32_t freq = 0;
@@ -175,117 +172,79 @@ namespace USF
       Reset();
       SoundFrequency = freq;
     }
+
   private:
     UsfHolder Emu;
     uint_t SoundFrequency = 0;
   };
-  
+
+  const auto FRAME_DURATION = Time::Milliseconds(100);
+
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(const ModuleData& data, Information::Ptr info, Sound::Receiver::Ptr target, Parameters::Accessor::Ptr params)
+    Renderer(const ModuleData& data, uint_t samplerate)
       : Engine(data)
-      , Iterator(Module::CreateStreamStateIterator(info))
-      , State(Iterator->GetStateObserver())
-      , Analyzer(CreateSoundAnalyzer())
-      , SoundParams(Sound::RenderParameters::Create(params))
-      , Target(Module::CreateFadingReceiver(std::move(params), std::move(info), State, std::move(target)))
-      , Looped()
-    {
-      const auto frameDuration = SoundParams->FrameDuration();
-      SamplesPerFrame = frameDuration.Get() * Engine.GetSoundFrequency() / frameDuration.PER_SECOND;
-      ApplyParameters();
-    }
+      , State(MakePtr<TimedState>(data.Meta->Duration))
+      , Target(Sound::CreateResampler(Engine.GetSoundFrequency(), samplerate))
+    {}
 
     Module::State::Ptr GetState() const override
     {
       return State;
     }
 
-    Module::Analyzer::Ptr GetAnalyzer() const override
+    Sound::Chunk Render(const Sound::LoopParameters& looped) override
     {
-      return Analyzer;
-    }
-
-    bool RenderFrame() override
-    {
-      try
+      if (!State->IsValid())
       {
-        ApplyParameters();
-
-        auto data = Engine.Render(SamplesPerFrame);
-        Analyzer->AddSoundData(data);
-        Resampler->ApplyData(std::move(data));
-        Iterator->NextFrame(Looped);
-        return Iterator->IsValid();
+        return {};
       }
-      catch (const std::exception&)
-      {
-        return false;
-      }
+      const auto avail = State->Consume(FRAME_DURATION, looped);
+      return Target->Apply(Engine.Render(GetSamples(avail)));
     }
 
     void Reset() override
     {
-      SoundParams.Reset();
-      Iterator->Reset();
+      State->Reset();
       Engine.Reset();
-      Looped = {};
     }
 
-    void SetPosition(uint_t frame) override
+    void SetPosition(Time::AtMillisecond request) override
     {
-      SeekTune(frame);
-      Module::SeekIterator(*Iterator, frame);
-    }
-  private:
-    void ApplyParameters()
-    {
-      if (SoundParams.IsChanged())
-      {
-        Looped = SoundParams->Looped();
-        Resampler = Sound::CreateResampler(Engine.GetSoundFrequency(), SoundParams->SoundFreq(), Target);
-      }
-    }
-
-    void SeekTune(uint_t frame)
-    {
-      uint_t current = State->Frame();
-      if (frame < current)
+      if (request < State->At())
       {
         Engine.Reset();
-        current = 0;
       }
-      if (const uint_t delta = frame - current)
+      if (const auto toSkip = State->Seek(request))
       {
-        Engine.Skip(delta * SamplesPerFrame);
+        Engine.Skip(GetSamples(toSkip));
       }
     }
+
+  private:
+    uint_t GetSamples(Time::Microseconds period) const
+    {
+      return period.Get() * Engine.GetSoundFrequency() / period.PER_SECOND;
+    }
+
   private:
     USFEngine Engine;
-    const StateIterator::Ptr Iterator;
-    const Module::State::Ptr State;
-    const SoundAnalyzer::Ptr Analyzer;
-    uint_t SamplesPerFrame;
-    Parameters::TrackingHelper<Sound::RenderParameters> SoundParams;
-    const Sound::Receiver::Ptr Target;
-    Sound::Receiver::Ptr Resampler;
-    Sound::LoopParameters Looped;
+    const TimedState::Ptr State;
+    const Sound::Converter::Ptr Target;
   };
 
   class Holder : public Module::Holder
   {
   public:
-    Holder(ModuleData::Ptr tune, Information::Ptr info, Parameters::Accessor::Ptr props)
+    Holder(ModuleData::Ptr tune, Parameters::Accessor::Ptr props)
       : Tune(std::move(tune))
-      , Info(std::move(info))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     Module::Information::Ptr GetModuleInformation() const override
     {
-      return Info;
+      return CreateTimedInfo(Tune->Meta->Duration);
     }
 
     Parameters::Accessor::Ptr GetModuleProperties() const override
@@ -293,24 +252,21 @@ namespace USF
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
     {
-      return MakePtr<Renderer>(*Tune, Info, std::move(target), std::move(params));
+      return MakePtr<Renderer>(*Tune, samplerate);
     }
-    
+
     static Ptr Create(ModuleData::Ptr tune, Parameters::Container::Ptr properties)
     {
-      const auto period = Sound::GetFrameDuration(*properties);
-      const auto duration = tune->Meta->Duration;
-      const auto frames = duration.Divide<uint_t>(period);
-      Information::Ptr info = CreateStreamInfo(frames);
       if (tune->Meta)
       {
         tune->Meta->Dump(*properties);
       }
-      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_64);
-      return MakePtr<Holder>(std::move(tune), std::move(info), std::move(properties));
+      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_64.to_string());
+      return MakePtr<Holder>(std::move(tune), std::move(properties));
     }
+
   private:
     const ModuleData::Ptr Tune;
     const Information::Ptr Info;
@@ -325,7 +281,7 @@ namespace USF
       Require(!!data);
       Sections.emplace_back(std::move(data));
     }
-    
+
     void AddMeta(const XSF::MetaInformation& meta)
     {
       if (!Meta)
@@ -337,7 +293,7 @@ namespace USF
         Meta->Merge(meta);
       }
     }
-    
+
     ModuleData::Ptr CaptureResult()
     {
       auto res = MakeRWPtr<ModuleData>();
@@ -345,11 +301,12 @@ namespace USF
       res->Meta = std::move(Meta);
       return res;
     }
+
   private:
     std::list<Binary::Data::Ptr> Sections;
     XSF::MetaInformation::RWPtr Meta;
   };
-  
+
   class Factory : public XSF::Factory
   {
   public:
@@ -365,17 +322,19 @@ namespace USF
       }
       return Holder::Create(builder.CaptureResult(), std::move(properties));
     }
-    
-    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles, Parameters::Container::Ptr properties) const override
+
+    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles,
+                                      Parameters::Container::Ptr properties) const override
     {
       ModuleDataBuilder builder;
       MergeSections(file, additionalFiles, builder);
       MergeMeta(file, additionalFiles, builder);
       return Holder::Create(builder.CaptureResult(), std::move(properties));
     }
+
   private:
     /* https://bitbucket.org/zxtune/zxtune/wiki/USFFormat
-    
+
     Loading a USF or USFlib/miniUSF
 
     1. initialize the ROM and save state to zero.
@@ -389,7 +348,8 @@ namespace USF
     */
     static const uint_t MAX_LEVEL = 10;
 
-    static void MergeSections(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles, ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeSections(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
+                              ModuleDataBuilder& dst, uint_t level = 1)
     {
       if (!data.Dependencies.empty() && level < MAX_LEVEL)
       {
@@ -397,8 +357,9 @@ namespace USF
       }
       dst.AddSection(data.ReservedSection);
     }
-    
-    void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles, ModuleDataBuilder& dst, uint_t level = 1) const
+
+    void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles, ModuleDataBuilder& dst,
+                   uint_t level = 1) const
     {
       if (level < MAX_LEVEL)
       {
@@ -413,12 +374,11 @@ namespace USF
       }
     }
   };
-  
+
   Module::Factory::Ptr CreateFactory()
   {
     return XSF::CreateFactory(MakePtr<Factory>());
   }
-}
-}
+}  // namespace Module::USF
 
 #undef FILE_TAG

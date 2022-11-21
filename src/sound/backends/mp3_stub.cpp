@@ -1,25 +1,23 @@
 /**
-*
-* @file
-*
-* @brief  MP3 backend stub
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  MP3 backend stub
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
+#include "sound/backends/mp3.h"
 #include "sound/backends/storage.h"
-//library includes
-#include <l10n/api.h>
+// library includes
 #include <sound/backend_attrs.h>
-//text includes
-#include <sound/backends/text/backends.h>
 
 namespace Sound
 {
   void RegisterMp3Backend(BackendsStorage& storage)
   {
-    storage.Register(Text::MP3_BACKEND_ID, L10n::translate("MP3 support backend"), CAP_TYPE_FILE); 
+    storage.Register(Mp3::BACKEND_ID, Mp3::BACKEND_DESCRIPTION, CAP_TYPE_FILE);
   }
-}
+}  // namespace Sound

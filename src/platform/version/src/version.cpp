@@ -1,28 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief Version API implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Version API implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 // Used information from http://sourceforge.net/p/predef/wiki/Home/
-#include "platform/version/src/os.h"
 #include "platform/version/src/arch.h"
+#include "platform/version/src/os.h"
 #include "platform/version/src/toolset.h"
-//library includes
+// library includes
 #include <platform/version/api.h>
 #include <strings/format.h>
-//text includes
-#include <platform/version/text/text.h>
-
-namespace Text
-{
-  extern const Char PROGRAM_NAME[];
-}
 
 namespace Platform
 {
@@ -30,28 +23,29 @@ namespace Platform
   {
     String GetProgramTitle()
     {
-      return Text::PROGRAM_NAME;
+      return PROGRAM_NAME;
     }
 
     String GetProgramVersion()
     {
-      #define TOSTRING(a) #a
-      #define STR(a) TOSTRING(a)
-      static const char VERSION[] = STR(BUILD_VERSION);
-      return FromStdString(VERSION);
+#define TOSTRING(a) #a
+#define STR(a) TOSTRING(a)
+      constexpr const char VERSION[] = STR(BUILD_VERSION);
+      static_assert(VERSION[0] != 0, "Undefined version");
+      return VERSION;
     }
 
     String GetBuildDate()
     {
       static const char DATE[] = __DATE__;
-      return FromStdString(DATE);
+      return DATE;
     }
 
     String GetBuildPlatform()
     {
-      const String os = FromStdString(Details::OS);
-      const String toolset = FromStdString(Details::TOOLSET);
-      //some business-logic
+      const String os = Details::OS;
+      const String toolset = Details::TOOLSET;
+      // some business-logic
       if (os == "windows" && toolset == "mingw")
       {
         return toolset;
@@ -61,26 +55,23 @@ namespace Platform
         return os;
       }
     }
-    
+
     String GetBuildArchitecture()
     {
-      return FromStdString(Details::ARCH);
+      return Details::ARCH;
     }
-    
+
     String GetBuildArchitectureVersion()
     {
-      return FromStdString(Details::ARCH_VERSION);
+      return Details::ARCH_VERSION;
     }
 
     String GetProgramVersionString()
     {
-      return Strings::Format(Text::PROGRAM_VERSION_STRING,
-        GetProgramTitle(),
-        GetProgramVersion(),
-        GetBuildDate(),
-        GetBuildPlatform(),
-        GetBuildArchitecture(),
-        GetBuildArchitectureVersion());
+      // 1- program name, 2- program version, 3- build date 4- platform, 5- architecture, 6- architecture version
+      constexpr const Char PROGRAM_VERSION_STRING[] = "%1% %2% %3% %4%-%5% %6%";
+      return Strings::Format(PROGRAM_VERSION_STRING, GetProgramTitle(), GetProgramVersion(), GetBuildDate(),
+                             GetBuildPlatform(), GetBuildArchitecture(), GetBuildArchitectureVersion());
     }
-  }
-}
+  }  // namespace Version
+}  // namespace Platform

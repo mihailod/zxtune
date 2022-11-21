@@ -1,23 +1,28 @@
 /**
-*
-* @file
-*
-* @brief  DirectSound subsystem access functions
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  DirectSound subsystem access functions
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <iterator.h>
 #include <types.h>
+// library includes
+#include <l10n/markup.h>
 
 namespace Sound
 {
   namespace DirectSound
   {
+    constexpr const Char BACKEND_ID[] = "dsound";
+    constexpr auto BACKEND_DESCRIPTION = L10n::translate("DirectSound support backend.");
+
     class Device
     {
     public:
@@ -30,5 +35,5 @@ namespace Sound
     };
 
     Device::Iterator::Ptr EnumerateDevices();
-  }
-}
+  }  // namespace DirectSound
+}  // namespace Sound

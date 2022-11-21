@@ -1,32 +1,35 @@
 /**
-* 
-* @file
-*
-* @brief Module access implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Module access implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
+#include "module.h"
 #include "binary.h"
 #include "debug.h"
 #include "exception.h"
 #include "global_options.h"
+#include "jni_api.h"
 #include "jni_module.h"
-#include "module.h"
 #include "player.h"
 #include "properties.h"
-//common includes
+// common includes
 #include <contract.h>
 #include <progress_callback.h>
-//library includes
-#include <core/module_open.h>
-#include <core/module_detect.h>
+// library includes
+#include <core/data_location.h>
+#include <core/service.h>
 #include <module/additional_files.h>
 
 namespace
 {
+  // #define Require(c) while (! (c)) { throw std::runtime_error( #c ); }
+
   class NativeModuleJni
   {
   public:
@@ -70,7 +73,57 @@ namespace
   jclass NativeModuleJni::Class;
   jmethodID NativeModuleJni::Constructor;
   jfieldID NativeModuleJni::Handle;
-}
+
+  class CallbacksJni
+  {
+  public:
+    static void Init(JNIEnv* env)
+    {
+      const auto detectClass = env->FindClass("app/zxtune/core/jni/DetectCallback");
+      Require(detectClass);
+      OnModule = env->GetMethodID(detectClass, "onModule", "(Ljava/lang/String;Lapp/zxtune/core/Module;)V");
+      Require(OnModule);
+      const auto progressClass = env->FindClass("app/zxtune/utils/ProgressCallback");
+      Require(progressClass);
+      OnProgress = env->GetMethodID(progressClass, "onProgressUpdate", "(II)V");
+      Require(OnProgress);
+    }
+
+    static void Cleanup(JNIEnv* /*env*/)
+    {
+      OnModule = 0;
+      OnProgress = 0;
+    }
+
+    static void CallOnModule(JNIEnv* env, jobject cb, const String& subpath, jobject module)
+    {
+      const Jni::TempJString tmpSubpath(env, subpath);
+      env->CallVoidMethod(cb, OnModule, tmpSubpath.Get(), module);
+      Jni::ThrowIfError(env);
+    }
+
+    static void CallOnProgress(JNIEnv* env, jobject cb, int progress)
+    {
+      env->CallVoidMethod(cb, OnProgress, progress, 100);
+      Jni::ThrowIfError(env);
+    }
+
+  private:
+    static jmethodID OnModule;
+    static jmethodID OnProgress;
+  };
+
+  jmethodID CallbacksJni::OnModule;
+  jmethodID CallbacksJni::OnProgress;
+
+#undef Require
+  const ZXTune::Service& GetService()
+  {
+    // TODO: cleanup
+    static const auto instance = ZXTune::Service::Create(MakeSingletonPointer(Parameters::GlobalOptions()));
+    return *instance;
+  }
+}  // namespace
 
 namespace
 {
@@ -78,10 +131,8 @@ namespace
   {
     try
     {
-      const auto& options = Parameters::GlobalOptions();
-      return subpath.empty()
-        ? Module::Open(options, *data)
-        : Module::Open(options, data, subpath);
+      auto initialProperties = Parameters::Container::Create();
+      return GetService().OpenModule(std::move(data), subpath, std::move(initialProperties));
     }
     catch (const Error& e)
     {
@@ -95,40 +146,24 @@ namespace
     return NativeModuleJni::Create(env, handle);
   }
 
-  class DetectCallback : public Module::DetectCallback,
-                         public Log::ProgressCallback
+  class ProgressCallback : public Log::ProgressCallback
   {
   public:
-    explicit DetectCallback(JNIEnv* env, jobject delegate)
+    ProgressCallback(JNIEnv* env, jobject delegate)
       : Env(env)
       , Delegate(delegate)
-      , CallbackClass()
-      , OnModuleMethod()
-      , OnProgressMethod()
-      , LastProgress(0)
+    {}
+
+    Log::ProgressCallback* Get()
     {
+      return Delegate ? this : nullptr;
     }
 
-    void ProcessModule(ZXTune::DataLocation::Ptr location, ZXTune::Plugin::Ptr /*decoder*/,
-      Module::Holder::Ptr holder) const override
-    {
-      const Jni::TempJString subpath(Env, location->GetPath()->AsString());
-      const auto object = CreateJniObject(Env, std::move(holder));
-      Env->CallVoidMethod(Delegate, GetMethodId(), subpath.Get(), object);
-      Jni::ThrowIfError(Env);
-    }
-
-    Log::ProgressCallback* GetProgress() const override
-    {
-      return const_cast<Log::ProgressCallback*>(static_cast<const Log::ProgressCallback*>(this));
-    }
-  private:
     void OnProgress(uint_t current) override
     {
       if (LastProgress != current)
       {
-        Env->CallVoidMethod(Delegate, GetProgressMethodId(), LastProgress = current);
-        Jni::ThrowIfError(Env);
+        CallbacksJni::CallOnProgress(Env, Delegate, LastProgress = current);
       }
     }
 
@@ -137,78 +172,80 @@ namespace
       OnProgress(current);
     }
 
-    jmethodID GetMethodId() const
-    {
-      if (!OnModuleMethod)
-      {
-        OnModuleMethod = Env->GetMethodID(GetCallbackClass(), "onModule", "(Ljava/lang/String;Lapp/zxtune/core/Module;)V");
-      }
-      return OnModuleMethod;
-    }
-
-    jmethodID GetProgressMethodId() const
-    {
-      if (!OnProgressMethod)
-      {
-        OnProgressMethod = Env->GetMethodID(GetCallbackClass(), "onProgress", "(I)V");
-      }
-      return OnProgressMethod;
-    }
-
-    jclass GetCallbackClass() const
-    {
-      if (!CallbackClass)
-      {
-        CallbackClass = Env->GetObjectClass(Delegate);
-      }
-      return CallbackClass;
-    }
   private:
     JNIEnv* const Env;
     const jobject Delegate;
-    mutable jclass CallbackClass;
-    mutable jmethodID OnModuleMethod;
-    mutable jmethodID OnProgressMethod;
-    uint_t LastProgress;
+    uint_t LastProgress = 0;
   };
-}
+
+  class DetectCallback : public Module::DetectCallback
+  {
+  public:
+    DetectCallback(JNIEnv* env, jobject delegate, Log::ProgressCallback* log)
+      : Env(env)
+      , Delegate(delegate)
+      , Log(log)
+    {}
+
+    Parameters::Container::Ptr CreateInitialProperties(const String& /*subpath*/) const override
+    {
+      return Parameters::Container::Create();
+    }
+
+    void ProcessModule(const ZXTune::DataLocation& location, const ZXTune::Plugin& /*decoder*/,
+                       Module::Holder::Ptr holder) override
+    {
+      const auto object = CreateJniObject(Env, std::move(holder));
+      CallbacksJni::CallOnModule(Env, Delegate, location.GetPath()->AsString(), object);
+    }
+
+    Log::ProgressCallback* GetProgress() const override
+    {
+      return Log;
+    }
+
+  private:
+    JNIEnv* const Env;
+    const jobject Delegate;
+    Log::ProgressCallback* const Log;
+  };
+}  // namespace
 
 namespace Module
 {
   void InitJni(JNIEnv* env)
   {
     NativeModuleJni::Init(env);
+    CallbacksJni::Init(env);
   }
 
   void CleanupJni(JNIEnv* env)
   {
+    CallbacksJni::Cleanup(env);
     NativeModuleJni::Cleanup(env);
   }
-}
+}  // namespace Module
 
-JNIEXPORT jobject JNICALL Java_app_zxtune_core_jni_JniModule_load
-  (JNIEnv* env, jclass /*self*/, jobject buffer, jstring subpath)
+JNIEXPORT jobject JNICALL Java_app_zxtune_core_jni_JniApi_loadModule(JNIEnv* env, jobject /*self*/, jobject buffer,
+                                                                     jstring subpath)
 {
-  return Jni::Call(env, [=] ()
-  {
+  return Jni::Call(env, [=]() {
     auto module = CreateModule(Binary::CreateByteBufferContainer(env, buffer), Jni::MakeString(env, subpath));
     return CreateJniObject(env, std::move(module));
   });
 }
 
-JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniModule_detect
-  (JNIEnv* env, jclass /*self*/, jobject buffer, jobject cb)
+JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniApi_detectModules(JNIEnv* env, jobject /*self*/, jobject buffer,
+                                                                     jobject cb, jobject progress)
 {
-  return Jni::Call(env, [=] ()
-  {
-    DetectCallback callbackAdapter(env, cb);
-    Module::Detect(Parameters::GlobalOptions(), Binary::CreateByteBufferContainer(env, buffer), callbackAdapter);
+  return Jni::Call(env, [=]() {
+    ProgressCallback progressAdapter(env, progress);
+    DetectCallback callbackAdapter(env, cb, progressAdapter.Get());
+    GetService().DetectModules(Binary::CreateByteBufferContainer(env, buffer), callbackAdapter);
   });
 }
 
-
-JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniModule_close
-  (JNIEnv* /*env*/, jclass /*self*/, jint handle)
+JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniModule_close(JNIEnv* /*env*/, jclass /*self*/, jint handle)
 {
   if (Module::Storage::Instance().Fetch(handle))
   {
@@ -216,34 +253,24 @@ JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniModule_close
   }
 }
 
-JNIEXPORT jint JNICALL Java_app_zxtune_core_jni_JniModule_getDuration
-  (JNIEnv* env, jobject self)
+JNIEXPORT jint JNICALL Java_app_zxtune_core_jni_JniModule_getDurationMs(JNIEnv* env, jobject self)
 {
-  return Jni::Call(env, [=] ()
-  {
+  return Jni::Call(env, [=]() {
     const auto moduleHandle = NativeModuleJni::GetHandle(env, self);
-    return Module::Storage::Instance().Get(moduleHandle)->GetModuleInformation()->FramesCount();
+    return Module::Storage::Instance()
+        .Get(moduleHandle)
+        ->GetModuleInformation()
+        ->Duration()
+        .CastTo<Player::TimeBase>()
+        .Get();
   });
 }
 
-JNIEXPORT jlong JNICALL Java_app_zxtune_core_jni_JniModule_getProperty__Ljava_lang_String_2J
-  (JNIEnv* env, jobject self, jstring propName, jlong defVal)
+JNIEXPORT jlong JNICALL Java_app_zxtune_core_jni_JniModule_getProperty__Ljava_lang_String_2J(JNIEnv* env, jobject self,
+                                                                                             jstring propName,
+                                                                                             jlong defVal)
 {
-  return Jni::Call(env, [=] ()
-  {
-    const auto moduleHandle = NativeModuleJni::GetHandle(env, self);
-    const auto module = Module::Storage::Instance().Get(moduleHandle);
-    const auto& params = module->GetModuleProperties();
-    const Jni::PropertiesReadHelper props(env, *params);
-    return props.Get(propName, defVal);
-  });
-}
-
-JNIEXPORT jstring JNICALL Java_app_zxtune_core_jni_JniModule_getProperty__Ljava_lang_String_2Ljava_lang_String_2
-  (JNIEnv* env, jobject self, jstring propName, jstring defVal)
-{
-  return Jni::Call(env, [=] ()
-  {
+  return Jni::Call(env, [=]() {
     const auto moduleHandle = NativeModuleJni::GetHandle(env, self);
     const auto module = Module::Storage::Instance().Get(moduleHandle);
     const auto& params = module->GetModuleProperties();
@@ -252,22 +279,30 @@ JNIEXPORT jstring JNICALL Java_app_zxtune_core_jni_JniModule_getProperty__Ljava_
   });
 }
 
-JNIEXPORT jobject JNICALL Java_app_zxtune_core_jni_JniModule_createPlayer
-  (JNIEnv* env, jobject self)
+JNIEXPORT jstring JNICALL Java_app_zxtune_core_jni_JniModule_getProperty__Ljava_lang_String_2Ljava_lang_String_2(
+    JNIEnv* env, jobject self, jstring propName, jstring defVal)
 {
-  return Jni::Call(env, [=] ()
-  {
+  return Jni::Call(env, [=]() {
     const auto moduleHandle = NativeModuleJni::GetHandle(env, self);
     const auto module = Module::Storage::Instance().Get(moduleHandle);
-    return Player::Create(env, module);
+    const auto& params = module->GetModuleProperties();
+    const Jni::PropertiesReadHelper props(env, *params);
+    return props.Get(propName, defVal);
   });
 }
 
-JNIEXPORT jobjectArray JNICALL Java_app_zxtune_core_jni_JniModule_getAdditionalFiles
-  (JNIEnv* env, jobject self)
+JNIEXPORT jobject JNICALL Java_app_zxtune_core_jni_JniModule_createPlayer(JNIEnv* env, jobject self, jint samplerate)
 {
-  return Jni::Call(env, [=] ()
-  {
+  return Jni::Call(env, [=]() {
+    const auto moduleHandle = NativeModuleJni::GetHandle(env, self);
+    const auto module = Module::Storage::Instance().Get(moduleHandle);
+    return Player::Create(env, *module, samplerate);
+  });
+}
+
+JNIEXPORT jobjectArray JNICALL Java_app_zxtune_core_jni_JniModule_getAdditionalFiles(JNIEnv* env, jobject self)
+{
+  return Jni::Call(env, [=]() {
     const auto moduleHandle = NativeModuleJni::GetHandle(env, self);
     const auto module = Module::Storage::Instance().Get(moduleHandle);
     if (const auto files = dynamic_cast<const Module::AdditionalFiles*>(module.get()))
@@ -287,11 +322,10 @@ JNIEXPORT jobjectArray JNICALL Java_app_zxtune_core_jni_JniModule_getAdditionalF
   });
 }
 
-JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniModule_resolveAdditionalFile
-  (JNIEnv* env, jobject self, jstring fileName, jobject data)
+JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniModule_resolveAdditionalFile(JNIEnv* env, jobject self,
+                                                                                jstring fileName, jobject data)
 {
-  return Jni::Call(env, [=] ()
-  {
+  return Jni::Call(env, [=]() {
     const auto moduleHandle = NativeModuleJni::GetHandle(env, self);
     const auto module = Module::Storage::Instance().Get(moduleHandle);
     auto& files = const_cast<Module::AdditionalFiles&>(dynamic_cast<const Module::AdditionalFiles&>(*module));

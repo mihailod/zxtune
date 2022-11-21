@@ -1,31 +1,30 @@
 /**
-* 
-* @file
-*
-* @brief Sessions support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Sessions support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "container.h"
+// local includes
 #include "session.h"
+#include "container.h"
 #include "ui/utils.h"
-//common includes
+// common includes
 #include <contract.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <debug/log.h>
-//std includes
+// std includes
 #include <algorithm>
 #include <list>
-//qt includes
+// qt includes
+#include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
+#include <QtCore/QStandardPaths>
 #include <QtCore/QStringList>
-#include <QtGui/QDesktopServices>
-//text includes
-#include "text/text.h"
 
 namespace
 {
@@ -34,7 +33,7 @@ namespace
   QStringList Substract(const QStringList& lh, const QStringList& rh)
   {
     QStringList result(lh);
-    std::for_each(rh.begin(), rh.end(), [&result](const QString& s) {result.removeAll(s);});
+    std::for_each(rh.begin(), rh.end(), [&result](const QString& s) { result.removeAll(s); });
     return result;
   }
 
@@ -54,6 +53,7 @@ namespace
         Models.pop_front();
       }
     }
+
   private:
     std::list<Playlist::Model::Ptr> Models;
   };
@@ -61,16 +61,16 @@ namespace
   template<class T>
   QString BuildPlaylistFileName(const T& val)
   {
-	return QString::fromLatin1("%1.xspf").arg(val);
+    return QString::fromLatin1("%1.xspf").arg(val);
   }
 
   class FiledSession : public Playlist::Session
   {
   public:
     FiledSession()
-	  : Directory(QStandardPaths::writableLocation(QStandardPaths::DataLocation))
+      : Directory(QStandardPaths::locate(QStandardPaths::DataLocation, "", QStandardPaths::LocateDirectory))
     {
-      const QLatin1String dirPath(Text::PLAYLISTS_DIR);
+      const auto dirPath = QCoreApplication::applicationName() + "/Playlists";
       Require(Directory.mkpath(dirPath));
       Require(Directory.cd(dirPath));
       Files = Directory.entryList(QStringList(BuildPlaylistFileName('*')), QDir::Files | QDir::Readable, QDir::Name);
@@ -101,6 +101,7 @@ namespace
       RemoveFiles(toRemove);
       Files = newFiles;
     }
+
   private:
     QStringList SaveFiles(Playlist::Controller::Iterator::Ptr it)
     {
@@ -126,11 +127,12 @@ namespace
         Directory.remove(name);
       }
     }
+
   private:
     QDir Directory;
     QStringList Files;
   };
-}
+}  // namespace
 
 namespace Playlist
 {
@@ -138,4 +140,4 @@ namespace Playlist
   {
     return MakePtr<FiledSession>();
   }
-}
+}  // namespace Playlist

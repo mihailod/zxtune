@@ -1,14 +1,14 @@
 /**
-* 
-* @file
-*
-* @brief Sound settings pane implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Sound settings pane implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "sound.h"
 #include "sound.ui.h"
 #include "sound_alsa.h"
@@ -17,43 +17,34 @@
 #include "sound_sdl.h"
 #include "sound_win32.h"
 #include "supp/options.h"
-#include "ui/utils.h"
 #include "ui/tools/parameters_helpers.h"
-//common includes
+#include "ui/utils.h"
+// common includes
 #include <contract.h>
-//library includes
+// library includes
 #include <math/numeric.h>
 #include <sound/backend_attrs.h>
 #include <sound/backends_parameters.h>
 #include <sound/service.h>
 #include <sound/sound_parameters.h>
 #include <strings/array.h>
-//boost includes
+// boost includes
 #include <boost/algorithm/string/join.hpp>
-//std includes
+// std includes
 #include <utility>
 
 namespace
 {
-  static const uint_t FREQUENCES[] =
-  {
-    8000,
-    12000,
-    16000,
-    22000,
-    24000,
-    32000,
-    44100,
-    48000
-  };
+  static const uint_t FREQUENCES[] = {8000, 12000, 16000, 22000, 24000, 32000, 44100, 48000};
 
   Strings::Array GetSystemBackends(Parameters::Accessor::Ptr params)
   {
     return Sound::CreateSystemService(params)->GetAvailableBackends();
   }
 
-  class SoundOptionsWidget : public UI::SoundSettingsWidget
-                           , public UI::Ui_SoundSettingsWidget
+  class SoundOptionsWidget
+    : public UI::SoundSettingsWidget
+    , public UI::Ui_SoundSettingsWidget
   {
   public:
     explicit SoundOptionsWidget(QWidget& parent)
@@ -61,20 +52,23 @@ namespace
       , Options(GlobalOptions::Instance().Get())
       , Backends(GetSystemBackends(Options))
     {
-      //setup self
+      // setup self
       setupUi(this);
 
       FillFrequences();
       FillBackends();
 
       using namespace Parameters;
-      IntegerValue::Bind(*frameDurationValue, *Options, ZXTune::Sound::FRAMEDURATION, ZXTune::Sound::FRAMEDURATION_DEFAULT);
-      IntType freq = ZXTune::Sound::FREQUENCY_DEFAULT;
-      Options->FindValue(Parameters::ZXTune::Sound::FREQUENCY, freq);
+      using namespace ZXTune::Sound;
+      IntType freq = FREQUENCY_DEFAULT;
+      Options->FindValue(FREQUENCY, freq);
       SetFrequency(freq);
       Require(connect(soundFrequencyValue, SIGNAL(currentIndexChanged(int)), SLOT(ChangeSoundFrequency(int))));
-      IntegerValue::Bind(*silenceLimitValue, *Options, ZXTune::Sound::SILENCE_LIMIT, ZXTune::Sound::SILENCE_LIMIT_DEFAULT);
-      IntegerValue::Bind(*loopsCountLimitValue, *Options, ZXTune::Sound::LOOP_LIMIT, 0);
+      IntegerValue::Bind(*silenceLimitValue, *Options, SILENCE_LIMIT, SILENCE_LIMIT_DEFAULT);
+      IntegerValue::Bind(*loopsCountLimitValue, *Options, LOOP_LIMIT, 0);
+      IntegerValue::Bind(*fadeinValue, *Options, FADEIN, FADEIN_DEFAULT);
+      IntegerValue::Bind(*fadeoutValue, *Options, FADEOUT, FADEOUT_DEFAULT);
+      IntegerValue::Bind(*preampValue, *Options, GAIN, GAIN_DEFAULT);
 
       Require(connect(backendsList, SIGNAL(currentRowChanged(int)), SLOT(SelectBackend(int))));
       Require(connect(moveUp, SIGNAL(released()), SLOT(MoveBackendUp())));
@@ -86,7 +80,7 @@ namespace
       const qlonglong val = FREQUENCES[idx];
       Options->SetValue(Parameters::ZXTune::Sound::FREQUENCY, val);
     }
-    
+
     void SelectBackend(int idx) override
     {
       const String id = Backends[idx];
@@ -96,7 +90,7 @@ namespace
       }
       settingsHint->setVisible(0 == SetupPages.count(id));
     }
-    
+
     void MoveBackendUp() override
     {
       if (const int row = backendsList->currentRow())
@@ -105,7 +99,7 @@ namespace
         backendsList->setCurrentRow(row - 1);
       }
     }
-    
+
     void MoveBackendDown() override
     {
       const int row = backendsList->currentRow();
@@ -116,7 +110,7 @@ namespace
       }
     }
 
-    //QWidget
+    // QWidget
     void changeEvent(QEvent* event) override
     {
       if (event && QEvent::LanguageChange == event->type())
@@ -125,6 +119,7 @@ namespace
       }
       UI::SoundSettingsWidget::changeEvent(event);
     }
+
   private:
     void FillFrequences()
     {
@@ -158,7 +153,7 @@ namespace
         SetupPages[id] = wid.release();
       }
     }
-    
+
     void SetFrequency(uint_t val)
     {
       const uint_t* const frq = std::find(FREQUENCES, std::end(FREQUENCES), val);
@@ -174,7 +169,7 @@ namespace
       const String value = boost::algorithm::join(Backends, DELIMITER);
       Options->SetValue(Parameters::ZXTune::Sound::Backends::ORDER, value);
     }
-    
+
     void SwapItems(int lh, int rh)
     {
       QListWidgetItem* const first = backendsList->item(lh);
@@ -193,21 +188,21 @@ namespace
         SaveBackendsOrder();
       }
     }
+
   private:
     const Parameters::Container::Ptr Options;
     Strings::Array Backends;
     std::map<String, QWidget*> SetupPages;
   };
-}
+}  // namespace
 namespace UI
 {
   SoundSettingsWidget::SoundSettingsWidget(QWidget& parent)
     : QWidget(&parent)
-  {
-  }
+  {}
 
   SoundSettingsWidget* SoundSettingsWidget::Create(QWidget& parent)
   {
     return new SoundOptionsWidget(parent);
   }
-}
+}  // namespace UI

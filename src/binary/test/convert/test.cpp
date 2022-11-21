@@ -1,19 +1,19 @@
 /**
-*
-* @file
-*
-* @brief  Base64 test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Base64 test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <parameters/convert.h>
 #include <binary/base64.h>
-#include <strings/format.h>
 #include <iostream>
+#include <parameters/convert.h>
+#include <strings/format.h>
 
-std::ostream& operator << (std::ostream& s, const Dump& d)
+std::ostream& operator<<(std::ostream& s, const Binary::Dump& d)
 {
   s << Parameters::ConvertToString(d);
   return s;
@@ -27,7 +27,7 @@ namespace
     if (!val)
       throw 1;
   }
-  
+
   template<class T>
   void Test(const std::string& msg, const T& result, const T& reference)
   {
@@ -46,14 +46,13 @@ namespace
 
   void TestBase64(std::size_t refSize, const std::string& encodedRef)
   {
-    const Dump ref(REFERENCE, REFERENCE + refSize);
+    const Binary::Dump ref(REFERENCE, REFERENCE + refSize);
     const std::string encoded = Binary::Base64::Encode(ref);
     Test(Strings::Format("encode for %1% bytes", refSize), encoded, encodedRef);
-    const Dump decoded = Binary::Base64::Decode(encoded);
+    const auto decoded = Binary::Base64::Decode(encoded);
     Test(Strings::Format("decode for %1% bytes", refSize), decoded, ref);
   }
-}
-
+}  // namespace
 
 int main()
 {

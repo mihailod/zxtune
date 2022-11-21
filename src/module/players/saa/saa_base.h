@@ -1,27 +1,27 @@
 /**
-* 
-* @file
-*
-* @brief  SAA-based chiptunes support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SAA-based chiptunes support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
+// local includes
 #include "module/players/saa/saa_parameters.h"
-//library includes
+// library includes
 #include <module/holder.h>
 #include <module/players/tracking.h>
-#include <sound/render_params.h>
 
 namespace Module
 {
   namespace SAA
   {
     const uint_t TRACK_CHANNELS = 6;
+    const auto BASE_FRAME_DURATION = Time::Microseconds::FromFrequency(50);
 
     class ChannelBuilder
     {
@@ -35,6 +35,7 @@ namespace Module
       void SetEnvelope(uint_t type);
       void EnableTone();
       void EnableNoise();
+
     private:
       void SetRegister(uint_t reg, uint_t val)
       {
@@ -53,6 +54,7 @@ namespace Module
         Regs.Data[reg] |= static_cast<uint8_t>(val);
         Regs.Mask |= 1 << reg;
       }
+
     private:
       const uint_t Channel;
       Devices::SAA::Registers& Regs;
@@ -70,6 +72,7 @@ namespace Module
       {
         result = Regs;
       }
+
     private:
       Devices::SAA::Registers Regs;
     };
@@ -85,10 +88,12 @@ namespace Module
       virtual void Reset() = 0;
     };
 
-    class DataIterator : public StateIterator
+    class DataIterator : public Iterator
     {
     public:
       typedef std::shared_ptr<DataIterator> Ptr;
+
+      virtual State::Ptr GetStateObserver() const = 0;
 
       virtual Devices::SAA::Registers GetData() const = 0;
     };
@@ -99,17 +104,15 @@ namespace Module
       typedef std::shared_ptr<const Chiptune> Ptr;
       virtual ~Chiptune() = default;
 
-      virtual Information::Ptr GetInformation() const = 0;
+      virtual Time::Microseconds GetFrameDuration() const = 0;
+
+      virtual TrackModel::Ptr GetTrackModel() const = 0;
       virtual Parameters::Accessor::Ptr GetProperties() const = 0;
       virtual DataIterator::Ptr CreateDataIterator() const = 0;
     };
 
-    Analyzer::Ptr CreateAnalyzer(Devices::SAA::Device::Ptr device);
-
     DataIterator::Ptr CreateDataIterator(TrackStateIterator::Ptr iterator, DataRenderer::Ptr renderer);
 
-    Renderer::Ptr CreateRenderer(Sound::RenderParameters::Ptr params, DataIterator::Ptr iterator, Devices::SAA::Device::Ptr device);
-
     Holder::Ptr CreateHolder(Chiptune::Ptr chiptune);
-  }
-}
+  }  // namespace SAA
+}  // namespace Module

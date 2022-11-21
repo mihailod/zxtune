@@ -1,53 +1,53 @@
 /**
-* 
-* @file
-*
-* @brief Playlist view implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playlist view implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "scanner_view.h"
-#include "table_view.h"
-#include "contextmenu.h"
+// local includes
 #include "playlist_view.h"
-#include "search.h"
-#include "playlist/parameters.h"
+#include "contextmenu.h"
 #include "playlist/io/export.h"
+#include "playlist/parameters.h"
 #include "playlist/supp/container.h"
 #include "playlist/supp/controller.h"
 #include "playlist/supp/model.h"
 #include "playlist/supp/scanner.h"
 #include "playlist/supp/storage.h"
+#include "scanner_view.h"
+#include "search.h"
 #include "supp/options.h"
-#include "ui/state.h"
-#include "ui/utils.h"
+#include "table_view.h"
 #include "ui/controls/overlay_progress.h"
+#include "ui/state.h"
 #include "ui/tools/errorswidget.h"
 #include "ui/tools/filedialog.h"
-//local includes
+#include "ui/utils.h"
+// local includes
 #include <contract.h>
 #include <error.h>
-//library includes
+// library includes
 #include <debug/log.h>
 #include <parameters/template.h>
 #include <strings/template.h>
-//boost includes
+// boost includes
 #include <boost/algorithm/string/find.hpp>
 #include <boost/algorithm/string/replace.hpp>
-//qt includes
-#include <QtCore/QUrl>
+// qt includes
+#include <QtCore/QIdentityProxyModel>
 #include <QtCore/QMimeData>
-#include <QtWidgets/QApplication>
+#include <QtCore/QUrl>
 #include <QtGui/QClipboard>
 #include <QtGui/QDragEnterEvent>
+#include <QtGui/QKeyEvent>
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QHeaderView>
 #include <QtWidgets/QInputDialog>
-#include <QtGui/QKeyEvent>
 #include <QtWidgets/QProgressBar>
-#include "uiproxymodel.h"
 #include <QtWidgets/QVBoxLayout>
 
 namespace
@@ -60,8 +60,7 @@ namespace
     PlayitemStateCallbackImpl(Playlist::Model& model, Playlist::Item::Iterator& iter)
       : Model(model)
       , Iterator(iter)
-    {
-    }
+    {}
 
     Playlist::Item::State GetState(const QModelIndex& index) const override
     {
@@ -73,15 +72,16 @@ namespace
         {
           return Iterator.GetState();
         }
-        //TODO: do not access item
-        const Playlist::Item::Data::Ptr item = Model.GetItem(row);
-        if (item && !item->GetState())
+        // TODO: do not access item
+        const auto item = Model.GetItem(row);
+        if (item && (!item->IsLoaded() || !item->GetState()))
         {
           return Playlist::Item::STOPPED;
         }
       }
       return Playlist::Item::ERROR;
     }
+
   private:
     const Playlist::Model& Model;
     const Playlist::Item::Iterator& Iterator;
@@ -92,8 +92,7 @@ namespace
   public:
     explicit PlaylistOptionsWrapper(Parameters::Accessor::Ptr params)
       : Params(std::move(params))
-    {
-    }
+    {}
 
     unsigned GetPlayorderMode() const
     {
@@ -101,11 +100,9 @@ namespace
       Params->FindValue(Parameters::ZXTuneQT::Playlist::LOOPED, isLooped);
       Parameters::IntType isRandom = Parameters::ZXTuneQT::Playlist::RANDOMIZED_DEFAULT;
       Params->FindValue(Parameters::ZXTuneQT::Playlist::RANDOMIZED, isRandom);
-      return
-        (isLooped ? Playlist::Item::LOOPED : 0) |
-        (isRandom ? Playlist::Item::RANDOMIZED: 0)
-      ;
+      return (isLooped ? Playlist::Item::LOOPED : 0) | (isRandom ? Playlist::Item::RANDOMIZED : 0);
     }
+
   private:
     const Parameters::Accessor::Ptr Params;
   };
@@ -113,11 +110,11 @@ namespace
   class TooltipFieldsSourceAdapter : public Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource>
   {
     typedef Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource> Parent;
+
   public:
     explicit TooltipFieldsSourceAdapter(const Parameters::Accessor& props)
       : Parent(props)
-    {
-    }
+    {}
 
     String GetFieldValue(const String& fieldName) const override
     {
@@ -138,6 +135,7 @@ namespace
       boost::algorithm::replace_all(result, NEWLINE, NEWLINE_ESCAPED);
       return result;
     }
+
   private:
     static void TrimLongMultiline(String& result, int maxLines)
     {
@@ -162,20 +160,20 @@ namespace
       const String& result = GetTemplate().Instantiate(adapter);
       return ToQString(result);
     }
+
   private:
     const Strings::Template& GetTemplate() const
     {
       const QString view = Playlist::UI::View::tr(
-        "<html>"
-        "[Fullpath]<br/>"
-        "[Container]&nbsp;([Size] bytes)<br/><br/>"
-        "<b>Title:</b> [Title]<br/>"
-        "<b>Author:</b> [Author]<br/>"
-        "<b>Program:</b> [Program]<br/>"
-        "[Comment]"
-        "<pre>[Strings]</pre>"
-        "</html>"
-      );
+          "<html>"
+          "[Fullpath]<br/>"
+          "[Container]&nbsp;([Size] bytes)<br/><br/>"
+          "<b>Title:</b> [Title]<br/>"
+          "<b>Author:</b> [Author]<br/>"
+          "<b>Program:</b> [Program]<br/>"
+          "[Comment]"
+          "<pre>[Strings]</pre>"
+          "</html>");
       return GetTemplate(view);
     }
 
@@ -188,19 +186,20 @@ namespace
       }
       return *TemplateData;
     }
+
   private:
     mutable QString TemplateView;
     mutable Strings::Template::Ptr TemplateData;
   };
 
-  class RetranslateModel : public UiHelpers::UIProxyModel
+  class RetranslateModel : public QIdentityProxyModel
   {
   public:
     explicit RetranslateModel(Playlist::Model& model)
-	  : UIProxyModel(&model)
+      : QIdentityProxyModel(&model)
       , Delegate(model)
     {
-      setModel(&model);
+      setSourceModel(&model);
       Dbg("Created retranslation model at %1% for %2%", this, &model);
     }
 
@@ -211,12 +210,11 @@ namespace
 
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override
     {
-      if (Qt::Horizontal == orientation  &&
-          Qt::DisplayRole == role)
+      if (Qt::Horizontal == orientation && Qt::DisplayRole == role)
       {
         return GetHeaderText(section);
       }
-	  return UIProxyModel::headerData(section, orientation, role);
+      return QIdentityProxyModel::headerData(section, orientation, role);
     }
 
     QVariant data(const QModelIndex& index, int role) const override
@@ -232,7 +230,7 @@ namespace
       }
       else
       {
-		return UIProxyModel::data(index, role);
+        return QIdentityProxyModel::data(index, role);
       }
     }
 
@@ -240,12 +238,22 @@ namespace
     {
       return Delegate.canFetchMore(index);
     }
+
   private:
     QVariant GetTooltip(int_t itemNum) const
     {
-      if (const Playlist::Item::Data::Ptr item = Delegate.GetItem(itemNum))
+      if (const auto item = Delegate.GetItem(itemNum))
       {
-        return GetTooltip(*item);
+        if (item->IsLoaded())
+        {
+          return GetTooltip(*item);
+        }
+        else
+        {
+          // force prefetch
+          QIdentityProxyModel::data(index(itemNum, 0), Qt::DisplayRole);
+          return Playlist::UI::View::tr("Loading...");
+        }
       }
       return QVariant();
     }
@@ -258,8 +266,7 @@ namespace
       }
       else
       {
-        const Module::Holder::Ptr holder = item.GetModule();
-        const Parameters::Accessor::Ptr properties = holder->GetModuleProperties();
+        const auto properties = item.GetModuleProperties();
         return Tooltip.Get(*properties);
       }
     }
@@ -292,6 +299,7 @@ namespace
         return QVariant();
       };
     }
+
   private:
     Playlist::Model& Delegate;
     TooltipSource Tooltip;
@@ -323,7 +331,7 @@ namespace
       , View(Playlist::UI::TableView::Create(*this, State, *new RetranslateModel(*Controller->GetModel())))
       , OperationProgress(OverlayProgress::Create(*this))
     {
-      //setup ui
+      // setup ui
       setAcceptDrops(true);
       if (const auto layout = new QVBoxLayout(this))
       {
@@ -334,21 +342,24 @@ namespace
         if (UI::ErrorsWidget* const errors = UI::ErrorsWidget::Create(*this))
         {
           layout->addWidget(errors);
-          Require(errors->connect(Controller->GetScanner(), SIGNAL(ErrorOccurred(const Error&)), SLOT(AddError(const Error&))));
+          Require(errors->connect(Controller->GetScanner(), SIGNAL(ErrorOccurred(const Error&)),
+                                  SLOT(AddError(const Error&))));
         }
-        if (Playlist::UI::ScannerView* const scannerView = Playlist::UI::ScannerView::Create(*this, Controller->GetScanner()))
+        if (Playlist::UI::ScannerView* const scannerView =
+                Playlist::UI::ScannerView::Create(*this, Controller->GetScanner()))
         {
           layout->addWidget(scannerView);
         }
       }
-      //setup connections
+      // setup connections
       const Playlist::Item::Iterator::Ptr iter = Controller->GetIterator();
       Require(iter->connect(View, SIGNAL(TableRowActivated(unsigned)), SLOT(Reset(unsigned))));
       Require(View->connect(iter, SIGNAL(ItemActivated(unsigned)), SLOT(MoveToTableRow(unsigned))));
 
-      //redirect signals to self 
+      // redirect signals to self
       Require(connect(Controller.get(), SIGNAL(Renamed(const QString&)), SIGNAL(Renamed(const QString&))));
-      Require(connect(iter, SIGNAL(ItemActivated(Playlist::Item::Data::Ptr)), SIGNAL(ItemActivated(Playlist::Item::Data::Ptr))));
+      Require(connect(iter, SIGNAL(ItemActivated(Playlist::Item::Data::Ptr)),
+                      SIGNAL(ItemActivated(Playlist::Item::Data::Ptr))));
 
       const Playlist::Model::Ptr model = Controller->GetModel();
       Require(connect(model, SIGNAL(OperationStarted()), SLOT(LongOperationStart())));
@@ -370,7 +381,7 @@ namespace
       return Controller;
     }
 
-    //modifiers
+    // modifiers
     void AddItems(const QStringList& items) override
     {
       const Playlist::Scanner::Ptr scanner = Controller->GetScanner();
@@ -397,8 +408,7 @@ namespace
       const Playlist::Item::Iterator::Ptr iter = Controller->GetIterator();
       bool hasMoreItems = false;
       const unsigned playorderMode = Options.GetPlayorderMode();
-      while (iter->Next(playorderMode) &&
-             Playlist::Item::ERROR == iter->GetState())
+      while (iter->Next(playorderMode) && Playlist::Item::ERROR == iter->GetState())
       {
         hasMoreItems = true;
       }
@@ -411,23 +421,19 @@ namespace
     void Next() override
     {
       const Playlist::Item::Iterator::Ptr iter = Controller->GetIterator();
-      //skip invalid ones
+      // skip invalid ones
       const unsigned playorderMode = Options.GetPlayorderMode();
-      while (iter->Next(playorderMode) &&
-             Playlist::Item::ERROR == iter->GetState())
-      {
-      }
+      while (iter->Next(playorderMode) && Playlist::Item::ERROR == iter->GetState())
+      {}
     }
 
     void Prev() override
     {
       const Playlist::Item::Iterator::Ptr iter = Controller->GetIterator();
-      //skip invalid ones
+      // skip invalid ones
       const unsigned playorderMode = Options.GetPlayorderMode();
-      while (iter->Prev(playorderMode) &&
-             Playlist::Item::ERROR == iter->GetState())
-      {
-      }
+      while (iter->Prev(playorderMode) && Playlist::Item::ERROR == iter->GetState())
+      {}
     }
 
     void Clear() override
@@ -440,9 +446,8 @@ namespace
     void AddFiles() override
     {
       QStringList files;
-      if (UI::OpenMultipleFilesDialog(
-        Playlist::UI::View::tr("Add files"),
-        Playlist::UI::View::tr("All files (*)"), files))
+      if (UI::OpenMultipleFilesDialog(Playlist::UI::View::tr("Add files"), Playlist::UI::View::tr("All files (*)"),
+                                      files))
       {
         AddItems(files);
       }
@@ -462,7 +467,8 @@ namespace
     {
       const QString oldName = Controller->GetName();
       bool ok = false;
-      const QString newName = QInputDialog::getText(this, Playlist::UI::View::tr("Rename playlist"), QString(), QLineEdit::Normal, oldName, &ok);
+      const QString newName = QInputDialog::getText(this, Playlist::UI::View::tr("Rename playlist"), QString(),
+                                                    QLineEdit::Normal, oldName, &ok);
       if (ok && !newName.isEmpty())
       {
         Controller->SetName(newName);
@@ -478,8 +484,8 @@ namespace
 
       QString filename = Controller->GetName();
       int saveCase = 0;
-      if (UI::SaveFileDialog(Playlist::UI::View::tr("Save playlist"),
-        QLatin1String("xspf"), filters, filename, &saveCase))
+      if (UI::SaveFileDialog(Playlist::UI::View::tr("Save playlist"), QLatin1String("xspf"), filters, filename,
+                             &saveCase))
       {
         const Playlist::IO::ExportFlags flags = GetSavePlaylistFlags(saveCase);
         Playlist::Save(Controller, filename, flags);
@@ -506,7 +512,7 @@ namespace
       Controller->GetModel()->CancelLongOperation();
     }
 
-    //qwidget virtuals
+    // qwidget virtuals
     void keyPressEvent(QKeyEvent* event) override
     {
       if (event->matches(QKeySequence::Delete) || event->key() == Qt::Key_Backspace)
@@ -576,6 +582,7 @@ namespace
       LayoutState->Save();
       event->accept();
     }
+
   private:
     void UpdateState(Playlist::Item::State state)
     {
@@ -600,7 +607,7 @@ namespace
         {
           View->SelectItems(items);
           const Playlist::Model::IndexType itemToSelect = *items->begin();
-          //not last
+          // not last
           if (itemToSelect != itemsCount - 1)
           {
             View->selectRow(itemToSelect);
@@ -660,7 +667,7 @@ namespace
           QDataStream stream(encodedData);
           stream >> items;
         }
-        //pasting is done immediately, so update UI right here
+        // pasting is done immediately, so update UI right here
         const Playlist::Scanner::Ptr scanner = Controller->GetScanner();
         scanner->PasteItems(items);
       }
@@ -679,10 +686,11 @@ namespace
     {
       if (const Playlist::Item::SelectionOperation::Ptr op = Playlist::UI::ExecuteSearchDialog(*View))
       {
-        //TODO: extract
+        // TODO: extract
         const Playlist::Model::Ptr model = Controller->GetModel();
         op->setParent(model);
-        Require(View->connect(op.get(), SIGNAL(ResultAcquired(Playlist::Model::IndexSet::Ptr)), SLOT(SelectItems(Playlist::Model::IndexSet::Ptr))));
+        Require(View->connect(op.get(), SIGNAL(ResultAcquired(Playlist::Model::IndexSet::Ptr)),
+                              SLOT(SelectItems(Playlist::Model::IndexSet::Ptr))));
         model->PerformOperation(op);
       }
     }
@@ -708,28 +716,29 @@ namespace
       }
       return res;
     }
+
   private:
     const UI::State::Ptr LayoutState;
     const Playlist::Controller::Ptr Controller;
     const PlaylistOptionsWrapper Options;
-    //state
+    // state
     PlayitemStateCallbackImpl State;
     Playlist::UI::TableView* const View;
     OverlayProgress* const OperationProgress;
   };
-}
+}  // namespace
 
 namespace Playlist
 {
   namespace UI
   {
-    View::View(QWidget& parent) : QWidget(&parent)
-    {
-    }
+    View::View(QWidget& parent)
+      : QWidget(&parent)
+    {}
 
     View* View::Create(QWidget& parent, Playlist::Controller::Ptr playlist, Parameters::Accessor::Ptr params)
     {
       return new ViewImpl(parent, playlist, params);
     }
-  }
-}
+  }  // namespace UI
+}  // namespace Playlist

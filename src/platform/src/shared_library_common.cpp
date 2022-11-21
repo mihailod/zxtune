@@ -1,18 +1,18 @@
 /**
-*
-* @file
-*
-* @brief  Common SharedLibrary logic implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Common SharedLibrary logic implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "shared_library_common.h"
-//common includes
+// common includes
 #include <error_tools.h>
-//library includes
+// library includes
 #include <debug/log.h>
 #include <l10n/api.h>
 
@@ -23,13 +23,13 @@ namespace
   const Debug::Stream Dbg("Platform");
 
   const L10n::TranslateFunctor translate = L10n::TranslateFunctor("platform");
-}
+}  // namespace
 
 namespace Platform
 {
-  SharedLibrary::Ptr SharedLibrary::Load(const std::string& name)
+  SharedLibrary::Ptr SharedLibrary::Load(const String& name)
   {
-    const std::string& fileName = Details::GetSharedLibraryFilename(name);
+    const auto fileName = Details::GetSharedLibraryFilename(name);
     SharedLibrary::Ptr res;
     ThrowIfError(Details::LoadSharedLibrary(fileName, res));
     Dbg("Loaded '%1%' (as '%2%')", name, fileName);
@@ -38,9 +38,9 @@ namespace Platform
 
   SharedLibrary::Ptr SharedLibrary::Load(const SharedLibrary::Name& name)
   {
-    const std::vector<std::string> filenames = Details::GetSharedLibraryFilenames(name);
-    Error resError = MakeFormattedError(THIS_LINE,
-      translate("Failed to load dynamic library '%1%' by any of the alternative names."), FromStdString(name.Base()));
+    const auto filenames = Details::GetSharedLibraryFilenames(name);
+    Error resError = MakeFormattedError(
+        THIS_LINE, translate("Failed to load dynamic library '%1%' by any of the alternative names."), name.Base());
     for (const auto& file : filenames)
     {
       SharedLibrary::Ptr res;
@@ -55,7 +55,7 @@ namespace Platform
       }
     }
     throw resError;
-    //workaround for MSVS7.1
+    // workaround for MSVS7.1
     return SharedLibrary::Ptr();
   }
-}
+}  // namespace Platform

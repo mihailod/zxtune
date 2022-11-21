@@ -1,30 +1,28 @@
 /**
-*
-* @file
-*
-* @brief  Defenition of gain-related functionality
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Defenition of gain-related functionality
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <sound/gain.h>
 #include <sound/receiver.h>
 
 namespace Sound
 {
-  class GainSource
+  class Gainer : public Converter
   {
   public:
-    typedef std::shared_ptr<const GainSource> Ptr;
+    using Ptr = std::shared_ptr<Gainer>;
 
-    virtual ~GainSource() = default;
-    
-    virtual Gain::Type Get() const = 0;
+    virtual void SetGain(Gain::Type gain) = 0;
   };
-  
-  Receiver::Ptr CreateGainer(GainSource::Ptr gain, Receiver::Ptr delegate);
-}
+
+  Gainer::Ptr CreateGainer();
+}  // namespace Sound
