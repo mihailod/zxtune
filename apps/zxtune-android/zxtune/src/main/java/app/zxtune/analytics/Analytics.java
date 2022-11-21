@@ -1,30 +1,25 @@
 package app.zxtune.analytics;
 
+import static java.lang.annotation.RetentionPolicy.SOURCE;
+
 import android.content.Context;
 import android.net.Uri;
 
 import androidx.annotation.IntDef;
-import androidx.collection.SparseArrayCompat;
-
-import com.crashlytics.android.Crashlytics;
+import androidx.collection.LongSparseArray;
 
 import java.lang.annotation.Retention;
+import java.util.HashMap;
 
 import app.zxtune.core.Player;
 import app.zxtune.playback.PlayableItem;
-
-import static java.lang.annotation.RetentionPolicy.SOURCE;
 
 public class Analytics {
 
   private static Sink[] sinks = {};
 
   public static void initialize(Context ctx) {
-    if (FabricSink.isEnabled()) {
-      sinks = new Sink[]{new FabricSink(ctx), new InternalSink(ctx)};
-    } else {
-      sinks = new Sink[]{new InternalSink(ctx)};
-    }
+    sinks = new Sink[]{new InternalSink(ctx)};
   }
 
   public static void logException(Throwable e) {
@@ -34,17 +29,12 @@ public class Analytics {
   }
 
   // TODO: replace by annotation
-  public static class Trace {
+  public static abstract class BaseTrace {
     private final String id;
-    private final long start = System.nanoTime();
-    private final SparseArrayCompat<String> points = new SparseArrayCompat<>();
+    private final LongSparseArray<String> points = new LongSparseArray<>();
     private String method = "";
 
-    public static Trace create(String id) {
-      return new Trace(id);
-    }
-
-    private Trace(String id) {
+    protected BaseTrace(String id) {
       this.id = id;
     }
 
@@ -55,7 +45,7 @@ public class Analytics {
     }
 
     public final void checkpoint(String point) {
-      points.append(getElapsed(), point);
+      points.append(getMetric(), point);
     }
 
     public final void endMethod() {
@@ -64,24 +54,33 @@ public class Analytics {
       method = "";
     }
 
-    private int getElapsed() {
-      return (int) ((System.nanoTime() - start) / 1000);
+    protected abstract long getMetric();
+  }
+
+  public static class Trace extends BaseTrace {
+    private final long start = System.nanoTime();
+
+    public static Trace create(String id) {
+      return new Trace(id);
+    }
+
+    private Trace(String id) {
+      super(id);
+    }
+
+    @Override
+    protected long getMetric() {
+      return ((System.nanoTime() - start) / 1000);
     }
   }
 
-  private static void sendTrace(String id, SparseArrayCompat<String> points) {
+  private static void sendTrace(String id, LongSparseArray<String> points) {
     for (Sink s : sinks) {
       s.sendTrace(id, points);
     }
   }
 
   public static void setNativeCallTags(Uri uri, String subpath, int size) {
-    if (FabricSink.isEnabled()) {
-      Crashlytics.setString("file", "file".equals(uri.getScheme()) ? uri.getLastPathSegment() :
-          uri.toString());
-      Crashlytics.setString("subpath", subpath);
-      Crashlytics.setInt("size", size);
-    }
   }
 
   public static void sendPlayEvent(PlayableItem item, Player player) {
@@ -92,7 +91,8 @@ public class Analytics {
 
   @Retention(SOURCE)
   @IntDef({BROWSER_ACTION_BROWSE, BROWSER_ACTION_BROWSE_PARENT, BROWSER_ACTION_SEARCH})
-  @interface BrowserAction {}
+  @interface BrowserAction {
+  }
 
   public static final int BROWSER_ACTION_BROWSE = 0;
   public static final int BROWSER_ACTION_BROWSE_PARENT = 1;
@@ -106,7 +106,8 @@ public class Analytics {
 
   @Retention(SOURCE)
   @IntDef({SOCIAL_ACTION_RINGTONE, SOCIAL_ACTION_SHARE, SOCIAL_ACTION_SEND})
-  @interface SocialAction {}
+  @interface SocialAction {
+  }
 
   public static final int SOCIAL_ACTION_RINGTONE = 0;
   public static final int SOCIAL_ACTION_SHARE = 1;
@@ -121,7 +122,8 @@ public class Analytics {
   @Retention(SOURCE)
   @IntDef({UI_ACTION_OPEN, UI_ACTION_CLOSE, UI_ACTION_PREFERENCES, UI_ACTION_RATE, UI_ACTION_ABOUT,
       UI_ACTION_QUIT})
-  @interface UiAction {}
+  @interface UiAction {
+  }
 
   public static final int UI_ACTION_OPEN = 0;
   public static final int UI_ACTION_CLOSE = 1;
@@ -140,7 +142,8 @@ public class Analytics {
   @IntDef({PLAYLIST_ACTION_ADD, PLAYLIST_ACTION_DELETE, PLAYLIST_ACTION_MOVE, PLAYLIST_ACTION_SORT,
       PLAYLIST_ACTION_SAVE,
       PLAYLIST_ACTION_STATISTICS})
-  @interface PlaylistAction {}
+  @interface PlaylistAction {
+  }
 
   public static final int PLAYLIST_ACTION_ADD = 0;
   public static final int PLAYLIST_ACTION_DELETE = 1;
@@ -157,7 +160,8 @@ public class Analytics {
 
   @Retention(SOURCE)
   @IntDef({VFS_ACTION_REMOTE_FETCH, VFS_ACTION_REMOTE_FALLBACK, VFS_ACTION_CACHED_FETCH, VFS_ACTION_CACHED_FALLBACK})
-  @interface VfsAction {}
+  @interface VfsAction {
+  }
 
   public static final int VFS_ACTION_REMOTE_FETCH = 0;
   public static final int VFS_ACTION_REMOTE_FALLBACK = 1;
@@ -193,6 +197,12 @@ public class Analytics {
   public static void sendNoTracksFoundEvent(Uri uri) {
     for (Sink s : sinks) {
       s.sendNoTracksFoundEvent(uri);
+    }
+  }
+
+  public static void sendDbMetrics(String name, long size, HashMap<String, Long> tablesRows) {
+    for (Sink s : sinks) {
+      s.sendDbMetrics(name, size, tablesRows);
     }
   }
 }

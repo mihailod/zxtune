@@ -1,74 +1,41 @@
 /**
-* 
-* @file
-*
-* @brief  SoundTrackerPro-based chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SoundTrackerPro-based chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/aym/soundtrackerpro.h"
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
+#include <module/players/platforms.h>
 #include <module/players/properties_meta.h>
 #include <module/players/simple_orderlist.h>
-//text includes
-#include <module/text/platforms.h>
 
-namespace Module
-{
-namespace SoundTrackerPro
+namespace Module::SoundTrackerPro
 {
   enum CmdType
   {
     EMPTY,
-    ENVELOPE,     //2p
-    NOENVELOPE,   //0p
-    GLISS,        //1p
+    ENVELOPE,    // 2p
+    NOENVELOPE,  // 0p
+    GLISS,       // 1p
   };
 
   using Formats::Chiptune::SoundTrackerPro::Sample;
   using Formats::Chiptune::SoundTrackerPro::Ornament;
 
-  typedef SimpleOrderListWithTransposition<Formats::Chiptune::SoundTrackerPro::PositionEntry> OrderListWithTransposition;
+  typedef SimpleOrderListWithTransposition<Formats::Chiptune::SoundTrackerPro::PositionEntry>
+      OrderListWithTransposition;
 
-  class ModuleData : public TrackModel
-  {
-  public:
-    typedef std::shared_ptr<const ModuleData> Ptr;
-    typedef std::shared_ptr<ModuleData> RWPtr;
-
-    ModuleData()
-      : InitialTempo()
-    {
-    }
-
-    uint_t GetInitialTempo() const override
-    {
-      return InitialTempo;
-    }
-
-    const OrderList& GetOrder() const override
-    {
-      return *Order;
-    }
-
-    const PatternsSet& GetPatterns() const override
-    {
-      return *Patterns;
-    }
-
-    uint_t InitialTempo;
-    OrderListWithTransposition::Ptr Order;
-    PatternsSet::Ptr Patterns;
-    SparsedObjectsStorage<Sample> Samples;
-    SparsedObjectsStorage<Ornament> Ornaments;
-  };
+  using ModuleData = AYM::ModuleData<OrderListWithTransposition, Sample, Ornament>;
 
   class DataBuilder : public Formats::Chiptune::SoundTrackerPro::Builder
   {
@@ -153,7 +120,7 @@ namespace SoundTrackerPro
     {
       Patterns.GetChannel().AddCommand(GLISS, target);
     }
-    
+
     void SetVolume(uint_t vol) override
     {
       Patterns.GetChannel().SetVolume(vol);
@@ -164,6 +131,7 @@ namespace SoundTrackerPro
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     AYM::PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -174,12 +142,17 @@ namespace SoundTrackerPro
   struct ChannelState
   {
     ChannelState()
-      : Enabled(false), Envelope(false), Volume(0)
-      , Note(0), SampleNum(Formats::Chiptune::SoundTrackerPro::DEFAULT_SAMPLE), PosInSample(0)
-      , OrnamentNum(Formats::Chiptune::SoundTrackerPro::DEFAULT_ORNAMENT), PosInOrnament(0)
-      , TonSlide(0), Glissade(0)
-    {
-    }
+      : Enabled(false)
+      , Envelope(false)
+      , Volume(0)
+      , Note(0)
+      , SampleNum(Formats::Chiptune::SoundTrackerPro::DEFAULT_SAMPLE)
+      , PosInSample(0)
+      , OrnamentNum(Formats::Chiptune::SoundTrackerPro::DEFAULT_ORNAMENT)
+      , PosInOrnament(0)
+      , TonSlide(0)
+      , Glissade(0)
+    {}
     bool Enabled;
     bool Envelope;
     uint_t Volume;
@@ -197,8 +170,7 @@ namespace SoundTrackerPro
   public:
     explicit DataRenderer(ModuleData::Ptr data)
       : Data(std::move(data))
-    {
-    }
+    {}
 
     void Reset() override
     {
@@ -291,7 +263,8 @@ namespace SoundTrackerPro
       }
     }
 
-    void SynthesizeChannel(const TrackState& state, ChannelState& dst, AYM::ChannelBuilder& channel, AYM::TrackBuilder& track)
+    void SynthesizeChannel(const TrackState& state, ChannelState& dst, AYM::ChannelBuilder& channel,
+                           AYM::TrackBuilder& track)
     {
       if (!dst.Enabled)
       {
@@ -305,26 +278,25 @@ namespace SoundTrackerPro
       const Sample::Line& curSampleLine = curSample.GetLine(dst.PosInSample);
       const Ornament& curOrnament = Data->Ornaments.Get(dst.OrnamentNum);
 
-      //calculate tone
+      // calculate tone
       dst.TonSlide += dst.Glissade;
 
-      //apply level
+      // apply level
       channel.SetLevel(int_t(curSampleLine.Level) - dst.Volume);
-      //apply envelope
+      // apply envelope
       if (curSampleLine.EnvelopeMask && dst.Envelope)
       {
         channel.EnableEnvelope();
       }
-      //apply tone
-      const int_t halftones = int_t(dst.Note) +
-                              Data->Order->GetTransposition(state.Position()) +
-                              (dst.Envelope ? 0 : curOrnament.GetLine(dst.PosInOrnament));
+      // apply tone
+      const int_t halftones = int_t(dst.Note) + Data->Order->GetTransposition(state.Position())
+                              + (dst.Envelope ? 0 : curOrnament.GetLine(dst.PosInOrnament));
       channel.SetTone(halftones, dst.TonSlide + curSampleLine.Vibrato);
       if (curSampleLine.ToneMask)
       {
         channel.DisableTone();
       }
-      //apply noise
+      // apply noise
       if (!curSampleLine.NoiseMask)
       {
         track.SetNoise(curSampleLine.Noise);
@@ -352,41 +324,10 @@ namespace SoundTrackerPro
         }
       }
     }
+
   private:
     const ModuleData::Ptr Data;
     std::array<ChannelState, AYM::TRACK_CHANNELS> PlayerState;
-  };
-
-  class Chiptune : public AYM::Chiptune
-  {
-  public:
-    Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
-      : Data(std::move(data))
-      , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, AYM::TRACK_CHANNELS))
-    {
-    }
-
-    Information::Ptr GetInformation() const override
-    {
-      return Info;
-    }
-
-    Parameters::Accessor::Ptr GetProperties() const override
-    {
-      return Properties;
-    }
-
-    AYM::DataIterator::Ptr CreateDataIterator(AYM::TrackParameters::Ptr trackParams) const override
-    {
-      auto iterator = CreateTrackStateIterator(Data);
-      auto renderer = MakePtr<DataRenderer>(Data);
-      return AYM::CreateDataIterator(std::move(trackParams), std::move(iterator), std::move(renderer));
-    }
-  private:
-    const ModuleData::Ptr Data;
-    const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
   };
 
   class Factory : public AYM::Factory
@@ -394,10 +335,10 @@ namespace SoundTrackerPro
   public:
     explicit Factory(Formats::Chiptune::SoundTrackerPro::Decoder::Ptr decoder)
       : Decoder(std::move(decoder))
-    {
-    }
+    {}
 
-    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       AYM::PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
@@ -405,13 +346,15 @@ namespace SoundTrackerPro
       {
         props.SetSource(*container);
         props.SetPlatform(Platforms::ZX_SPECTRUM);
-        return MakePtr<Chiptune>(dataBuilder.CaptureResult(), std::move(properties));
+        return MakePtr<AYM::TrackingChiptune<ModuleData, DataRenderer>>(dataBuilder.CaptureResult(),
+                                                                        std::move(properties));
       }
       else
       {
-        return AYM::Chiptune::Ptr();
+        return {};
       }
     }
+
   private:
     const Formats::Chiptune::SoundTrackerPro::Decoder::Ptr Decoder;
   };
@@ -420,5 +363,4 @@ namespace SoundTrackerPro
   {
     return MakePtr<Factory>(std::move(decoder));
   }
-}
-}
+}  // namespace Module::SoundTrackerPro

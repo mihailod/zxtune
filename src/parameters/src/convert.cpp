@@ -1,38 +1,36 @@
 /**
-*
-* @file
-*
-* @brief  Parameters conversion
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Parameters conversion
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//library includes
+// library includes
 #include <parameters/convert.h>
-//std includes
-#include <algorithm>
+#include <strings/conversion.h>
+// std includes
 #include <cassert>
 #include <cctype>
-#include <functional>
 
 namespace
 {
   using namespace Parameters;
 
-  const IntType RADIX = 10;
-
   static_assert(1 == sizeof(DataType::value_type), "Invalid DataType::value_type");
 
-  inline bool DoTest(const String::const_iterator it, const String::const_iterator lim, int(*Fun)(int))
+  template<class It>
+  inline bool DoTest(const It it, const It lim, int (*fun)(int))
   {
-    return lim == std::find_if(it, lim, std::not1(std::ptr_fun(Fun)));
+    return std::all_of(it, lim, fun);
   }
 
-  inline bool IsData(const String& str)
+  inline bool IsData(StringView str)
   {
-    return str.size() >= 3 && DATA_PREFIX == *str.begin() && 0 == (str.size() - 1) % 2 &&
-      DoTest(str.begin() + 1, str.end(), &std::isxdigit);
+    return str.size() >= 3 && DATA_PREFIX == *str.begin() && 0 == (str.size() - 1) % 2
+           && DoTest(str.begin() + 1, str.end(), &std::isxdigit);
   }
 
   inline uint8_t FromHex(Char val)
@@ -41,14 +39,14 @@ namespace
     return val >= 'A' ? val - 'A' + 10 : val - '0';
   }
 
-  inline void DataFromString(const String& val, DataType& res)
+  inline void DataFromString(StringView val, DataType& res)
   {
     res.resize((val.size() - 1) / 2);
-    String::const_iterator src = val.begin();
+    auto src = val.begin();
     for (auto& re : res)
     {
-      const DataType::value_type highNibble = FromHex(*++src);
-      const DataType::value_type lowNibble = FromHex(*++src);
+      const auto highNibble = FromHex(*++src);
+      const auto lowNibble = FromHex(*++src);
       re = highNibble * 16 | lowNibble;
     }
   }
@@ -59,80 +57,50 @@ namespace
     return static_cast<Char>(val >= 10 ? val + 'A' - 10 : val + '0');
   }
 
-  inline String DataToString(const DataType& dmp)
+  inline String DataToString(Binary::View dmp)
   {
-    String res(dmp.size() * 2 + 1, DATA_PREFIX);
+    String res(dmp.Size() * 2 + 1, DATA_PREFIX);
     String::iterator dstit = res.begin();
-    for (auto val : dmp)
+    for (const auto *it = dmp.As<uint8_t>(), *lim = it + dmp.Size(); it != lim; ++it)
     {
+      const auto val = *it;
       *++dstit = ToHex(val >> 4);
       *++dstit = ToHex(val & 15);
     }
     return res;
   }
 
-  inline bool IsInteger(const String& str)
+  inline bool IsInteger(StringView str)
   {
-    return !str.empty() &&
-      DoTest(str.begin() + (*str.begin() == '-' || *str.begin() == '+' ? 1 : 0), str.end(), &std::isdigit);
+    return !str.empty()
+           && DoTest(str.begin() + (*str.begin() == '-' || *str.begin() == '+' ? 1 : 0), str.end(), &std::isdigit);
   }
 
-  inline IntType IntegerFromString(const String& val)
+  inline IntType IntegerFromString(StringView val)
   {
-    IntType res = 0;
-    String::const_iterator it = val.begin();
-    const bool negate = *it == '-';
-    if (negate || *it == '+')
-    {
-      ++it;
-    }
-    for (String::const_iterator lim = val.end(); it != lim; ++it)
-    {
-      res *= RADIX;
-      res += *it - '0';
-    }
-    return negate ? -res : res;
+    return Strings::ConvertTo<IntType>(val);
   }
 
   inline String IntegerToString(IntType var)
   {
-    //integer may be so long, so it's better to convert here
-    String res;
-    const bool negate = var < 0;
-
-    if (negate)
-    {
-      var = -var;
-    }
-    do
-    {
-      res += ToHex(static_cast<uint_t>(var % RADIX));
-    }
-    while (var /= RADIX);
-
-    if (negate)
-    {
-      res += '-';
-    }
-    std::reverse(res.begin(), res.end());
-    return res;
+    return Strings::ConvertFrom(var);
   }
 
-  inline bool IsQuoted(const String& str)
+  inline bool IsQuoted(StringView str)
   {
-    return str.size() >= 2 && STRING_QUOTE == *str.begin()  && STRING_QUOTE == *str.rbegin();
+    return str.size() >= 2 && STRING_QUOTE == *str.begin() && STRING_QUOTE == *str.rbegin();
   }
-                    
-  inline StringType StringFromString(const String& val)
+
+  inline StringView StringFromString(StringView val)
   {
     if (IsQuoted(val))
     {
-      return StringType(val.begin() + 1, val.end() - 1);
+      return StringView(val.begin() + 1, val.end() - 1);
     }
     return val;
   }
 
-  inline String StringToString(const StringType& str)
+  inline String StringToString(StringView str)
   {
     if (IsData(str) || IsInteger(str) || IsQuoted(str))
     {
@@ -141,28 +109,28 @@ namespace
       res += STRING_QUOTE;
       return res;
     }
-    return str;
+    return str.to_string();
   }
-}
+}  // namespace
 
 namespace Parameters
 {
-  String ConvertToString(const IntType& val)
+  String ConvertToString(IntType val)
   {
     return IntegerToString(val);
   }
 
-  String ConvertToString(const StringType& val)
+  String ConvertToString(StringView val)
   {
     return StringToString(val);
   }
 
-  String ConvertToString(const DataType& val)
+  String ConvertToString(Binary::View val)
   {
     return DataToString(val);
   }
 
-  bool ConvertFromString(const String& str, IntType& res)
+  bool ConvertFromString(StringView str, IntType& res)
   {
     if (IsInteger(str))
     {
@@ -172,7 +140,7 @@ namespace Parameters
     return false;
   }
 
-  bool ConvertFromString(const String& str, StringType& res)
+  bool ConvertFromString(StringView str, StringType& res)
   {
     if (!IsInteger(str) && !IsData(str))
     {
@@ -182,7 +150,7 @@ namespace Parameters
     return false;
   }
 
-  bool ConvertFromString(const String& str, DataType& res)
+  bool ConvertFromString(StringView str, DataType& res)
   {
     if (IsData(str))
     {
@@ -191,4 +159,4 @@ namespace Parameters
     }
     return false;
   }
-}
+}  // namespace Parameters

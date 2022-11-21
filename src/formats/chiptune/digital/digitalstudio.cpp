@@ -1,40 +1,41 @@
 /**
-* 
-* @file
-*
-* @brief  DigitalStudio support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  DigitalStudio support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/chiptune/digital/digitalstudio.h"
-#include "formats/chiptune/digital/digital_detail.h"
 #include "formats/chiptune/container.h"
-//common includes
+#include "formats/chiptune/digital/digital_detail.h"
+// common includes
 #include <byteorder.h>
 #include <contract.h>
 #include <make_ptr.h>
 #include <range_checker.h>
-//library includes
+// library includes
+#include <binary/dump.h>
 #include <binary/format_factories.h>
 #include <debug/log.h>
 #include <math/numeric.h>
 #include <strings/optimize.h>
-//std includes
+// std includes
 #include <array>
 #include <cstring>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   namespace DigitalStudio
   {
     const Debug::Stream Dbg("Formats::Chiptune::DigitalStudio");
+
+    const Char DESCRIPTION[] = "Digital Studio";
+    const Char VERSION_AY[] = " (AY)";
+    const Char VERSION_DAC[] = " (Covox/SD)";
 
     const std::size_t COMPILED_MODULE_SIZE = 0x1c200;
     const std::size_t MODULE_SIZE = 0x1b200;
@@ -45,39 +46,36 @@ namespace Chiptune
     const std::size_t CHANNELS_COUNT = 3;
     const std::size_t SAMPLES_COUNT = 16;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct Pattern
+    struct Pattern
     {
-      PACK_PRE struct Line
+      struct Line
       {
-        PACK_PRE struct Channel
+        struct Channel
         {
           uint8_t Note;
           uint8_t Sample;
-        } PACK_POST;
+        };
 
         Channel Channels[CHANNELS_COUNT];
-      } PACK_POST;
+      };
 
       Line Lines[MAX_PATTERN_SIZE];
-    } PACK_POST;
+    };
 
-    PACK_PRE struct SampleInfo
+    struct SampleInfo
     {
-      uint16_t Start;
-      uint16_t Loop;
+      le_uint16_t Start;
+      le_uint16_t Loop;
       uint8_t Page;
       uint8_t NumberInBank;
-      uint16_t Size;
+      le_uint16_t Size;
       std::array<char, 8> Name;
-    } PACK_POST;
+    };
 
     typedef std::array<uint8_t, 0x38> ZeroesArray;
 
-    //Usually located at #7e00
-    PACK_PRE struct Header
+    // Usually located at #7e00
+    struct Header
     {
       //+0
       uint8_t Loop;
@@ -99,13 +97,10 @@ namespace Chiptune
       uint8_t FirstPage[0x4000];
       //+0x4200
       Pattern Patterns[PATTERNS_COUNT];
-      //0x7200
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+      // 0x7200
+    };
 
-    static_assert(sizeof(Header) == 0x7200, "Invalid layout");
+    static_assert(sizeof(Header) * alignof(Header) == 0x7200, "Invalid layout");
 
     const uint_t NOTE_EMPTY = 0;
     const uint_t NOTE_BASE = 1;
@@ -119,20 +114,22 @@ namespace Chiptune
       SamplesSet()
         : SamplesTotal()
         , Samples4Bit()
-      {
-      }
+      {}
 
       void Add(uint_t idx, std::size_t loop, Binary::View data1, Binary::View data2 = Binary::View(nullptr, 0))
       {
         const std::size_t size1 = data1.Size();
         const std::size_t size2 = data2.Size();
-        Dump res(size1 + size2);
+        Binary::Dump res(size1 + size2);
         std::memcpy(res.data(), data1.Start(), size1);
-        std::memcpy(res.data() + size1, data2.Start(), size2);
+        if (data2.Size())
+        {
+          std::memcpy(res.data() + size1, data2.Start(), size2);
+        }
         Add(idx, loop, res);
       }
 
-      void Add(uint_t idx, std::size_t loop, Dump data)
+      void Add(uint_t idx, std::size_t loop, Binary::Dump data)
       {
         Description& desc = Samples[idx];
         desc = Description(loop, std::move(data));
@@ -159,6 +156,7 @@ namespace Chiptune
           }
         }
       }
+
     private:
       static bool CheckIfSample4Bit(const uint8_t* start, std::size_t size)
       {
@@ -174,22 +172,20 @@ namespace Chiptune
       struct Description
       {
         std::size_t Loop;
-        Dump Content;
+        Binary::Dump Content;
         bool Is4Bit;
 
         Description()
           : Loop()
           , Content()
           , Is4Bit()
-        {
-        }
+        {}
 
-        Description(std::size_t loop, Dump content)
+        Description(std::size_t loop, Binary::Dump content)
           : Loop(loop)
           , Content(std::move(content))
           , Is4Bit(CheckIfSample4Bit(Content.data(), Content.size()))
-        {
-        }
+        {}
       };
       std::array<Description, SAMPLES_COUNT> Samples;
       uint_t SamplesTotal;
@@ -206,7 +202,7 @@ namespace Chiptune
         , Ranges(RangeChecker::Create(GetSize()))
       {
         Require(GetSize() <= RawData.Size());
-        //info
+        // info
         Require(Ranges->AddRange(0, 0x200));
         Require(Ranges->AddRange(offsetof(Header, Patterns), IsCompiled ? 0x4000 : 0x3000));
       }
@@ -251,8 +247,8 @@ namespace Chiptune
         {
           const uint_t samIdx = *it;
           const SampleInfo& info = Source.Samples[samIdx];
-          Dbg("Sample %1%: start=#%2$04x loop=#%3$04x page=#%4$02x size=#%5$04x", 
-            samIdx, fromLE(info.Start), fromLE(info.Loop), unsigned(info.Page), fromLE(info.Size));
+          Dbg("Sample %1%: start=#%2$04x loop=#%3$04x page=#%4$02x size=#%5$04x", samIdx, info.Start, info.Loop,
+              unsigned(info.Page), info.Size);
           if (!ParseSample(samIdx, info, samples))
           {
             Dbg(" Stub sample");
@@ -261,13 +257,14 @@ namespace Chiptune
           }
         }
       }
-      
+
       std::size_t GetSize() const
       {
         return IsCompiled ? COMPILED_MODULE_SIZE : MODULE_SIZE;
       }
+
     private:
-      //truncate samples here due to possible samples overlap in descriptions
+      // truncate samples here due to possible samples overlap in descriptions
       Binary::View GetSampleData(std::size_t offset, std::size_t size) const
       {
         const auto total = RawData.SubView(offset, size);
@@ -288,7 +285,7 @@ namespace Chiptune
       static void ParsePattern(const Pattern& src, PatternBuilder& patBuilder, Builder& target)
       {
         const uint_t lastLine = MAX_PATTERN_SIZE - 1;
-        for (uint_t lineNum = 0; lineNum <= lastLine ; ++lineNum)
+        for (uint_t lineNum = 0; lineNum <= lastLine; ++lineNum)
         {
           const Pattern::Line& srcLine = src.Lines[lineNum];
           if (lineNum != lastLine && IsEmptyLine(srcLine))
@@ -343,9 +340,8 @@ namespace Chiptune
 
       static bool IsEmptyLine(const Pattern::Line& srcLine)
       {
-        return srcLine.Channels[0].Note == NOTE_EMPTY
-            && srcLine.Channels[1].Note == NOTE_EMPTY
-            && srcLine.Channels[2].Note == NOTE_EMPTY;
+        return srcLine.Channels[0].Note == NOTE_EMPTY && srcLine.Channels[1].Note == NOTE_EMPTY
+               && srcLine.Channels[2].Note == NOTE_EMPTY;
       }
 
       bool ParseSample(uint_t samIdx, const SampleInfo& info, SamplesSet& out) const
@@ -354,14 +350,15 @@ namespace Chiptune
         const std::size_t LO_MEM_ADDR = 0x8000;
         const std::size_t HI_MEM_ADDR = 0xc000;
         static const std::size_t PAGES_OFFSETS[8] = {0x200, 0x7200, 0x0, 0xb200, 0xf200, 0x0, 0x13200, 0x17200};
-        static const std::size_t PAGES_OFFSETS_COMPILED[8] = {0x200, 0x8200, 0x0, 0xc200, 0x10200, 0x0, 0x14200, 0x18200};
+        static const std::size_t PAGES_OFFSETS_COMPILED[8] = {0x200,   0x8200, 0x0,     0xc200,
+                                                              0x10200, 0x0,    0x14200, 0x18200};
 
         if (info.Size == 0)
         {
           Dbg(" Empty sample");
           return false;
         }
-        //assume normal 128k machine: normal screen, basic48, nolock
+        // assume normal 128k machine: normal screen, basic48, nolock
         Require((info.Page & 0x38) == 0x10);
 
         const std::size_t* const offsets = IsCompiled ? PAGES_OFFSETS_COMPILED : PAGES_OFFSETS;
@@ -369,10 +366,10 @@ namespace Chiptune
         const std::size_t pageNumber = info.Page & 0x7;
         Require(0 != offsets[pageNumber]);
 
-        const std::size_t sampleStart = fromLE(info.Start);
-        const std::size_t sampleSize = fromLE(info.Size);
-        const std::size_t sampleLoop = fromLE(info.Loop);
-        
+        const std::size_t sampleStart = info.Start;
+        const std::size_t sampleSize = info.Size;
+        const std::size_t sampleLoop = info.Loop;
+
         const bool isLoMemSample = sampleStart < HI_MEM_ADDR;
         const std::size_t BASE_ADDR = isLoMemSample ? LO_MEM_ADDR : HI_MEM_ADDR;
         const std::size_t MAX_SIZE = isLoMemSample ? 2 * ZX_PAGE_SIZE : ZX_PAGE_SIZE;
@@ -395,8 +392,8 @@ namespace Chiptune
             const auto part1 = RawData.SubView(firstOffset, firstSize);
             const std::size_t secondOffset = offsets[pageNumber];
             const std::size_t secondSize = sampleOffsetInPage + sampleSize - ZX_PAGE_SIZE;
-            Dbg(" Two parts in low memory: #%1$05x..#%2$05x + #%3$05x..#%4$05x", 
-              firstOffset, firstOffset + firstSize, secondOffset, secondOffset + secondSize);
+            Dbg(" Two parts in low memory: #%1$05x..#%2$05x + #%3$05x..#%4$05x", firstOffset, firstOffset + firstSize,
+                secondOffset, secondOffset + secondSize);
             if (const auto part2 = GetSampleData(secondOffset, secondSize))
             {
               Dbg(" Using two parts with sizes #%1$05x + #%2$05x", part1.Size(), part2.Size());
@@ -413,8 +410,7 @@ namespace Chiptune
           else
           {
             const std::size_t dataOffset = offsets[0] + sampleOffsetInPage;
-            Dbg(" One part in low memory: #%1$05x..#%2$05x", 
-              dataOffset, dataOffset + sampleSize);
+            Dbg(" One part in low memory: #%1$05x..#%2$05x", dataOffset, dataOffset + sampleSize);
             if (const auto data = GetSampleData(dataOffset, sampleSize))
             {
               out.Add(samIdx, loop, data);
@@ -425,16 +421,16 @@ namespace Chiptune
         else
         {
           const std::size_t dataOffset = offsets[pageNumber] + sampleOffsetInPage;
-          Dbg(" Hi memory: #%1$05x..#%2$05x", 
-            dataOffset, dataOffset + sampleSize);
-            if (const auto data = GetSampleData(dataOffset, sampleSize))
-            {
-              out.Add(samIdx, loop, data);
-              return true;
-            }
+          Dbg(" Hi memory: #%1$05x..#%2$05x", dataOffset, dataOffset + sampleSize);
+          if (const auto data = GetSampleData(dataOffset, sampleSize))
+          {
+            out.Add(samIdx, loop, data);
+            return true;
+          }
         }
         return false;
       }
+
     private:
       const Binary::View RawData;
       const Header& Source;
@@ -444,22 +440,22 @@ namespace Chiptune
 
     bool FastCheck(Binary::View rawData)
     {
-      //at least
+      // at least
       return rawData.Size() >= MODULE_SIZE;
     }
 
-    const std::string FORMAT(
-      "00-63"     //loop
-      "00-1f{99}" //positions
-      "02-0f"     //tempo
-      "01-64"     //length
-      "20-7f{28}" //title
-      //skip compiled
-      "?{44}"
-      "ff{10}"
-      "????????"//"ae7eae7e51000000"
-      "20{8}"
-    );
+    const auto FORMAT =
+        "00-63"      // loop
+        "00-1f{99}"  // positions
+        "02-0f"      // tempo
+        "01-64"      // length
+        "20-7f{28}"  // title
+        // skip compiled
+        "?{44}"
+        "ff{10}"
+        "????????"  //"ae7eae7e51000000"
+        "20{8}"
+        ""_sv;
 
     const uint64_t Z80_FREQ = 3500000;
     // step is not changed in AY and SounDrive versions
@@ -472,12 +468,11 @@ namespace Chiptune
     public:
       Decoder()
         : Format(Binary::CreateFormat(FORMAT, MODULE_SIZE))
-      {
-      }
+      {}
 
       String GetDescription() const override
       {
-        return Text::DIGITALSTUDIO_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -485,9 +480,8 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View data) const override
       {
-        const Binary::View data(rawData);
         return FastCheck(data) && Format->Match(data);
       }
 
@@ -500,6 +494,7 @@ namespace Chiptune
         Builder& stub = Digital::GetStubBuilder();
         return Parse(rawData, stub);
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
@@ -529,8 +524,7 @@ namespace Chiptune
         const uint_t cycleTicks = samples.Is4Bit() ? AY_TICKS_PER_CYCLE : SD_TICKS_PER_CYCLE;
         target.SetSamplesFrequency(Z80_FREQ * C_1_STEP / cycleTicks / 256);
 
-        const String program = String(Text::DIGITALSTUDIO_DECODER_DESCRIPTION) + 
-          (samples.Is4Bit() ? Text::DIGITALSTUDIO_VERSION_AY : Text::DIGITALSTUDIO_VERSION_DAC);
+        const String program = String(DESCRIPTION) + (samples.Is4Bit() ? VERSION_AY : VERSION_DAC);
         target.GetMetaBuilder().SetProgram(program);
         samples.Apply(target);
         auto subData = rawData.GetSubcontainer(0, format.GetSize());
@@ -543,11 +537,10 @@ namespace Chiptune
         return Formats::Chiptune::Container::Ptr();
       }
     }
-  }//namespace DigitalStudio
+  }  // namespace DigitalStudio
 
   Decoder::Ptr CreateDigitalStudioDecoder()
   {
     return MakePtr<DigitalStudio::Decoder>();
   }
-} //namespace Chiptune
-} //namespace Formats
+}  // namespace Formats::Chiptune

@@ -1,19 +1,17 @@
 /**
-* 
-* @file
-*
-* @brief  Detect callback helpers
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Detect callback helpers
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//core includes
+// core includes
 #include <core/module_detect.h>
-//common includes
-#include <progress_callback.h>
 
 namespace Module
 {
@@ -21,43 +19,32 @@ namespace Module
   class DetectCallbackDelegate : public DetectCallback
   {
   public:
-    explicit DetectCallbackDelegate(const DetectCallback& delegate)
+    explicit DetectCallbackDelegate(DetectCallback& delegate)
       : Delegate(delegate)
+    {}
+
+    Parameters::Container::Ptr CreateInitialProperties(const String& subpath) const override
     {
+      return Delegate.CreateInitialProperties(subpath);
     }
 
-    void ProcessModule(ZXTune::DataLocation::Ptr location, ZXTune::Plugin::Ptr decoder, Module::Holder::Ptr holder) const override
+    void ProcessModule(const ZXTune::DataLocation& location, const ZXTune::Plugin& decoder,
+                       Module::Holder::Ptr holder) override
     {
-      return Delegate.ProcessModule(location, decoder, holder);
+      return Delegate.ProcessModule(location, decoder, std::move(holder));
+    }
+
+    void ProcessUnknownData(const ZXTune::DataLocation& location)
+    {
+      return Delegate.ProcessUnknownData(location);
     }
 
     Log::ProgressCallback* GetProgress() const override
     {
       return Delegate.GetProgress();
     }
+
   protected:
-    const DetectCallback& Delegate;
+    DetectCallback& Delegate;
   };
-
-  class CustomProgressDetectCallbackAdapter : public DetectCallbackDelegate
-  {
-  public:
-    CustomProgressDetectCallbackAdapter(const DetectCallback& delegate, Log::ProgressCallback::Ptr progress)
-      : DetectCallbackDelegate(delegate)
-      , Progress(std::move(progress))
-    {
-    }
-
-    CustomProgressDetectCallbackAdapter(const DetectCallback& delegate)
-      : DetectCallbackDelegate(delegate)
-    {
-    }
-
-    Log::ProgressCallback* GetProgress() const override
-    {
-      return Progress.get();
-    }
-  private:
-    const Log::ProgressCallback::Ptr Progress;
-  };
-}
+}  // namespace Module

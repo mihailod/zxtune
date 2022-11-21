@@ -1,85 +1,51 @@
 /**
-* 
-* @file
-*
-* @brief  ProTracker v2.x chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ProTracker v2.x chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/aym/protracker2.h"
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <formats/chiptune/aym/protracker2.h>
+#include <module/players/platforms.h>
 #include <module/players/properties_meta.h>
 #include <module/players/simple_orderlist.h>
-//text includes
-#include <module/text/platforms.h>
 
-namespace Module
+namespace Module::ProTracker2
 {
-namespace ProTracker2
-{
-  //supported commands and parameters
+  // supported commands and parameters
   enum CmdType
   {
-    //no parameters
+    // no parameters
     EMPTY,
-    //r13,period
+    // r13,period
     ENVELOPE,
-    //no parameters
+    // no parameters
     NOENVELOPE,
-    //glissade
+    // glissade
     GLISS,
-    //glissade,target node
+    // glissade,target node
     GLISS_NOTE,
-    //no parameters
+    // no parameters
     NOGLISS,
-    //noise addon
+    // noise addon
     NOISE_ADD
   };
 
   using Formats::Chiptune::ProTracker2::Sample;
   using Formats::Chiptune::ProTracker2::Ornament;
 
-  class ModuleData : public TrackModel
-  {
-  public:
-    typedef std::shared_ptr<const ModuleData> Ptr;
-    typedef std::shared_ptr<ModuleData> RWPtr;
-
-    ModuleData()
-      : InitialTempo()
-    {
-    }
-
-    uint_t GetInitialTempo() const override
-    {
-      return InitialTempo;
-    }
-
-    const OrderList& GetOrder() const override
-    {
-      return *Order;
-    }
-
-    const PatternsSet& GetPatterns() const override
-    {
-      return *Patterns;
-    }
-
-    uint_t InitialTempo;
-    OrderList::Ptr Order;
-    PatternsSet::Ptr Patterns;
-    SparsedObjectsStorage<Sample> Samples;
-    SparsedObjectsStorage<Ornament> Ornaments;
-  };
+  using ModuleData = AYM::ModuleData<OrderList, Sample, Ornament>;
 
   class DataBuilder : public Formats::Chiptune::ProTracker2::Builder
   {
@@ -198,6 +164,7 @@ namespace ProTracker2
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     AYM::PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -215,13 +182,19 @@ namespace ProTracker2
   struct ChannelState
   {
     ChannelState()
-      : Enabled(false), Envelope(false)
-      , Note(), SampleNum(Formats::Chiptune::ProTracker2::DEFAULT_SAMPLE), PosInSample(0)
-      , OrnamentNum(Formats::Chiptune::ProTracker2::DEFAULT_ORNAMENT), PosInOrnament(0)
-      , Volume(15), NoiseAdd(0)
-      , Sliding(0), SlidingTargetNote(LIMITER), Glissade(0)
-    {
-    }
+      : Enabled(false)
+      , Envelope(false)
+      , Note()
+      , SampleNum(Formats::Chiptune::ProTracker2::DEFAULT_SAMPLE)
+      , PosInSample(0)
+      , OrnamentNum(Formats::Chiptune::ProTracker2::DEFAULT_ORNAMENT)
+      , PosInOrnament(0)
+      , Volume(15)
+      , NoiseAdd(0)
+      , Sliding(0)
+      , SlidingTargetNote(LIMITER)
+      , Glissade(0)
+    {}
     bool Enabled;
     bool Envelope;
     uint_t Note;
@@ -240,9 +213,8 @@ namespace ProTracker2
   {
   public:
     explicit DataRenderer(ModuleData::Ptr data)
-       : Data(std::move(data))
-    {
-    }
+      : Data(std::move(data))
+    {}
 
     void Reset() override
     {
@@ -257,6 +229,7 @@ namespace ProTracker2
       }
       SynthesizeChannelsData(track);
     }
+
   private:
     void GetNewLineState(const TrackModelState& state, AYM::TrackBuilder& track)
     {
@@ -359,21 +332,21 @@ namespace ProTracker2
       const Sample::Line& curSampleLine = curSample.GetLine(dst.PosInSample);
       const Ornament& curOrnament = Data->Ornaments.Get(dst.OrnamentNum);
 
-      //apply tone
+      // apply tone
       const int_t halftones = int_t(dst.Note) + curOrnament.GetLine(dst.PosInOrnament);
       channel.SetTone(halftones, dst.Sliding + curSampleLine.Vibrato);
       if (curSampleLine.ToneMask)
       {
         channel.DisableTone();
       }
-      //apply level
+      // apply level
       channel.SetLevel(GetVolume(dst.Volume, curSampleLine.Level));
-      //apply envelope
+      // apply envelope
       if (dst.Envelope)
       {
         channel.EnableEnvelope();
       }
-      //apply noise
+      // apply noise
       if (!curSampleLine.NoiseMask)
       {
         track.SetNoise(curSampleLine.Noise + dst.NoiseAdd);
@@ -383,14 +356,13 @@ namespace ProTracker2
         channel.DisableNoise();
       }
 
-      //recalculate gliss
+      // recalculate gliss
       if (dst.SlidingTargetNote != LIMITER)
       {
         const int_t absoluteSlidingRange = track.GetSlidingDifference(dst.Note, dst.SlidingTargetNote);
         const int_t realSlidingRange = absoluteSlidingRange - (dst.Sliding + dst.Glissade);
 
-        if ((dst.Glissade > 0 && realSlidingRange <= 0) ||
-            (dst.Glissade < 0 && realSlidingRange >= 0))
+        if ((dst.Glissade > 0 && realSlidingRange <= 0) || (dst.Glissade < 0 && realSlidingRange >= 0))
         {
           dst.Note = dst.SlidingTargetNote;
           dst.SlidingTargetNote = LIMITER;
@@ -408,47 +380,17 @@ namespace ProTracker2
         dst.PosInOrnament = curOrnament.GetLoop();
       }
     }
+
   private:
     const ModuleData::Ptr Data;
     std::array<ChannelState, AYM::TRACK_CHANNELS> PlayerState;
   };
 
-  class Chiptune : public AYM::Chiptune
-  {
-  public:
-    Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
-      : Data(std::move(data))
-      , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, AYM::TRACK_CHANNELS))
-    {
-    }
-
-    Information::Ptr GetInformation() const override
-    {
-      return Info;
-    }
-
-    Parameters::Accessor::Ptr GetProperties() const override
-    {
-      return Properties;
-    }
-
-    AYM::DataIterator::Ptr CreateDataIterator(AYM::TrackParameters::Ptr trackParams) const override
-    {
-      auto iterator = CreateTrackStateIterator(Data);
-      auto renderer = MakePtr<DataRenderer>(Data);
-      return AYM::CreateDataIterator(std::move(trackParams), std::move(iterator), std::move(renderer));
-    }
-  private:
-    const ModuleData::Ptr Data;
-    const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
-  };
-
   class Factory : public AYM::Factory
   {
   public:
-    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       AYM::PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
@@ -456,11 +398,12 @@ namespace ProTracker2
       {
         props.SetSource(*container);
         props.SetPlatform(Platforms::ZX_SPECTRUM);
-        return MakePtr<Chiptune>(dataBuilder.CaptureResult(), std::move(properties));
+        return MakePtr<AYM::TrackingChiptune<ModuleData, DataRenderer>>(dataBuilder.CaptureResult(),
+                                                                        std::move(properties));
       }
       else
       {
-        return AYM::Chiptune::Ptr();
+        return {};
       }
     }
   };
@@ -469,5 +412,4 @@ namespace ProTracker2
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::ProTracker2

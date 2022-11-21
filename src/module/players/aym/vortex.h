@@ -1,24 +1,23 @@
 /**
-* 
-* @file
-*
-* @brief  VortexTracker-based chiptunes support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  VortexTracker-based chiptunes support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
+// local includes
 #include "module/players/aym/aym_base_track.h"
-//library includes
+// library includes
 #include <formats/chiptune/aym/protracker3.h>
-#include <sound/render_params.h>
 
 namespace Module
 {
-  //at least two formats are based on Vortex, so it's useful to extract tracking-related types
+  // at least two formats are based on Vortex, so it's useful to extract tracking-related types
   namespace Vortex
   {
     // Frequency table enumeration, compatible with binary format (PT3.x)
@@ -36,66 +35,45 @@ namespace Module
     using Formats::Chiptune::ProTracker3::Sample;
     using Formats::Chiptune::ProTracker3::Ornament;
 
-    //supported commands set and their parameters
+    // supported commands set and their parameters
     enum Commands
     {
-      //no parameters
+      // no parameters
       EMPTY,
-      //period,delta
+      // period,delta
       GLISS,
-      //period,delta,target note
+      // period,delta,target note
       GLISS_NOTE,
-      //offset
+      // offset
       SAMPLEOFFSET,
-      //offset
+      // offset
       ORNAMENTOFFSET,
-      //ontime,offtime
+      // ontime,offtime
       VIBRATE,
-      //period,delta
+      // period,delta
       SLIDEENV,
-      //no parameters
+      // no parameters
       NOENVELOPE,
-      //r13,period
+      // r13,period
       ENVELOPE,
-      //base
+      // base
       NOISEBASE,
     };
 
-    class ModuleData : public TrackModel
+    class ModuleData : public AYM::ModuleData<OrderList, Sample, Ornament>
     {
     public:
       typedef std::shared_ptr<ModuleData> RWPtr;
       typedef std::shared_ptr<const ModuleData> Ptr;
 
       ModuleData()
-        : InitialTempo()
+        : AYM::ModuleData<OrderList, Sample, Ornament>()
         , Version(6)
-      {
-      }
+      {}
 
-      uint_t GetInitialTempo() const override
-      {
-        return InitialTempo;
-      }
-
-      const OrderList& GetOrder() const override
-      {
-        return *Order;
-      }
-
-      const PatternsSet& GetPatterns() const override
-      {
-        return *Patterns;
-      }
-
-      uint_t InitialTempo;
-      OrderList::Ptr Order;
-      PatternsSet::Ptr Patterns;
-      SparsedObjectsStorage<Sample> Samples;
-      SparsedObjectsStorage<Ornament> Ornaments;
       uint_t Version;
     };
 
     AYM::DataRenderer::Ptr CreateDataRenderer(ModuleData::Ptr data, uint_t trackChannelStart);
-  }
-}
+  }  // namespace Vortex
+}  // namespace Module

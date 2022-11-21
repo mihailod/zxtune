@@ -1,28 +1,29 @@
 /**
-* 
-* @file
-*
-* @brief Errors widget interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Errors widget interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <error.h>
-//common includes
-#include <QtGui/QWidget>
+// common includes
+#include <QtWidgets/QWidget>
 
 namespace UI
 {
   class ErrorsWidget : public QWidget
   {
   public:
-      Q_OBJECT
+    Q_OBJECT
   protected:
     explicit ErrorsWidget(QWidget& parent);
+
   public:
     static ErrorsWidget* Create(QWidget& parent);
   public slots:
@@ -33,4 +34,4 @@ namespace UI
     virtual void Dismiss() = 0;
     virtual void DismissAll() = 0;
   };
-}
+}  // namespace UI

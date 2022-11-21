@@ -1,24 +1,24 @@
 /**
-*
-* @file
-*
-* @brief  Input binary stream helper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Input binary stream helper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <binary/container.h>
 #include <binary/view.h>
-//common includes
+// common includes
 #include <byteorder.h>
 #include <contract.h>
 #include <pointers.h>
 #include <types.h>
-//std includes
+// std includes
 #include <algorithm>
 #include <cstring>
 
@@ -32,32 +32,19 @@ namespace Binary
       : Start(static_cast<const uint8_t*>(data.Start()))
       , Finish(Start + data.Size())
       , Cursor(Start)
-    {
-    }
+    {}
 
     //! @brief Simple adapter to read specified type data
     template<class T>
-    const T& ReadField()
+    const T& Read()
     {
-      static_assert(!std::is_integral<T>::value, "Use ReadByte/ReadLE/ReadBE");
+      static_assert(sizeof(T) > 1, "Use ReadByte for bytes");
       return *safe_ptr_cast<const T*>(ReadRawData(sizeof(T)));
     }
 
     uint8_t ReadByte()
     {
       return *ReadRawData(1);
-    }
-
-    template<class T>
-    T ReadLE()
-    {
-      return ::ReadLE<T>(ReadRawData(sizeof(T)));
-    }
-
-    template<class T>
-    T ReadBE()
-    {
-      return ::ReadBE<T>(ReadRawData(sizeof(T)));
     }
 
     //! @brief Read ASCIIZ string with specified maximal size
@@ -103,7 +90,7 @@ namespace Binary
 
     const uint8_t* PeekRawData(std::size_t size) const
     {
-      if (Cursor + size <= Finish)
+      if (size <= GetRestSize())
       {
         return Cursor;
       }
@@ -134,13 +121,13 @@ namespace Binary
 
     void Skip(std::size_t size)
     {
-      Require(Cursor + size <= Finish);
+      Require(size <= GetRestSize());
       Cursor += size;
     }
-    
+
     void Seek(std::size_t pos)
     {
-      Require(Start + pos <= Finish);
+      Require(pos <= std::size_t(Finish - Start));
       Cursor = Start + pos;
     }
 
@@ -155,34 +142,34 @@ namespace Binary
     {
       return Finish - Cursor;
     }
+
   private:
     const uint8_t* ReadRawData(std::size_t size)
     {
-      Require(Cursor + size <= Finish);
+      Require(size <= GetRestSize());
       const uint8_t* const res = Cursor;
       Cursor += size;
       return res;
     }
-    
+
   protected:
     const uint8_t* const Start;
     const uint8_t* const Finish;
     const uint8_t* Cursor;
   };
-  
-  //TODO: rename
+
+  // TODO: rename
   class InputStream : public DataInputStream
   {
   public:
     explicit InputStream(const Container& rawData)
       : DataInputStream(rawData)
       , Data(rawData)
-    {
-    }
-    
+    {}
+
     Container::Ptr ReadContainer(std::size_t size)
     {
-      Require(Cursor + size <= Finish);
+      Require(size <= GetRestSize());
       const std::size_t offset = GetPosition();
       Cursor += size;
       return Data.GetSubcontainer(offset, size);
@@ -203,7 +190,8 @@ namespace Binary
     {
       return Data.GetSubcontainer(0, GetPosition());
     }
+
   private:
     const Container& Data;
   };
-}
+}  // namespace Binary

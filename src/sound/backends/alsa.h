@@ -1,24 +1,28 @@
 /**
-*
-* @file
-*
-* @brief  ALSA subsystem access functions
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ALSA subsystem access functions
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <iterator.h>
-//library includes
+// library includes
+#include <l10n/markup.h>
 #include <strings/array.h>
 
 namespace Sound
 {
   namespace Alsa
   {
+    constexpr const Char BACKEND_ID[] = "alsa";
+    constexpr auto BACKEND_DESCRIPTION = L10n::translate("ALSA sound system backend");
+
     class Device
     {
     public:
@@ -34,5 +38,5 @@ namespace Sound
     };
 
     Device::Iterator::Ptr EnumerateDevices();
-  }
-}
+  }  // namespace Alsa
+}  // namespace Sound

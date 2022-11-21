@@ -1,41 +1,36 @@
 /**
-* 
-* @file
-*
-* @brief  GYM support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  GYM support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
+// common includes
 #include <byteorder.h>
 #include <contract.h>
-#include <pointers.h>
 #include <make_ptr.h>
-//library includes
+#include <pointers.h>
+// library includes
 #include <binary/format_factories.h>
 #include <formats/chiptune/container.h>
 #include <math/numeric.h>
-//std includes
+// std includes
 #include <array>
 #include <cstring>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   namespace GYM
   {
+    const Char DESCRIPTION[] = "Genesis YM2612 (unpacked)";
+
     typedef std::array<uint8_t, 4> SignatureType;
     typedef std::array<uint8_t, 32> StringType;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawHeader
+    struct RawHeader
     {
       SignatureType Signature;
       StringType Song;
@@ -44,33 +39,29 @@ namespace Chiptune
       StringType Emulator;
       StringType Dumper;
       std::array<uint8_t, 256> Comment;
-      uint32_t LoopStart;
-      uint32_t PackedSize;
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+      le_uint32_t LoopStart;
+      le_uint32_t PackedSize;
+    };
 
-    static_assert(sizeof(RawHeader) == 428, "Invalid layout");
-    
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 428, "Invalid layout");
+
     const std::size_t MIN_SIZE = sizeof(RawHeader) + 256;
     const std::size_t MAX_SIZE = 16 * 1024 * 1024;
 
-    const std::string FORMAT =
-        "'G'Y'M'X" //signature
-     ;
+    const auto FORMAT =
+        "'G'Y'M'X"  // signature
+        ""_sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
     public:
       Decoder()
         : Format(Binary::CreateMatchOnlyFormat(FORMAT, MIN_SIZE))
-      {
-      }
+      {}
 
       String GetDescription() const override
       {
-        return Text::GYM_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -78,7 +69,7 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Format->Match(rawData);
       }
@@ -93,14 +84,14 @@ namespace Chiptune
         const Binary::Container::Ptr data = rawData.GetSubcontainer(0, realSize);
         return CreateCalculatingCrcContainer(data, 0, realSize);
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
-  }
+  }  // namespace GYM
 
   Decoder::Ptr CreateGYMDecoder()
   {
     return MakePtr<GYM::Decoder>();
   }
-}
-}
+}  // namespace Formats::Chiptune

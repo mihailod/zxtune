@@ -1,12 +1,12 @@
 /**
-* 
-* @file
-*
-* @brief OS detection
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief OS detection
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
@@ -34,9 +34,11 @@ namespace Platform
       static const char OS[] = "unix";
 #elif defined(__CYGWIN__)
       static const char OS[] = "cygwin";
+#elif defined(__HAIKU__)
+      static const char OS[] = "haiku";
 #else
       static const char OS[] = "unknown-platform";
 #endif
-    }
-  }
-}
+    }  // namespace Details
+  }    // namespace Version
+}  // namespace Platform

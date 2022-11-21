@@ -1,17 +1,16 @@
 /**
-* 
-* @file
-*
-* @brief Preferences dialog interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Preferences dialog interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//qt includes
-#include <QtGui/QDialog>
+class QWidget;
 
 namespace UI
 {

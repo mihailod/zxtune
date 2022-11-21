@@ -1,19 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief Update checking interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Update checking interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//qt includes
-#include <QtGui/QWidget>
+// qt includes
+#include <QtCore/QObject>
 
 class Error;
+class QWidget;
 
 namespace Update
 {
@@ -29,4 +30,4 @@ namespace Update
   signals:
     void ErrorOccurred(const Error&);
   };
-};
+};  // namespace Update

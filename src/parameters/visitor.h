@@ -1,18 +1,19 @@
 /**
-*
-* @file
-*
-* @brief  Parameters visitor interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Parameters visitor interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
+#include <parameters/identifier.h>
 #include <parameters/types.h>
-//std includes
+// std includes
 #include <memory>
 
 namespace Parameters
@@ -27,10 +28,10 @@ namespace Parameters
     virtual ~Visitor() = default;
 
     //! Add/modify integer parameter
-    virtual void SetValue(const NameType& name, IntType val) = 0;
+    virtual void SetValue(Identifier name, IntType val) = 0;
     //! Add/modify string parameter
-    virtual void SetValue(const NameType& name, const StringType& val) = 0;
+    virtual void SetValue(Identifier name, StringView val) = 0;
     //! Add/modify data parameter
-    virtual void SetValue(const NameType& name, const DataType& val) = 0;
+    virtual void SetValue(Identifier name, Binary::View val) = 0;
   };
-}
+}  // namespace Parameters

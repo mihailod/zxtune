@@ -39,6 +39,7 @@ static DEV_DEF devDef_DAC =
 	NULL,
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	NULL,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	NULL,	// rwFuncs
@@ -489,7 +490,7 @@ void daccontrol_start(void* info, UINT32 DataPos, UINT8 LenMode, UINT32 Length)
 	case DCTRL_LMODE_MSEC:		// Length = time in msec
 		chip->CmdsToSend = 1000 * Length / chip->Frequency;
 		break;
-	case DCTRL_LMODE_TOEND:		// play unti stop-command is received (or data-end is reached)
+	case DCTRL_LMODE_TOEND:		// play until stop-command is received (or data-end is reached)
 		chip->CmdsToSend = (chip->DataLen - (chip->DataStart - CmdStepBase)) / chip->DataStep;
 		break;
 	case DCTRL_LMODE_BYTES:		// raw byte count

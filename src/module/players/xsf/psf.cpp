@@ -1,59 +1,49 @@
 /**
-*
-* @file
-*
-* @brief  PSF chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  PSF chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/xsf/psf.h"
 #include "module/players/xsf/psf_bios.h"
 #include "module/players/xsf/psf_exe.h"
 #include "module/players/xsf/psf_vfs.h"
 #include "module/players/xsf/xsf.h"
 #include "module/players/xsf/xsf_factory.h"
-//common includes
+// common includes
 #include <contract.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/compression/zlib_container.h>
 #include <debug/log.h>
 #include <module/attributes.h>
-#include <module/players/analyzer.h>
-#include <module/players/fading.h>
+#include <module/players/platforms.h>
 #include <module/players/streaming.h>
-#include <parameters/tracking_helper.h>
-#include <sound/chunk_builder.h>
-#include <sound/render_params.h>
 #include <sound/resampler.h>
-#include <sound/sound_parameters.h>
-//3rdparty includes
+// 3rdparty includes
 #include <3rdparty/he/Core/bios.h>
 #include <3rdparty/he/Core/iop.h>
 #include <3rdparty/he/Core/psx.h>
 #include <3rdparty/he/Core/r3000.h>
 #include <3rdparty/he/Core/spu.h>
-//text includes
-#include <module/text/platforms.h>
 
-namespace Module
-{
-namespace PSF
+namespace Module::PSF
 {
   const Debug::Stream Dbg("Module::PSF");
- 
+
   class VfsIO
   {
   public:
     VfsIO() = default;
     explicit VfsIO(PsxVfs::Ptr vfs)
       : Vfs(std::move(vfs))
-    {
-    }
-    
+    {}
+
     sint32 Read(const char* path, sint32 offset, char* buffer, sint32 length)
     {
       if (PreloadFile(path))
@@ -73,6 +63,7 @@ namespace PSF
       }
       return -1;
     }
+
   private:
     bool PreloadFile(const char* path) const
     {
@@ -88,12 +79,12 @@ namespace PSF
       }
       return true;
     }
-    
+
     sint32 GetSize() const
     {
       return CachedData ? CachedData->Size() : 0;
     }
-    
+
     sint32 Read(sint32 offset, char* buffer, sint32 length) const
     {
       if (CachedData)
@@ -106,25 +97,26 @@ namespace PSF
       }
       return 0;
     }
+
   private:
     PsxVfs::Ptr Vfs;
     mutable String CachedName;
     mutable Binary::Container::Ptr CachedData;
   };
-  
+
   struct ModuleData
   {
     using Ptr = std::shared_ptr<const ModuleData>;
     using RWPtr = std::shared_ptr<ModuleData>;
-    
+
     ModuleData() = default;
     ModuleData(const ModuleData&) = delete;
-    
+
     uint_t Version = 0;
     PsxExe::Ptr Exe;
     PsxVfs::Ptr Vfs;
     XSF::MetaInformation::Ptr Meta;
-    
+
     uint_t GetRefreshRate() const
     {
       if (Meta && Meta->RefreshRate)
@@ -137,11 +129,11 @@ namespace PSF
       }
       else
       {
-        return 60;//NTSC by default
+        return 60;  // NTSC by default
       }
     }
   };
-  
+
   class HELibrary
   {
   private:
@@ -151,7 +143,7 @@ namespace PSF
       ::bios_set_embedded_image(bios.Start(), bios.Size());
       Require(0 == ::psx_init());
     }
-    
+
   public:
     std::unique_ptr<uint8_t[]> CreatePSX(int version) const
     {
@@ -159,29 +151,34 @@ namespace PSF
       ::psx_clear_state(res.get(), version);
       return res;
     }
-    
+
     static const HELibrary& Instance()
     {
       static const HELibrary instance;
       return instance;
     }
   };
- 
+
   struct SpuTrait
   {
     uint_t Base;
     uint_t PitchReg;
     uint_t VolReg;
   };
-  
-  const SpuTrait SPU1 = {0x1f801c00, 0x4, 0xc};//mirrored at {0x1f900000, 0x4, 0xa} for PS2
+
+  const SpuTrait SPU1 = {0x1f801c00, 0x4, 0xc};  // mirrored at {0x1f900000, 0x4, 0xa} for PS2
   const SpuTrait SPU2 = {0x1f900400, 0x4, 0xa};
-  
-  class PSXEngine : public Module::Analyzer
+
+  class PSXEngine
   {
   public:
     using Ptr = std::shared_ptr<PSXEngine>;
-  
+
+    explicit PSXEngine(const ModuleData& data)
+    {
+      Initialize(data);
+    }
+
     void Initialize(const ModuleData& data)
     {
       if (data.Exe)
@@ -200,29 +197,30 @@ namespace PSF
       }
       ::psx_set_refresh(Emu.get(), data.GetRefreshRate());
     }
-    
+
     uint_t GetSoundFrequency() const
     {
       return SoundFrequency;
     }
-    
+
     Sound::Chunk Render(uint_t samples)
     {
       Sound::Chunk result(samples);
-      for (uint32_t doneSamples = 0; doneSamples < samples; )
+      for (uint32_t doneSamples = 0; doneSamples < samples;)
       {
         uint32_t toRender = samples - doneSamples;
-        const auto res = ::psx_execute(Emu.get(), 0x7fffffff, safe_ptr_cast<short int*>(&result[doneSamples]), &toRender, 0);
+        const auto res =
+            ::psx_execute(Emu.get(), 0x7fffffff, safe_ptr_cast<short int*>(&result[doneSamples]), &toRender, 0);
         Require(res >= 0);
         Require(toRender != 0);
         doneSamples += toRender;
       }
       return result;
     }
-    
+
     void Skip(uint_t samples)
     {
-      for (uint32_t skippedSamples = 0; skippedSamples < samples; )
+      for (uint32_t skippedSamples = 0; skippedSamples < samples;)
       {
         uint32_t toSkip = samples - skippedSamples;
         const auto res = ::psx_execute(Emu.get(), 0x7fffffff, nullptr, &toSkip, 0);
@@ -232,45 +230,19 @@ namespace PSF
       }
     }
 
-    SpectrumState GetState() const override
-    {
-      //http://problemkaputt.de/psx-spx.htm#soundprocessingunitspu
-      const uint_t SPU_VOICES_COUNT = 24;
-      SpectrumState result;
-      const auto iop = ::psx_get_iop_state(Emu.get());
-      const auto spu = ::iop_get_spu_state(iop);
-      for (const auto& trait : Spus)
-      {
-        for (uint_t voice = 0; voice < SPU_VOICES_COUNT; ++voice)
-        {
-          const auto voiceBase = trait.Base + (voice << 4);
-          if (const auto pitch = static_cast<int16_t>(::spu_lh(spu, voiceBase + trait.PitchReg)))
-          {
-            const auto envVol = static_cast<int16_t>(::spu_lh(spu, voiceBase + trait.VolReg));
-            if (envVol > 327)
-            {
-              //0x1000 is for 44100Hz, assume it's C-8
-              const uint_t band = pitch * 96 / 0x1000;
-              result.Set(band, LevelType(envVol, 32768));
-            }
-          }
-        }
-      }
-      return result;
-    }
   private:
     void SetupExe(const PsxExe& exe)
     {
       SetRAM(exe.RAM);
       SetRegisters(exe.PC, exe.SP);
     }
-    
+
     void SetRAM(const MemoryRegion& mem)
     {
       const auto iop = ::psx_get_iop_state(Emu.get());
       ::iop_upload_to_ram(iop, mem.Start, mem.Data.data(), mem.Data.size());
     }
-    
+
     void SetRegisters(uint32_t pc, uint32_t sp)
     {
       const auto iop = ::psx_get_iop_state(Emu.get());
@@ -278,129 +250,95 @@ namespace PSF
       ::r3000_setreg(cpu, R3000_REG_PC, pc);
       ::r3000_setreg(cpu, R3000_REG_GEN + 29, sp);
     }
-    
+
     void SetupIo(PsxVfs::Ptr vfs)
     {
       Io = VfsIO(vfs);
       ::psx_set_readfile(Emu.get(), &ReadCallback, &Io);
     }
-    
+
     static sint32 ReadCallback(void* context, const char* path, sint32 offset, char* buffer, sint32 length)
     {
       const auto io = static_cast<VfsIO*>(context);
       return io->Read(path, offset, buffer, length);
     }
+
   private:
     uint_t SoundFrequency = 0;
     std::vector<SpuTrait> Spus;
     std::unique_ptr<uint8_t[]> Emu;
     VfsIO Io;
   };
-  
+
+  const auto FRAME_DURATION = Time::Milliseconds(100);
+
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(ModuleData::Ptr data, Information::Ptr info, Sound::Receiver::Ptr target, Parameters::Accessor::Ptr params)
+    Renderer(ModuleData::Ptr data, uint_t samplerate)
       : Data(std::move(data))
-      , Iterator(Module::CreateStreamStateIterator(info))
-      , State(Iterator->GetStateObserver())
-      , Engine(MakePtr<PSXEngine>())
-      , SoundParams(Sound::RenderParameters::Create(params))
-      , Target(Module::CreateFadingReceiver(std::move(params), std::move(info), State, std::move(target)))
-      , Looped()
-    {
-      Engine->Initialize(*Data);
-      SamplesPerFrame = Engine->GetSoundFrequency() / Data->GetRefreshRate();
-      ApplyParameters();
-    }
+      , State(MakePtr<TimedState>(Data->Meta->Duration))
+      , Engine(MakePtr<PSXEngine>(*Data))
+      , Target(Sound::CreateResampler(Engine->GetSoundFrequency(), samplerate))
+    {}
 
     Module::State::Ptr GetState() const override
     {
       return State;
     }
 
-    Module::Analyzer::Ptr GetAnalyzer() const override
+    Sound::Chunk Render(const Sound::LoopParameters& looped) override
     {
-      return Engine;
-    }
-
-    bool RenderFrame() override
-    {
-      try
+      if (!State->IsValid())
       {
-        ApplyParameters();
-
-        Resampler->ApplyData(Engine->Render(SamplesPerFrame));
-        Iterator->NextFrame(Looped);
-        return Iterator->IsValid();
+        return {};
       }
-      catch (const std::exception&)
-      {
-        return false;
-      }
+      const auto avail = State->Consume(FRAME_DURATION, looped);
+      return Target->Apply(Engine->Render(GetSamples(avail)));
     }
 
     void Reset() override
     {
-      SoundParams.Reset();
-      Iterator->Reset();
+      State->Reset();
       Engine->Initialize(*Data);
-      Looped = {};
     }
 
-    void SetPosition(uint_t frame) override
+    void SetPosition(Time::AtMillisecond request) override
     {
-      SeekTune(frame);
-      Module::SeekIterator(*Iterator, frame);
-    }
-  private:
-    void ApplyParameters()
-    {
-      if (SoundParams.IsChanged())
-      {
-        Looped = SoundParams->Looped();
-        Resampler = Sound::CreateResampler(Engine->GetSoundFrequency(), SoundParams->SoundFreq(), Target);
-      }
-    }
-
-    void SeekTune(uint_t frame)
-    {
-      uint_t current = State->Frame();
-      if (frame < current)
+      if (request < State->At())
       {
         Engine->Initialize(*Data);
-        current = 0;
       }
-      if (const uint_t delta = frame - current)
+      if (const auto toSkip = State->Seek(request))
       {
-        Engine->Skip(delta * SamplesPerFrame);
+        Engine->Skip(GetSamples(toSkip));
       }
     }
+
+  private:
+    uint_t GetSamples(Time::Microseconds period) const
+    {
+      return period.Get() * Engine->GetSoundFrequency() / period.PER_SECOND;
+    }
+
   private:
     const ModuleData::Ptr Data;
-    const StateIterator::Ptr Iterator;
-    const Module::State::Ptr State;
+    const TimedState::Ptr State;
     const PSXEngine::Ptr Engine;
-    uint_t SamplesPerFrame;
-    Parameters::TrackingHelper<Sound::RenderParameters> SoundParams;
-    const Sound::Receiver::Ptr Target;
-    Sound::Receiver::Ptr Resampler;
-    Sound::LoopParameters Looped;
+    const Sound::Converter::Ptr Target;
   };
 
   class Holder : public Module::Holder
   {
   public:
-    Holder(ModuleData::Ptr tune, Information::Ptr info, Parameters::Accessor::Ptr props)
+    Holder(ModuleData::Ptr tune, Parameters::Accessor::Ptr props)
       : Tune(std::move(tune))
-      , Info(std::move(info))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     Module::Information::Ptr GetModuleInformation() const override
     {
-      return Info;
+      return CreateTimedInfo(Tune->Meta->Duration);
     }
 
     Parameters::Accessor::Ptr GetModuleProperties() const override
@@ -408,31 +346,27 @@ namespace PSF
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
     {
-      return MakePtr<Renderer>(Tune, Info, std::move(target), std::move(params));
+      return MakePtr<Renderer>(Tune, samplerate);
     }
-    
+
     static Ptr Create(ModuleData::Ptr tune, Parameters::Container::Ptr properties)
     {
-      const auto period = Time::Milliseconds::FromFrequency(tune->GetRefreshRate());
-      const auto duration = tune->Meta->Duration;
-      const auto frames = duration.Divide<uint_t>(period);
-      Information::Ptr info = CreateStreamInfo(frames);
       if (tune->Meta)
       {
         tune->Meta->Dump(*properties);
       }
-      properties->SetValue(ATTR_PLATFORM, tune->Version == 1 ? Platforms::PLAYSTATION : Platforms::PLAYSTATION_2);
-      Sound::SetFrameDuration(*properties, period);
-      return MakePtr<Holder>(std::move(tune), std::move(info), std::move(properties));
+      properties->SetValue(ATTR_PLATFORM, tune->Version == 1 ? Platforms::PLAYSTATION.to_string()
+                                                             : Platforms::PLAYSTATION_2.to_string());
+      return MakePtr<Holder>(std::move(tune), std::move(properties));
     }
+
   private:
     const ModuleData::Ptr Tune;
-    const Information::Ptr Info;
     const Parameters::Accessor::Ptr Properties;
   };
-  
+
   class ModuleDataBuilder
   {
   public:
@@ -446,7 +380,7 @@ namespace PSF
       const auto unpackedSection = Binary::Compression::Zlib::Decompress(packedSection);
       PsxExe::Parse(*unpackedSection, *Exe);
     }
-    
+
     void AddVfs(const Binary::Container& reservedSection)
     {
       Require(!Exe);
@@ -456,7 +390,7 @@ namespace PSF
       }
       PsxVfs::Parse(reservedSection, *Vfs);
     }
-    
+
     void AddMeta(const XSF::MetaInformation& meta)
     {
       if (!Meta)
@@ -468,7 +402,7 @@ namespace PSF
         Meta->Merge(meta);
       }
     }
-    
+
     ModuleData::Ptr CaptureResult(uint_t version)
     {
       auto res = MakeRWPtr<ModuleData>();
@@ -478,12 +412,13 @@ namespace PSF
       res->Meta = std::move(Meta);
       return res;
     }
+
   private:
     PsxExe::RWPtr Exe;
     PsxVfs::RWPtr Vfs;
     XSF::MetaInformation::RWPtr Meta;
   };
-  
+
   class Factory : public XSF::Factory
   {
   public:
@@ -504,8 +439,9 @@ namespace PSF
       }
       return Holder::Create(builder.CaptureResult(file.Version), std::move(properties));
     }
-    
-    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles, Parameters::Container::Ptr properties) const override
+
+    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles,
+                                      Parameters::Container::Ptr properties) const override
     {
       ModuleDataBuilder builder;
       if (file.PackedProgramSection)
@@ -519,24 +455,29 @@ namespace PSF
       MergeMeta(file, additionalFiles, builder);
       return Holder::Create(builder.CaptureResult(file.Version), std::move(properties));
     }
+
   private:
     /* https://bitbucket.org/zxtune/zxtune/wiki/MiniPSF
-    
+
     The proper way to load a minipsf is as follows:
     - Load the executable data from the minipsf - this becomes the current executable.
     - Check for the presence of a "_lib" tag. If present:
-      - RECURSIVELY load the executable data from the given library file. (Make sure to limit recursion to avoid crashing - I usually limit it to 10 levels)
+      - RECURSIVELY load the executable data from the given library file. (Make sure to limit recursion to avoid
+    crashing - I usually limit it to 10 levels)
       - Make the _lib executable the current one.
       - If applicable, we will use the initial program counter/stack pointer from the _lib executable.
-      - Superimpose the originally loaded minipsf executable on top of the current executable. If applicable, use the start address and size to determine where to .
+      - Superimpose the originally loaded minipsf executable on top of the current executable. If applicable, use the
+    start address and size to determine where to .
     - Check for the presence of "_libN" tags for N=2 and up (use "_lib%d")
-      - RECURSIVELY load and superimpose all these EXEs on top of the current EXE. Do not modify the current program counter or stack pointer.
+      - RECURSIVELY load and superimpose all these EXEs on top of the current EXE. Do not modify the current program
+    counter or stack pointer.
       - Start at N=2. Stop at the first tag name that doesn't exist.
-    - (done)    
+    - (done)
     */
     static const uint_t MAX_LEVEL = 10;
 
-    static void MergeExe(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles, ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeExe(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
+                         ModuleDataBuilder& dst, uint_t level = 1)
     {
       auto it = data.Dependencies.begin();
       const auto lim = data.Dependencies.end();
@@ -555,7 +496,7 @@ namespace PSF
     }
 
     /* https://bitbucket.org/zxtune/zxtune/wiki/MiniPSF2
-    
+
     The proper way to load a MiniPSF2 is as follows:
     - First, recursively load the virtual filesystems from each PSF2 file named by a library tag.
       - The first tag is "_lib"
@@ -563,9 +504,11 @@ namespace PSF
       - Stop at the first tag name that doesn't exist.
     - Then, load the virtual filesystem from the current PSF2 file.
 
-    If there are conflicting or redundant filenames, they should be overwritten in memory in the order in which the filesystem data was parsed. Later takes priority.
+    If there are conflicting or redundant filenames, they should be overwritten in memory in the order in which the
+    filesystem data was parsed. Later takes priority.
     */
-    static void MergeVfs(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles, ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeVfs(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
+                         ModuleDataBuilder& dst, uint_t level = 1)
     {
       if (level < MAX_LEVEL)
       {
@@ -576,8 +519,9 @@ namespace PSF
       }
       dst.AddVfs(*data.ReservedSection);
     }
-    
-    static void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles, ModuleDataBuilder& dst, uint_t level = 1)
+
+    static void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
+                          ModuleDataBuilder& dst, uint_t level = 1)
     {
       if (level < MAX_LEVEL)
       {
@@ -592,10 +536,9 @@ namespace PSF
       }
     }
   };
-  
+
   Module::Factory::Ptr CreateFactory()
   {
     return XSF::CreateFactory(MakePtr<Factory>());
   }
-}
-}
+}  // namespace Module::PSF

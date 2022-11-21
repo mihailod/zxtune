@@ -1,16 +1,17 @@
 /**
-*
-* @file
-*
-* @brief  Providers parameters names
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Providers parameters names
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
+#include <io/io_parameters.h>
 #include <parameters/types.h>
 
 namespace Parameters
@@ -23,20 +24,20 @@ namespace Parameters
       namespace Providers
       {
         //! @brief Parameters#ZXTune#IO#Providers namespace prefix
-        extern const NameType PREFIX;
+        const auto PREFIX = IO::PREFIX + "providers"_id;
 
         //! @brief %File provider parameters namespace
         namespace File
         {
           //! @brief Parameters#ZXTune#IO#Providers#File namespace prefix
-          extern const NameType PREFIX;
+          const auto PREFIX = Providers::PREFIX + "file"_id;
           //@{
           //! @name Memory-mapping usage data size threshold parameter.
 
           //! Default value
           const IntType MMAP_THRESHOLD_DEFAULT = 16384;
           //! Parameter full path
-          extern const NameType MMAP_THRESHOLD;
+          const auto MMAP_THRESHOLD = PREFIX + "mmap_threshold"_id;
           //@}
 
           //@{
@@ -45,7 +46,7 @@ namespace Parameters
           //! Default value
           const IntType CREATE_DIRECTORIES_DEFAULT = 1;
           //! @Parameter full path
-          extern const NameType CREATE_DIRECTORIES;
+          const auto CREATE_DIRECTORIES = PREFIX + "create_directories"_id;
           //@}
 
           //@{
@@ -54,7 +55,7 @@ namespace Parameters
           //! Default value
           const IntType OVERWRITE_EXISTING_DEFAULT = 0;
           //! @Parameter full path
-          extern const NameType OVERWRITE_EXISTING;
+          const auto OVERWRITE_EXISTING = PREFIX + "overwrite"_id;
           //@}
 
           //@{
@@ -63,29 +64,29 @@ namespace Parameters
           //! Default value
           const IntType SANITIZE_NAMES_DEFAULT = 1;
           //! @Parameter full path
-          extern const NameType SANITIZE_NAMES;
-        }
+          const auto SANITIZE_NAMES = PREFIX + "sanitize"_id;
+        }  // namespace File
 
         //! @brief %Network provider parameters namespace
         namespace Network
         {
           //! @brief Parameters#ZXTune#IO#Providers#Network namespace prefix
-          extern const NameType PREFIX;
+          const auto PREFIX = Providers::PREFIX + "network"_id;
 
           //! @brief Parameters for HTTP protocol
           namespace Http
           {
             //! @brief Parameters#ZXTune#IO#Providers#Network#Http namespace prefix
-            extern const NameType PREFIX;
+            const auto PREFIX = Network::PREFIX + "http"_id;
 
             //@{
             //! @name Useragent parameter
 
             //! Parameter full path
-            extern const NameType USERAGENT;
-          }
-        }
-      }
-    }
-  }
-}
+            const auto USERAGENT = PREFIX + "useragent"_id;
+          }  // namespace Http
+        }    // namespace Network
+      }      // namespace Providers
+    }        // namespace IO
+  }          // namespace ZXTune
+}  // namespace Parameters

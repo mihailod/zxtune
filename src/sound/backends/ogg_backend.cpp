@@ -1,44 +1,38 @@
 /**
-*
-* @file
-*
-* @brief  OGG backend implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  OGG backend implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "sound/backends/file_backend.h"
-#include "sound/backends/l10n.h"
-#include "sound/backends/storage.h"
 #include "sound/backends/gates/ogg_api.h"
 #include "sound/backends/gates/vorbis_api.h"
 #include "sound/backends/gates/vorbisenc_api.h"
-//common includes
+#include "sound/backends/l10n.h"
+#include "sound/backends/ogg.h"
+#include "sound/backends/storage.h"
+// common includes
 #include <error_tools.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <debug/log.h>
 #include <math/numeric.h>
 #include <sound/backend_attrs.h>
 #include <sound/backends_parameters.h>
 #include <sound/render_params.h>
-//std includes
+// std includes
 #include <algorithm>
-//text includes
-#include <sound/backends/text/backends.h>
 
 #define FILE_TAG B01A305D
 
-namespace Sound
-{
-namespace Ogg
+namespace Sound::Ogg
 {
   const Debug::Stream Dbg("Sound::Backend::Ogg");
-
-  const String ID = Text::OGG_BACKEND_ID;
-  const char* const DESCRIPTION = L10n::translate("OGG support backend");
 
   const uint_t BITRATE_MIN = 48;
   const uint_t BITRATE_MAX = 500;
@@ -95,12 +89,14 @@ namespace Ogg
         WritePage(page);
       }
     }
+
   private:
     void WritePage(const ogg_page& page)
     {
       File->ApplyData(Binary::View(page.header, page.header_len));
       File->ApplyData(Binary::View(page.body, page.body_len));
     }
+
   private:
     const Api::Ptr OggApi;
     const Binary::OutputStream::Ptr File;
@@ -125,15 +121,14 @@ namespace Ogg
 
     void AddTag(const String& name, const String& value)
     {
-      const std::string nameC = name;//TODO
-      const std::string valueC = value;//TODO
-      VorbisApi->vorbis_comment_add_tag(&Data, nameC.c_str(), valueC.c_str());
+      VorbisApi->vorbis_comment_add_tag(&Data, name.c_str(), value.c_str());
     }
 
     vorbis_comment* Get()
     {
       return &Data;
     }
+
   private:
     const Vorbis::Api::Ptr VorbisApi;
     vorbis_comment Data;
@@ -194,12 +189,14 @@ namespace Ogg
     {
       return &State;
     }
+
   private:
-    //from SAMPLE_MIN..SAMPLE_MAX scale to -1.0..+1.0
+    // from SAMPLE_MIN..SAMPLE_MAX scale to -1.0..+1.0
     static float ToFloat(Sample::Type smp)
     {
       return float(int_t(smp) - Sample::MID) / (Sample::MAX - Sample::MID);
     }
+
   private:
     const Vorbis::Api::Ptr VorbisApi;
     vorbis_dsp_state State;
@@ -224,18 +221,21 @@ namespace Ogg
 
     void SetQuality(uint_t quality, uint_t samplerate)
     {
-      CheckVorbisCall(VorbisEncApi->vorbis_encode_init_vbr(&Data, Sample::CHANNELS, samplerate, float(quality) / 10), THIS_LINE);
+      CheckVorbisCall(VorbisEncApi->vorbis_encode_init_vbr(&Data, Sample::CHANNELS, samplerate, float(quality) / 10),
+                      THIS_LINE);
     }
 
     void SetABR(uint_t bitrate, uint_t samplerate)
     {
-      CheckVorbisCall(VorbisEncApi->vorbis_encode_init(&Data, Sample::CHANNELS, samplerate, -1, bitrate * 1000, -1), THIS_LINE);
+      CheckVorbisCall(VorbisEncApi->vorbis_encode_init(&Data, Sample::CHANNELS, samplerate, -1, bitrate * 1000, -1),
+                      THIS_LINE);
     }
 
     vorbis_info* Get()
     {
       return &Data;
     }
+
   private:
     const Vorbis::Api::Ptr VorbisApi;
     const VorbisEnc::Api::Ptr VorbisEncApi;
@@ -257,17 +257,17 @@ namespace Ogg
 
     void SetTitle(const String& title) override
     {
-      Meta->AddTag(Text::OGG_BACKEND_TITLE_TAG, title);
+      Meta->AddTag(File::TITLE_TAG, title);
     }
 
     void SetAuthor(const String& author) override
     {
-      Meta->AddTag(Text::OGG_BACKEND_AUTHOR_TAG, author);
+      Meta->AddTag(File::AUTHOR_TAG, author);
     }
 
     void SetComment(const String& comment) override
     {
-      Meta->AddTag(Text::OGG_BACKEND_COMMENT_TAG, comment);
+      Meta->AddTag(File::COMMENT_TAG, comment);
     }
 
     void FlushMetadata() override
@@ -291,6 +291,7 @@ namespace Ogg
       State->Flush();
       State->Save(*Stream);
     }
+
   private:
     const Vorbis::Api::Ptr VorbisApi;
     const VorbisInfo::Ptr Info;
@@ -304,8 +305,7 @@ namespace Ogg
   public:
     explicit StreamParameters(Parameters::Accessor::Ptr params)
       : Params(std::move(params))
-    {
-    }
+    {}
 
     bool IsABRMode() const
     {
@@ -321,19 +321,18 @@ namespace Ogg
       }
       else
       {
-        throw MakeFormattedError(THIS_LINE,
-          translate("OGG backend error: invalid mode '%1%'."), mode);
+        throw MakeFormattedError(THIS_LINE, translate("OGG backend error: invalid mode '%1%'."), mode);
       }
     }
 
     uint_t GetBitrate() const
     {
       Parameters::IntType bitrate = Parameters::ZXTune::Sound::Backends::Ogg::BITRATE_DEFAULT;
-      if (Params->FindValue(Parameters::ZXTune::Sound::Backends::Ogg::BITRATE, bitrate) &&
-        !Math::InRange<Parameters::IntType>(bitrate, BITRATE_MIN, BITRATE_MAX))
+      if (Params->FindValue(Parameters::ZXTune::Sound::Backends::Ogg::BITRATE, bitrate)
+          && !Math::InRange<Parameters::IntType>(bitrate, BITRATE_MIN, BITRATE_MAX))
       {
-        throw MakeFormattedError(THIS_LINE,
-          translate("OGG backend error: bitrate (%1%) is out of range (%2%..%3%)."), static_cast<int_t>(bitrate), BITRATE_MIN, BITRATE_MAX);
+        throw MakeFormattedError(THIS_LINE, translate("OGG backend error: bitrate (%1%) is out of range (%2%..%3%)."),
+                                 static_cast<int_t>(bitrate), BITRATE_MIN, BITRATE_MAX);
       }
       return static_cast<uint_t>(bitrate);
     }
@@ -341,14 +340,15 @@ namespace Ogg
     uint_t GetQuality() const
     {
       Parameters::IntType quality = Parameters::ZXTune::Sound::Backends::Ogg::QUALITY_DEFAULT;
-      if (Params->FindValue(Parameters::ZXTune::Sound::Backends::Ogg::QUALITY, quality) &&
-        !Math::InRange<Parameters::IntType>(quality, QUALITY_MIN, QUALITY_MAX))
+      if (Params->FindValue(Parameters::ZXTune::Sound::Backends::Ogg::QUALITY, quality)
+          && !Math::InRange<Parameters::IntType>(quality, QUALITY_MIN, QUALITY_MAX))
       {
-        throw MakeFormattedError(THIS_LINE,
-          translate("OGG backend error: quality (%1%) is out of range (%2%..%3%)."), static_cast<int_t>(quality), QUALITY_MIN, QUALITY_MAX);
+        throw MakeFormattedError(THIS_LINE, translate("OGG backend error: quality (%1%) is out of range (%2%..%3%)."),
+                                 static_cast<int_t>(quality), QUALITY_MIN, QUALITY_MAX);
       }
       return static_cast<uint_t>(quality);
     }
+
   private:
     const Parameters::Accessor::Ptr Params;
   };
@@ -356,17 +356,17 @@ namespace Ogg
   class FileStreamFactory : public Sound::FileStreamFactory
   {
   public:
-    FileStreamFactory(Api::Ptr oggApi, Vorbis::Api::Ptr vorbisApi, VorbisEnc::Api::Ptr vorbisEncApi, Parameters::Accessor::Ptr params)
+    FileStreamFactory(Api::Ptr oggApi, Vorbis::Api::Ptr vorbisApi, VorbisEnc::Api::Ptr vorbisEncApi,
+                      Parameters::Accessor::Ptr params)
       : OggApi(std::move(oggApi))
       , VorbisApi(std::move(vorbisApi))
       , VorbisEncApi(std::move(vorbisEncApi))
       , Params(std::move(params))
-    {
-    }
+    {}
 
     String GetId() const override
     {
-      return ID;
+      return BACKEND_ID;
     }
 
     FileStream::Ptr CreateStream(Binary::OutputStream::Ptr stream) const override
@@ -376,13 +376,13 @@ namespace Ogg
       const OggBitStream::Ptr bitStream = MakePtr<OggBitStream>(OggApi, stream);
       return MakePtr<FileStream>(VorbisApi, info, bitStream);
     }
+
   private:
     void SetupInfo(VorbisInfo& info) const
     {
       const StreamParameters stream(Params);
-      const RenderParameters::Ptr sound = RenderParameters::Create(Params);
 
-      const uint_t samplerate = sound->SoundFreq();
+      const uint_t samplerate = GetSoundFrequency(*Params);
       Dbg("Samplerate is %1%", samplerate);
       if (stream.IsABRMode())
       {
@@ -396,8 +396,8 @@ namespace Ogg
         Dbg("Setting VBR quality to %1%", quality);
         info.SetQuality(quality, samplerate);
       }
-
     }
+
   private:
     const Api::Ptr OggApi;
     const Vorbis::Api::Ptr VorbisApi;
@@ -412,21 +412,20 @@ namespace Ogg
       : OggApi(std::move(oggApi))
       , VorbisApi(std::move(vorbisApi))
       , VorbisEncApi(std::move(vorbisEncApi))
+    {}
+
+    BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr holder) const override
     {
+      auto factory = MakePtr<FileStreamFactory>(OggApi, VorbisApi, VorbisEncApi, params);
+      return CreateFileBackendWorker(std::move(params), holder->GetModuleProperties(), std::move(factory));
     }
 
-    BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr /*holder*/) const override
-    {
-      const FileStreamFactory::Ptr factory = MakePtr<FileStreamFactory>(OggApi, VorbisApi, VorbisEncApi, params);
-      return CreateFileBackendWorker(params, factory);
-    }
   private:
     const Api::Ptr OggApi;
     const Vorbis::Api::Ptr VorbisApi;
     const VorbisEnc::Api::Ptr VorbisEncApi;
   };
-}//Ogg
-}//Sound
+}  // namespace Sound::Ogg
 
 namespace Sound
 {
@@ -439,13 +438,13 @@ namespace Sound
       const VorbisEnc::Api::Ptr vorbisEncApi = VorbisEnc::LoadDynamicApi();
       Ogg::Dbg("Detected Vorbis library %1%", vorbisApi->vorbis_version_string());
       const BackendWorkerFactory::Ptr factory = MakePtr<Ogg::BackendWorkerFactory>(oggApi, vorbisApi, vorbisEncApi);
-      storage.Register(Ogg::ID, Ogg::DESCRIPTION, CAP_TYPE_FILE, factory);
+      storage.Register(Ogg::BACKEND_ID, Ogg::BACKEND_DESCRIPTION, CAP_TYPE_FILE, factory);
     }
     catch (const Error& e)
     {
-      storage.Register(Ogg::ID, Ogg::DESCRIPTION, CAP_TYPE_FILE, e);
+      storage.Register(Ogg::BACKEND_ID, Ogg::BACKEND_DESCRIPTION, CAP_TYPE_FILE, e);
     }
   }
-}
+}  // namespace Sound
 
 #undef FILE_TAG

@@ -1,21 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief  AY/YM renderers
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AY/YM renderers
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <devices/details/renderers.h>
 
-namespace Devices
-{
-namespace AYM
+namespace Devices::AYM
 {
   typedef Details::ClockSource<Stamp> ClockSource;
 
@@ -31,8 +29,7 @@ namespace AYM
       , MQ(clock, psg)
       , HQ(clock, psg)
       , Current()
-    {
-    }
+    {}
 
     void Reset()
     {
@@ -69,15 +66,16 @@ namespace AYM
       }
     }
 
-    void Render(Stamp tillTime, uint_t samples, Sound::ChunkBuilder& target)
+    Sound::Chunk Render(Stamp tillTime, uint_t samples)
     {
-      Current->Render(tillTime, samples, target);
+      return Current->Render(tillTime, samples);
     }
 
-    void Render(Stamp tillTime, Sound::ChunkBuilder& target)
+    void Render(Stamp tillTime, Sound::Chunk* target)
     {
       Current->Render(tillTime, target);
     }
+
   private:
     uint64_t ClockFreq;
     uint_t SoundFreq;
@@ -87,5 +85,4 @@ namespace AYM
     Details::HQRenderer<Stamp, PSGType> HQ;
     Details::Renderer<Stamp>* Current;
   };
-}
-}
+}  // namespace Devices::AYM

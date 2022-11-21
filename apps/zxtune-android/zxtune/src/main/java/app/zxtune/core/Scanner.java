@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 
-import app.zxtune.StubProgressCallback;
 import app.zxtune.fs.DefaultComparator;
 import app.zxtune.fs.Vfs;
 import app.zxtune.fs.VfsArchive;
@@ -19,7 +18,8 @@ import app.zxtune.fs.VfsFile;
 import app.zxtune.fs.VfsObject;
 import app.zxtune.playlist.AylIterator;
 import app.zxtune.playlist.ReferencesIterator;
-import app.zxtune.playlist.XspfIterator;
+import app.zxtune.playlist.xspf.XspfIterator;
+import app.zxtune.utils.StubProgressCallback;
 
 public final class Scanner {
 
@@ -44,7 +44,7 @@ public final class Scanner {
 
   public static void analyzeIdentifier(Identifier id, Callback cb) {
     try {
-      if (id.getSubpath().isEmpty()) {
+      if (id.getSubPath().isEmpty()) {
         Holder.INSTANCE.analyzeRealObject(id, cb);
       } else {
         Holder.INSTANCE.analyzeArchiveObject(id, cb);
@@ -112,7 +112,7 @@ public final class Scanner {
     final Identifier id = new Identifier(file.getUri());
     try {
       //may be called from recursion, so additionally check for archived objects
-      if (!id.getSubpath().isEmpty()) {
+      if (!id.getSubPath().isEmpty()) {
         analyzeArchiveObject(id, cb);
       } else if (!analyzePlaylistFile(file, cb)) {
         analyzeRealFile(file, cb);
@@ -122,15 +122,17 @@ public final class Scanner {
     }
   }
 
+  //TODO: reuse VfsPlaylistDir
   private boolean analyzePlaylistFile(VfsFile file, Callback cb) throws IOException {
-    final String filename = file.getUri().getLastPathSegment();
+    final Uri uri = file.getUri();
+    final String filename = uri.getLastPathSegment();
     if (filename == null) {
       return false;
     } else if (filename.endsWith(".ayl")) {
-      analyzePlaylist(file.getUri(), AylIterator.create(Vfs.read(file)), cb);
+      analyzePlaylist(file.getUri(), AylIterator.create(Vfs.openStream(file)), cb);
       return true;
-    } else if (filename.endsWith(".xspf")) {
-      analyzePlaylist(file.getUri(), XspfIterator.create(Vfs.read(file)), cb);
+    } else if (filename.endsWith(".xspf") || "playlists".equals(uri.getScheme())) {
+      analyzePlaylist(file.getUri(), XspfIterator.create(Vfs.openStream(file)), cb);
       return true;
     } else {
       return false;
@@ -161,16 +163,13 @@ public final class Scanner {
       public void onModule(String subpath, Module obj) {
         cb.onModule(new Identifier(uri, subpath), obj);
       }
-
-      @Override
-      public void onProgress(int done) {}
     });
   }
 
   private void analyzeArchiveObject(Identifier id, Callback cb) throws Exception {
     try {
       final VfsFile archive = openArchive(id.getDataLocation());
-      final Module module = Core.loadModule(archive, id.getSubpath());
+      final Module module = Core.loadModule(archive, id.getSubPath());
       cb.onModule(id, module);
     } catch (ResolvingException e) {
       final Uri uri = id.getFullLocation();

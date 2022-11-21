@@ -1,17 +1,17 @@
 /**
-* 
-* @file
-*
-* @brief Filename template building widget interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Filename template building widget interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//qt includes
-#include <QtGui/QWidget>
+// qt includes
+#include <QtWidgets/QWidget>
 
 namespace UI
 {
@@ -20,9 +20,10 @@ namespace UI
     Q_OBJECT
   protected:
     explicit FilenameTemplateWidget(QWidget& parent);
+
   public:
     static FilenameTemplateWidget* Create(QWidget& parent);
-    
+
     virtual QString GetFilenameTemplate() const = 0;
   private slots:
     virtual void OnBrowseDirectory() = 0;
@@ -32,4 +33,4 @@ namespace UI
   };
 
   bool GetFilenameTemplate(QWidget& parent, QString& result);
-}
+}  // namespace UI

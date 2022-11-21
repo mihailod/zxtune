@@ -1,41 +1,39 @@
 /**
-* 
-* @file
-*
-* @brief  VGM support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  VGM support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/chiptune/multidevice/videogamemusic.h"
-//common includes
+// common includes
 #include <contract.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 #include <binary/input_stream.h>
 #include <formats/chiptune/container.h>
 #include <math/numeric.h>
-//boost includes
+// boost includes
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   namespace VideoGameMusic
   {
+    const Char DESCRIPTION[] = "Video Game Music";
+
     const uint32_t SIGNATURE = 0x56676d20;
 
     const uint32_t GD3_SIGNATURE = 0x47643320;
     const uint_t VERSION_MIN = 100;
     const uint_t VERSION_MAX = 171;
-    
+
     class StubBuilder : public Builder
     {
     public:
@@ -46,28 +44,27 @@ namespace Chiptune
 
       void SetTimings(Time::Milliseconds /*total*/, Time::Milliseconds /*loop*/) override {}
     };
-    
+
     const std::size_t MIN_SIZE = 256;
 
-    const std::string FORMAT =
-        "'V'g'm' " //signature
-        "????"     //eof offset
-        //version
+    const auto FORMAT =
+        "'V'g'm' "  // signature
+        "????"      // eof offset
+        // version
         "00-09|10-19|20-29|30-39|40-49|50-59|60-69|70-71"
         "01 00 00"
-     ;
+        ""_sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
     public:
       Decoder()
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
-      {
-      }
+      {}
 
       String GetDescription() const override
       {
-        return Text::VGM_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -75,7 +72,7 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Format->Match(rawData);
       }
@@ -91,6 +88,7 @@ namespace Chiptune
           return {};
         }
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
@@ -100,23 +98,23 @@ namespace Chiptune
     public:
       explicit Format(const Binary::Container& data)
         : Stream(data)
-      {
-      }
+      {}
 
       Formats::Chiptune::Container::Ptr Parse(Builder& target)
       {
         const auto limit = Stream.GetRestSize();
-        Require(Stream.ReadBE<uint32_t>() == SIGNATURE);
+        Require(Stream.Read<be_uint32_t>() == SIGNATURE);
         // Support truncated files
         const auto eof = std::min(ReadOffset(), limit);
-        const auto ver = ReadVersion(Stream.ReadLE<uint32_t>());
+        const auto ver = ReadVersion(Stream.Read<le_uint32_t>());
         Require(Math::InRange(ver, VERSION_MIN, VERSION_MAX));
         Stream.Skip(8);
         const auto gd3Offset = ReadOffset();
-        const auto totalSamples = Stream.ReadLE<uint32_t>();
+        const uint_t totalSamples = Stream.Read<le_uint32_t>();
         Stream.Skip(4);
-        const auto loopSamples = Stream.ReadLE<uint32_t>();
-        target.SetTimings(SamplesToTime(totalSamples), SamplesToTime(loopSamples && totalSamples >= loopSamples ? totalSamples - loopSamples : 0));
+        const uint_t loopSamples = Stream.Read<le_uint32_t>();
+        target.SetTimings(SamplesToTime(totalSamples),
+                          SamplesToTime(loopSamples && totalSamples >= loopSamples ? totalSamples - loopSamples : 0));
         const auto dataStart = GetDataOffset(ver);
         const uint_t NO_GD3 = 0x18;
         if (gd3Offset != NO_GD3 && gd3Offset < eof)
@@ -135,6 +133,7 @@ namespace Chiptune
         auto data = Stream.GetReadContainer();
         return CreateCalculatingCrcContainer(std::move(data), dataStart, dataEnd - dataStart);
       }
+
     private:
       static uint_t ReadVersion(uint32_t bcd)
       {
@@ -158,7 +157,7 @@ namespace Chiptune
 
       std::size_t ReadOffset()
       {
-        return Stream.GetPosition() + Stream.ReadLE<uint32_t>();
+        return Stream.GetPosition() + Stream.Read<le_uint32_t>();
       }
 
       uint_t GetDataOffset(uint_t ver)
@@ -179,17 +178,16 @@ namespace Chiptune
       {
         try
         {
-          if (Stream.ReadBE<uint32_t>() == GD3_SIGNATURE)
+          if (Stream.Read<be_uint32_t>() == GD3_SIGNATURE)
           {
-            Stream.Skip(4);//version
-            const auto size = Stream.ReadLE<uint32_t>();
+            Stream.Skip(4);  // version
+            const std::size_t size = Stream.Read<le_uint32_t>();
             ParseTags(Stream.ReadData(size), target);
             return true;
           }
         }
         catch (const std::exception&)
-        {
-        }
+        {}
         return false;
       }
 
@@ -202,17 +200,19 @@ namespace Chiptune
         const auto gameEn = ReadUTF16(input);
         const auto gameJa = ReadUTF16(input);
         target.SetProgram(DispatchString(gameEn, gameJa));
-        /*const auto systemEn = */ReadUTF16(input);
-        /*const auto systemJa = */ReadUTF16(input);
+        /*const auto systemEn = */ ReadUTF16(input);
+        /*const auto systemJa = */ ReadUTF16(input);
         const auto authorEn = ReadUTF16(input);
         const auto authorJa = ReadUTF16(input);
-        /*const auto date = */ReadUTF16(input);
+        /*const auto date = */ ReadUTF16(input);
         const auto ripper = ReadUTF16(input);
         target.SetAuthor(DispatchString(authorEn, DispatchString(authorJa, ripper)));
         const auto comment = ReadUTF16(input);
         Strings::Array strings;
-        boost::algorithm::split(strings, comment, boost::algorithm::is_any_of("\r\n"), boost::algorithm::token_compress_on);
-        if (!strings.empty()) {
+        boost::algorithm::split(strings, comment, boost::algorithm::is_any_of("\r\n"),
+                                boost::algorithm::token_compress_on);
+        if (!strings.empty())
+        {
           target.SetStrings(strings);
         }
       }
@@ -220,7 +220,7 @@ namespace Chiptune
       static String ReadUTF16(Binary::DataInputStream& input)
       {
         String value;
-        while (const uint16_t utf = input.ReadLE<uint16_t>())
+        while (const uint16_t utf = input.Read<le_uint16_t>())
         {
           if (utf <= 0x7f)
           {
@@ -245,6 +245,7 @@ namespace Chiptune
       {
         return lh.empty() ? rh : lh;
       }
+
     private:
       Binary::InputStream Stream;
     };
@@ -266,11 +267,10 @@ namespace Chiptune
       static StubBuilder stub;
       return stub;
     }
-  } //namespace VideoGameMusic
+  }  // namespace VideoGameMusic
 
   Decoder::Ptr CreateVideoGameMusicDecoder()
   {
     return MakePtr<VideoGameMusic::Decoder>();
   }
-}
-}
+}  // namespace Formats::Chiptune

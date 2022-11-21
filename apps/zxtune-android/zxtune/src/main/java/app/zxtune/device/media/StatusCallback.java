@@ -18,8 +18,6 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.core.content.res.ResourcesCompat;
 
-import java.util.concurrent.TimeUnit;
-
 import app.zxtune.Log;
 import app.zxtune.R;
 import app.zxtune.Releaseable;
@@ -28,12 +26,11 @@ import app.zxtune.core.Identifier;
 import app.zxtune.core.ModuleAttributes;
 import app.zxtune.fs.Vfs;
 import app.zxtune.fs.VfsExtensions;
+import app.zxtune.fs.VfsExtensionsKt;
 import app.zxtune.fs.VfsFile;
 import app.zxtune.fs.VfsObject;
-import app.zxtune.fs.VfsUtils;
 import app.zxtune.fs.provider.VfsProviderClient;
 import app.zxtune.playback.Callback;
-import app.zxtune.playback.CallbackSubscription;
 import app.zxtune.playback.Item;
 import app.zxtune.playback.PlaybackControl;
 import app.zxtune.playback.PlaybackService;
@@ -54,7 +51,7 @@ class StatusCallback implements Callback {
     //TODO: rework repeat/shuffle model
     session.setShuffleMode(ctrl.getSequenceMode().ordinal());
     session.setRepeatMode(ctrl.getTrackMode().ordinal());
-    return new CallbackSubscription(svc, cb);
+    return svc.subscribe(cb);
   }
 
   private StatusCallback(Context ctx, MediaSessionCompat session) {
@@ -83,7 +80,7 @@ class StatusCallback implements Callback {
     final int stateCompat = isPlaying
         ? PlaybackStateCompat.STATE_PLAYING
         : PlaybackStateCompat.STATE_STOPPED;
-    final long position = pos.convertTo(TimeUnit.MILLISECONDS);
+    final long position = pos.toMilliseconds();
     final float speed = isPlaying ? 1 : 0;
     builder.setState(stateCompat, position, speed, SystemClock.elapsedRealtime());
     session.setPlaybackState(builder.build());
@@ -109,15 +106,14 @@ class StatusCallback implements Callback {
         // Do not localize
         builder.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Unknown artist");
       }
-      putString(builder, MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, item.getComment());
+      putString(builder, ModuleAttributes.COMMENT, item.getComment());
       putString(builder, ModuleAttributes.PROGRAM, item.getProgram());
       putString(builder, ModuleAttributes.STRINGS, item.getStrings());
-      builder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION,
-          item.getDuration().convertTo(TimeUnit.MILLISECONDS));
+      builder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, item.getDuration().toMilliseconds());
       builder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, getLocationIcon(dataId.getDataLocation()));
       builder.putString(MediaMetadataCompat.METADATA_KEY_MEDIA_URI, dataId.toString());
       builder.putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, item.getId().toString());
-      fillObjectUrls(dataId.getDataLocation(), dataId.getSubpath(), builder);
+      fillObjectUrls(dataId.getDataLocation(), dataId.getSubPath(), builder);
       session.setMetadata(builder.build());
     } catch (Exception e) {
       Log.w(TAG, e, "onItemChanged()");
@@ -126,12 +122,7 @@ class StatusCallback implements Callback {
 
   @Override
   public void onError(final String e) {
-    handler.post(new Runnable() {
-      @Override
-      public void run() {
-        Toast.makeText(ctx, e, Toast.LENGTH_SHORT).show();
-      }
-    });
+    handler.post(() -> Toast.makeText(ctx, e, Toast.LENGTH_SHORT).show());
   }
 
   private static void putString(MediaMetadataCompat.Builder builder, String key,
@@ -149,7 +140,7 @@ class StatusCallback implements Callback {
       final Drawable drawable = ResourcesCompat.getDrawableForDensity(resources, id, 320/*XHDPI*/, null);
       if (drawable instanceof BitmapDrawable) {
         return ((BitmapDrawable) drawable).getBitmap();
-      } else if (drawable != null){
+      } else if (drawable != null) {
         final Bitmap result = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
         final Canvas canvas = new Canvas(result);
         drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
@@ -166,7 +157,7 @@ class StatusCallback implements Callback {
     try {
       final Uri rootLocation = new Uri.Builder().scheme(location.getScheme()).build();
       final VfsObject root = Vfs.resolve(rootLocation);
-      Integer icon = VfsUtils.getObjectIcon(root);
+      Integer icon = VfsExtensionsKt.getIcon(root);
       if (icon != null) {
         return icon;
       }

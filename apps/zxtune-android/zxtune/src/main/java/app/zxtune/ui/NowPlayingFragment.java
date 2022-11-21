@@ -6,6 +6,7 @@
 
 package app.zxtune.ui;
 
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -24,16 +25,14 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
-import androidx.lifecycle.Observer;
-import androidx.lifecycle.ViewModelProviders;
 
 import app.zxtune.Log;
 import app.zxtune.MainActivity;
 import app.zxtune.MainService;
 import app.zxtune.R;
 import app.zxtune.analytics.Analytics;
+import app.zxtune.device.media.MediaSessionModel;
 import app.zxtune.fs.VfsExtensions;
-import app.zxtune.models.MediaSessionModel;
 
 public class NowPlayingFragment extends Fragment implements MainActivity.PagerTabListener {
 
@@ -65,13 +64,8 @@ public class NowPlayingFragment extends Fragment implements MainActivity.PagerTa
     inflater.inflate(R.menu.track, menu);
 
     trackActionsMenu = new TrackActionsMenu(menu);
-    final MediaSessionModel model = ViewModelProviders.of(getActivity()).get(MediaSessionModel.class);
-    model.getMetadata().observe(this, new Observer<MediaMetadataCompat>() {
-      @Override
-      public void onChanged(@Nullable MediaMetadataCompat metadata) {
-        trackActionsMenu.setupMenu(metadata);
-      }
-    });
+    final MediaSessionModel model = MediaSessionModel.of(getActivity());
+    model.getMetadata().observe(this, metadata -> trackActionsMenu.setupMenu(metadata));
   }
 
   /*
@@ -82,7 +76,7 @@ public class NowPlayingFragment extends Fragment implements MainActivity.PagerTa
   public boolean onOptionsItemSelected(MenuItem item) {
     try {
       return trackActionsMenu.selectItem(item)
-                 || super.onOptionsItemSelected(item);
+          || super.onOptionsItemSelected(item);
     } catch (Exception e) {//use the most common type
       Log.w(TAG, e, "onOptionsItemSelected");
       final Throwable cause = e.getCause();
@@ -196,7 +190,7 @@ public class NowPlayingFragment extends Fragment implements MainActivity.PagerTa
       this.data = data;
       trackMenu.setEnabled(data != null);
       if (data != null) {
-        add.setEnabled(!data.isFromPlaylist());
+        add.setEnabled(data.canBeAddedToPlaylist());
         send.setEnabled(data.canBeSent());
         share.setEnabled(data.hasRemotePage());
       }
@@ -222,8 +216,8 @@ public class NowPlayingFragment extends Fragment implements MainActivity.PagerTa
       this.description = metadata.getDescription();
     }
 
-    final boolean isFromPlaylist() {
-      return !getFullLocation().toString().equals(description.getMediaId());
+    final boolean canBeAddedToPlaylist() {
+      return !description.getMediaId().startsWith(ContentResolver.SCHEME_CONTENT);
     }
 
     final boolean canBeSent() {

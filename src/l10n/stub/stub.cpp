@@ -1,16 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  L10n stub implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  L10n stub implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
+// common includes
 #include <pointers.h>
-//library includes
+// library includes
 #include <l10n/src/library.h>
 
 namespace
@@ -20,43 +20,39 @@ namespace
   public:
     String GetText(const char* text) const override
     {
-      return FromStdString(std::string(text));
+      return text;
     }
 
     String GetText(const char* single, const char* plural, int count) const override
     {
-      return FromStdString(std::string(count == 1 ? single : plural));
+      return count == 1 ? single : plural;
     }
 
     String GetText(const char* /*context*/, const char* text) const override
     {
-      return FromStdString(std::string(text));
+      return text;
     }
 
     String GetText(const char* /*context*/, const char* single, const char* plural, int count) const override
     {
-      return FromStdString(std::string(count == 1 ? single : plural));
+      return count == 1 ? single : plural;
     }
   };
 
   class StubLibrary : public L10n::Library
   {
   public:
-    void AddTranslation(const L10n::Translation& /*trans*/) override
-    {
-    }
+    void AddTranslation(const L10n::Translation& /*trans*/) override {}
 
-    void SelectTranslation(const std::string& /*translation*/) override
-    {
-    }
+    void SelectTranslation(const String& /*translation*/) override {}
 
-    L10n::Vocabulary::Ptr GetVocabulary(const std::string& /*domain*/) const override
+    L10n::Vocabulary::Ptr GetVocabulary(const String& /*domain*/) const override
     {
       static StubVocabulary voc;
       return MakeSingletonPointer(voc);
     }
   };
-}
+}  // namespace
 
 namespace L10n
 {
@@ -66,7 +62,5 @@ namespace L10n
     return instance;
   }
 
-  void LoadTranslationsFromResources(Library& /*lib*/)
-  {
-  }
-}
+  void LoadTranslationsFromResources(Library& /*lib*/) {}
+}  // namespace L10n

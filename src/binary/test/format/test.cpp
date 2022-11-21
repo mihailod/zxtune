@@ -1,20 +1,20 @@
 /**
-*
-* @file
-*
-* @brief  Format test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Format test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <types.h>
-#include <binary/format_factories.h>
 #include <binary/format/grammar.h>
 #include <binary/format/syntax.h>
-#include <sstream>
-#include <iostream>
+#include <binary/format_factories.h>
 #include <functional>
+#include <iostream>
+#include <sstream>
+#include <types.h>
 
 namespace
 {
@@ -24,7 +24,7 @@ namespace
     if (!val)
       throw 1;
   }
-  
+
   template<class T>
   void Test(const std::string& msg, T result, T reference)
   {
@@ -38,10 +38,10 @@ namespace
       throw 1;
     }
   }
-}
+}  // namespace
 
 namespace
-{  
+{
   const std::string TOKENS("DCMO");
 
   class GrammarReportCallback : public LexicalAnalysis::Grammar::Callback
@@ -49,23 +49,23 @@ namespace
   public:
     explicit GrammarReportCallback(std::ostream& str)
       : Str(str)
-    {
-    }
+    {}
 
-    void TokenMatched(const std::string& lexeme, LexicalAnalysis::TokenType type) override
+    void TokenMatched(StringView lexeme, LexicalAnalysis::TokenType type) override
     {
       Str << TOKENS[type] << '(' << lexeme << ") ";
     }
 
-    void MultipleTokensMatched(const std::string& lexeme, const LexicalAnalysis::TokenTypesSet& /*types*/) override
+    void MultipleTokensMatched(StringView lexeme, const LexicalAnalysis::TokenTypesSet& /*types*/) override
     {
       Str << "X(" << lexeme << ") ";
     }
 
-    void AnalysisError(const std::string& notation, std::size_t position) override
+    void AnalysisError(StringView notation, std::size_t position) override
     {
       Str << notation.substr(0, position) << " >" << notation.substr(position);
     }
+
   private:
     std::ostream& Str;
   };
@@ -75,10 +75,9 @@ namespace
   public:
     explicit SyntaxReportCallback(std::ostream& str)
       : Str(str)
-    {
-    }
+    {}
 
-    void Match(const std::string& val) override
+    void Match(StringView val) override
     {
       Str << val << ' ';
     }
@@ -98,15 +97,16 @@ namespace
       Str << '{' << count << "} ";
     }
 
-    void Operation(const std::string& op) override
+    void Operation(StringView op) override
     {
       Str << op << ' ';
     }
+
   private:
     std::ostream& Str;
   };
 
-  std::string GetGrammar(const std::string& notation)
+  std::string GetGrammar(StringView notation)
   {
     const LexicalAnalysis::Grammar::Ptr grammar = Binary::FormatDSL::CreateFormatGrammar();
     std::ostringstream result;
@@ -115,7 +115,7 @@ namespace
     return result.str();
   }
 
-  std::string GetSyntax(const std::string& notation)
+  std::string GetSyntax(StringView notation)
   {
     std::ostringstream result;
     try
@@ -124,12 +124,11 @@ namespace
       Binary::FormatDSL::ParseFormatNotation(notation, cb);
     }
     catch (const std::exception&)
-    {
-    }
+    {}
     return result.str();
   }
 
-  std::string GetSyntaxRPN(const std::string& notation)
+  std::string GetSyntaxRPN(StringView notation)
   {
     std::ostringstream result;
     try
@@ -138,26 +137,25 @@ namespace
       Binary::FormatDSL::ParseFormatNotationPostfix(notation, cb);
     }
     catch (const std::exception&)
-    {
-    }
+    {}
     return result.str();
   }
 
-  std::string GetSyntaxRPNChecked(const std::string& notation)
+  std::string GetSyntaxRPNChecked(StringView notation)
   {
     std::ostringstream result;
     try
     {
       SyntaxReportCallback cb(result);
-      const Binary::FormatDSL::FormatTokensVisitor::Ptr adapter = Binary::FormatDSL::CreatePostfixSyntaxCheckAdapter(cb);
+      const Binary::FormatDSL::FormatTokensVisitor::Ptr adapter =
+          Binary::FormatDSL::CreatePostfixSyntaxCheckAdapter(cb);
       Binary::FormatDSL::ParseFormatNotationPostfix(notation, *adapter);
     }
     catch (const std::exception&)
-    {
-    }
+    {}
     return result.str();
   }
-}
+}  // namespace
 
 namespace
 {
@@ -169,16 +167,15 @@ namespace
     FormatResult(bool matched, std::size_t nextMatch)
       : Matched(matched)
       , NextMatch(nextMatch)
-    {
-    }
+    {}
   };
 
   const FormatResult INVALID_FORMAT = FormatResult(false, 0);
 
   struct FormatTest
   {
-    std::string Name;
-    std::string Notation;
+    StringView Name;
+    StringView Notation;
     std::string GrammarReport;
     std::string SyntaxReport;
     std::string SyntaxReportRPN;
@@ -187,13 +184,14 @@ namespace
     FormatResult MatchOnlyResult;
   };
 
-  const uint8_t SAMPLE[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
+  const uint8_t SAMPLE[] = {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+                            16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
 
-  FormatResult CheckFormat(const std::string& notation)
+  FormatResult CheckFormat(StringView notation)
   {
     try
     {
-      const Binary::Format::Ptr format = Binary::CreateFormat(notation);
+      const auto format = Binary::CreateFormat(notation);
       const Binary::View sample(SAMPLE, std::end(SAMPLE) - SAMPLE);
       return FormatResult(format->Match(sample), format->NextMatchOffset(sample));
     }
@@ -203,7 +201,7 @@ namespace
     }
   }
 
-  FormatResult CheckMatchOnlyFormat(const std::string& notation)
+  FormatResult CheckMatchOnlyFormat(StringView notation)
   {
     try
     {
@@ -217,13 +215,13 @@ namespace
     }
   }
 
-  FormatResult CheckCompositeFormat(const std::string& header, const std::string& footer, std::size_t minSize, std::size_t maxSize)
+  FormatResult CheckCompositeFormat(StringView header, StringView footer, std::size_t minSize, std::size_t maxSize)
   {
     try
     {
-      const Binary::Format::Ptr hdr = Binary::CreateFormat(header, minSize);
-      const Binary::Format::Ptr foot = Binary::CreateFormat(footer);
-      const Binary::Format::Ptr format = Binary::CreateCompositeFormat(hdr, foot, minSize, maxSize);
+      auto hdr = Binary::CreateFormat(header, minSize);
+      auto foot = Binary::CreateFormat(footer);
+      const auto format = Binary::CreateCompositeFormat(std::move(hdr), std::move(foot), minSize, maxSize);
       const Binary::View sample(SAMPLE, std::end(SAMPLE) - SAMPLE);
       return FormatResult(format->Match(sample), format->NextMatchOffset(sample));
     }
@@ -233,6 +231,7 @@ namespace
     }
   }
 
+  // clang-format off
   const FormatTest TESTS[] =
   {
     //invalid grammar/syntax
@@ -903,6 +902,7 @@ namespace
       FormatResult(false, 32)
     }
   };
+  // clang-format on
 
   void ExecuteTest(const FormatTest& tst)
   {
@@ -919,11 +919,12 @@ namespace
     Test("next match offset (only)", resMatched.NextMatch, tst.MatchOnlyResult.NextMatch);
   }
 
+  // clang-format off
   struct CompositeFormatTest
   {
-    std::string Name;
-    std::string Header;
-    std::string Footer;
+    StringView Name;
+    StringView Header;
+    StringView Footer;
     std::size_t MinSize;
     std::size_t MaxFooterOffset;
     FormatResult Result;
@@ -1010,6 +1011,7 @@ namespace
       FormatResult(false, 2)
     },
   };
+  // clang-format on
 
   void ExecuteCompositeTest(const CompositeFormatTest& tst)
   {
@@ -1018,7 +1020,7 @@ namespace
     Test("match", res.Matched, tst.Result.Matched);
     Test("next match offset", res.NextMatch, tst.Result.NextMatch);
   }
-}
+}  // namespace
 
 int main()
 {

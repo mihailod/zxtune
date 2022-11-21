@@ -1,88 +1,88 @@
 /**
-* 
-* @file
-*
-* @brief Seek controls widget implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Seek controls widget implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "seek_controls.h"
 #include "seek_controls.ui.h"
 #include "supp/playback_supp.h"
 #include "ui/styles.h"
 #include "ui/utils.h"
-//common includes
+// common includes
 #include <contract.h>
-//library includes
+// library includes
 #include <time/serialize.h>
-//qt includes
+// qt includes
 #include <QtGui/QCursor>
-#include <QtGui/QToolTip>
+#include <QtWidgets/QToolTip>
 
 namespace
 {
+  const auto PRECISION = Time::Milliseconds(100);
+
   // Time/Frames/Slider logic
   class ScaledTime
   {
   public:
     ScaledTime(const Playlist::Item::Data& data, Module::State::Ptr state)
-      : Frames(data.GetModule()->GetModuleInformation()->FramesCount())
-      , Duration(data.GetDuration())
+      : Duration(data.GetDuration())
       , State(std::move(state))
-    {
-    }
+    {}
 
     int GetSliderRange() const
     {
-      return Frames;
+      return Duration.Divide<int>(PRECISION);
     }
 
     int GetSliderPosition() const
     {
-      return State->Frame();
+      return GetPlayed().Divide<int>(PRECISION);
     }
 
-    uint_t SliderPositionToSeekPosition(int pos) const
+    Time::AtMillisecond SliderPositionToSeekPosition(int pos) const
     {
-      return pos;
+      return Time::AtMillisecond() + SliderPositionToTime(pos);
     }
 
     Time::Milliseconds SliderPositionToTime(int pos) const
     {
-      const uint64_t frame = pos;
-      return decltype(Duration)(frame * Duration.Get() / Frames);
+      return PRECISION * pos;
     }
 
-    Time::Milliseconds GetPosition() const
+    Time::Milliseconds GetPlayed() const
     {
-      return SliderPositionToTime(State->Frame());
+      return Time::Milliseconds(State->At().CastTo<Time::Millisecond>().Get());
     }
+
   private:
-    const uint_t Frames;
     const Time::Milliseconds Duration;
     const Module::State::Ptr State;
   };
 
-  class SeekControlsImpl : public SeekControls
-                         , private Ui::SeekControls
+  class SeekControlsImpl
+    : public SeekControls
+    , private Ui::SeekControls
   {
   public:
     SeekControlsImpl(QWidget& parent, PlaybackSupport& supp)
       : ::SeekControls(parent)
     {
-      //setup self
+      // setup self
       setupUi(this);
       timePosition->setRange(0, 0);
       Require(connect(timePosition, SIGNAL(sliderReleased()), SLOT(EndSeeking())));
 
       Require(connect(&supp, SIGNAL(OnStartModule(Sound::Backend::Ptr, Playlist::Item::Data::Ptr)),
-        SLOT(InitState(Sound::Backend::Ptr, Playlist::Item::Data::Ptr))));
+                      SLOT(InitState(Sound::Backend::Ptr, Playlist::Item::Data::Ptr))));
       Require(connect(&supp, SIGNAL(OnUpdateState()), SLOT(UpdateState())));
       Require(connect(&supp, SIGNAL(OnStopModule()), SLOT(CloseState())));
-      Require(supp.connect(this, SIGNAL(OnSeeking(int)), SLOT(Seek(int))));
+      Require(supp.connect(this, SIGNAL(OnSeeking(Time::AtMillisecond)), SLOT(Seek(Time::AtMillisecond))));
       timePosition->setStyle(UI::GetStyle());
     }
 
@@ -106,7 +106,7 @@ namespace
       {
         timePosition->setSliderPosition(Scaler->GetSliderPosition());
       }
-      timeDisplay->setText(ToQString(Time::ToString(Scaler->GetPosition())));
+      timeDisplay->setText(ToQString(Time::ToString(Scaler->GetPlayed())));
     }
 
     void CloseState() override
@@ -120,7 +120,7 @@ namespace
       OnSeeking(Scaler->SliderPositionToSeekPosition(timePosition->value()));
     }
 
-    //QWidget
+    // QWidget
     void changeEvent(QEvent* event) override
     {
       if (event && QEvent::LanguageChange == event->type())
@@ -129,6 +129,7 @@ namespace
       }
       ::SeekControls::changeEvent(event);
     }
+
   private:
     void ShowTooltip()
     {
@@ -137,14 +138,15 @@ namespace
       const QPoint& mousePos = QCursor::pos();
       QToolTip::showText(mousePos, text, timePosition, QRect());
     }
+
   private:
     std::unique_ptr<ScaledTime> Scaler;
   };
-}
+}  // namespace
 
-SeekControls::SeekControls(QWidget& parent) : QWidget(&parent)
-{
-}
+SeekControls::SeekControls(QWidget& parent)
+  : QWidget(&parent)
+{}
 
 SeekControls* SeekControls::Create(QWidget& parent, PlaybackSupport& supp)
 {

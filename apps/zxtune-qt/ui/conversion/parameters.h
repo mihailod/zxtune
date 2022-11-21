@@ -1,16 +1,16 @@
 /**
-* 
-* @file
-*
-* @brief Export parameters declaration
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Export parameters declaration
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
+// local includes
 #include "ui/parameters.h"
 
 namespace Parameters
@@ -21,12 +21,11 @@ namespace Parameters
     {
       namespace Export
       {
-        const std::string NAMESPACE_NAME("Export");
+        const auto PREFIX = UI::PREFIX + "Export"_id;
+        const auto NAMESPACE_NAME = static_cast<Identifier>(PREFIX).Name();
 
-        const NameType PREFIX = UI::PREFIX + NAMESPACE_NAME;
-
-        const NameType TYPE = PREFIX + "Type";
-      }
-    }
-  }
-}
+        const auto TYPE = PREFIX + "Type"_id;
+      }  // namespace Export
+    }    // namespace UI
+  }      // namespace ZXTuneQT
+}  // namespace Parameters

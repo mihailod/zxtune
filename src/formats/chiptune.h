@@ -1,21 +1,21 @@
 /**
-*
-* @file
-*
-* @brief  Chiptunes support interfaces
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Chiptunes support interfaces
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <types.h>
-//library includes
+// library includes
 #include <binary/container.h>
 #include <binary/format.h>
-//std includes
+// std includes
 #include <memory>
 
 namespace Formats
@@ -27,10 +27,6 @@ namespace Formats
     {
     public:
       typedef std::shared_ptr<const Container> Ptr;
-
-      //! @brief Whole data fingerprint
-      //! @return Some integer value at least 32-bit
-      virtual uint_t Checksum() const = 0;
 
       //! @brief Internal structures simple fingerprint
       //! @return Some integer value at least 32-bit
@@ -54,12 +50,12 @@ namespace Formats
       //! @brief Fast check for data consistensy
       //! @param rawData Data to be checked
       //! @return false if rawData has defenitely wrong format, else otherwise
-      virtual bool Check(const Binary::Container& rawData) const = 0;
+      virtual bool Check(Binary::View rawData) const = 0;
       //! @brief Perform raw data decoding
       //! @param rawData Data to be decoded
       //! @return Non-null object if data is successfully recognized and decoded
       //! @invariant Result is always rawData's subcontainer
       virtual Container::Ptr Decode(const Binary::Container& rawData) const = 0;
     };
-  }
-}
+  }  // namespace Chiptune
+}  // namespace Formats

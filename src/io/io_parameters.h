@@ -1,17 +1,17 @@
 /**
-*
-* @file
-*
-* @brief  IO parameters names
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  IO parameters names
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <parameters/types.h>
+// library includes
+#include <zxtune.h>
 
 namespace Parameters
 {
@@ -21,8 +21,8 @@ namespace Parameters
     namespace IO
     {
       //! @brief Parameters#ZXTune#IO namespace prefix
-      extern const NameType PREFIX;
-      //IO-related parameters
-    }
-  }
-}
+      const auto PREFIX = ZXTune::PREFIX + "io"_id;
+      // IO-related parameters
+    }  // namespace IO
+  }    // namespace ZXTune
+}  // namespace Parameters

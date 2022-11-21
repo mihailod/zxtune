@@ -1,16 +1,16 @@
 /**
-* 
-* @file
-*
-* @brief  RAR archives support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  RAR archives support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/container_base.h>
 #include <binary/format_factories.h>
 #include <binary/input_stream.h>
@@ -18,16 +18,12 @@
 #include <formats/archived.h>
 #include <formats/packed/decoders.h>
 #include <formats/packed/rar_supp.h>
-//std includes
+// std includes
 #include <cstring>
 #include <deque>
 #include <numeric>
-//text include
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Archived
+namespace Formats::Archived
 {
   namespace Rar
   {
@@ -43,19 +39,17 @@ namespace Archived
         : Header()
         , Offset()
         , Size()
-      {
-      }
+      {}
 
       FileBlock(const Packed::Rar::FileBlockHeader* header, std::size_t offset, std::size_t size)
         : Header(header)
         , Offset(offset)
         , Size(size)
-      {
-      }
+      {}
 
       std::size_t GetUnpackedSize() const
       {
-        return fromLE(Header->UnpackedSize);
+        return Header->UnpackedSize;
       }
 
       bool HasParent() const
@@ -74,8 +68,7 @@ namespace Archived
     public:
       explicit BlocksIterator(Binary::View data)
         : Stream(data)
-      {
-      }
+      {}
 
       bool IsEof() const
       {
@@ -88,17 +81,15 @@ namespace Archived
         assert(!IsEof());
         const auto* block = Stream.PeekField<Packed::Rar::ArchiveBlockHeader>();
         return block && !block->Block.IsExtended() && Packed::Rar::ArchiveBlockHeader::TYPE == block->Block.Type
-          ? block
-          : nullptr;
+                   ? block
+                   : nullptr;
       }
-    
+
       const Packed::Rar::FileBlockHeader* GetFileHeader() const
       {
         assert(!IsEof());
         const auto* block = Stream.PeekField<Packed::Rar::FileBlockHeader>();
-        return block && block->IsValid()
-          ? block
-          : nullptr;
+        return block && block->IsValid() ? block : nullptr;
       }
 
       std::size_t GetOffset() const
@@ -110,19 +101,19 @@ namespace Archived
       {
         if (const auto* block = Stream.PeekField<Packed::Rar::BlockHeader>())
         {
-          uint64_t res = fromLE(block->Size);
+          uint64_t res = block->Size;
           if (block->IsExtended())
           {
             if (const auto* extBlock = Stream.PeekField<Packed::Rar::ExtendedBlockHeader>())
             {
-              res += fromLE(extBlock->AdditionalSize);
-              //Even if big files are not supported, we should properly skip them in stream
-              if (Packed::Rar::FileBlockHeader::TYPE == extBlock->Block.Type && 
-                  Packed::Rar::FileBlockHeader::FLAG_BIG_FILE & fromLE(extBlock->Block.Flags))
+              res += extBlock->AdditionalSize;
+              // Even if big files are not supported, we should properly skip them in stream
+              if (Packed::Rar::FileBlockHeader::TYPE == extBlock->Block.Type
+                  && Packed::Rar::FileBlockHeader::FLAG_BIG_FILE & extBlock->Block.Flags)
               {
                 if (const auto* bigFile = Stream.PeekField<Packed::Rar::BigFileBlockHeader>())
                 {
-                  res += uint64_t(fromLE(bigFile->PackedSizeHi)) << (8 * sizeof(uint32_t));
+                  res += uint64_t(bigFile->PackedSizeHi) << (8 * sizeof(uint32_t));
                 }
                 else
                 {
@@ -149,13 +140,14 @@ namespace Archived
         Stream.Skip(GetBlockSize());
         if (const auto* block = Stream.PeekField<Packed::Rar::BlockHeader>())
         {
-          //finish block
-          if (block->Type == 0x7b && 7 == fromLE(block->Size))
+          // finish block
+          if (block->Type == 0x7b && 7 == block->Size)
           {
             Stream.Skip(sizeof(*block));
           }
         }
       }
+
     private:
       Binary::DataInputStream Stream;
     };
@@ -169,24 +161,22 @@ namespace Archived
         : Data(std::move(data))
         , StatefulDecoder(Packed::CreateRarDecoder())
         , ChainIterator(new BlocksIterator(*Data))
-      {
-      }
+      {}
 
       Binary::Container::Ptr DecodeBlock(const FileBlock& block) const
       {
         if (block.IsChained() && block.HasParent())
         {
-          return AdvanceIterator(block.Offset, &ChainDecoder::ProcessBlock)
-            ? DecodeSingleBlock(block)
-            : Binary::Container::Ptr();
+          return AdvanceIterator(block.Offset, &ChainDecoder::ProcessBlock) ? DecodeSingleBlock(block)
+                                                                            : Binary::Container::Ptr();
         }
         else
         {
-          return AdvanceIterator(block.Offset, &ChainDecoder::SkipBlock)
-            ? DecodeSingleBlock(block)
-            : Binary::Container::Ptr();
+          return AdvanceIterator(block.Offset, &ChainDecoder::SkipBlock) ? DecodeSingleBlock(block)
+                                                                         : Binary::Container::Ptr();
         }
       }
+
     private:
       bool AdvanceIterator(std::size_t offset, void (ChainDecoder::*BlockOp)(const FileBlock&) const) const
       {
@@ -197,7 +187,8 @@ namespace Archived
         }
         while (ChainIterator->GetOffset() <= offset && !ChainIterator->IsEof())
         {
-          const FileBlock& curBlock = FileBlock(ChainIterator->GetFileHeader(), ChainIterator->GetOffset(), ChainIterator->GetBlockSize());
+          const FileBlock& curBlock =
+              FileBlock(ChainIterator->GetFileHeader(), ChainIterator->GetOffset(), ChainIterator->GetBlockSize());
           ChainIterator->Next();
           if (curBlock.Header)
           {
@@ -223,7 +214,8 @@ namespace Archived
 
       void ProcessBlock(const FileBlock& block) const
       {
-        Dbg(" Decoding parent block @%1% (chained=%2%, hasParent=%3%)", block.Offset, block.IsChained(), block.HasParent());
+        Dbg(" Decoding parent block @%1% (chained=%2%, hasParent=%3%)", block.Offset, block.IsChained(),
+            block.HasParent());
         const Binary::Container::Ptr blockContent = Data->GetSubcontainer(block.Offset, block.Size);
         StatefulDecoder->Decode(*blockContent);
       }
@@ -232,6 +224,7 @@ namespace Archived
       {
         Dbg(" Skip block @%1% (chained=%2%, hasParent=%3%)", block.Offset, block.IsChained(), block.HasParent());
       }
+
     private:
       const Binary::Container::Ptr Data;
       const Formats::Packed::Decoder::Ptr StatefulDecoder;
@@ -245,8 +238,7 @@ namespace Archived
         : Decoder(std::move(decoder))
         , Block(std::move(block))
         , Name(std::move(name))
-      {
-      }
+      {}
 
       String GetName() const override
       {
@@ -263,6 +255,7 @@ namespace Archived
         Dbg("Decompressing '%1%' started at %2%", Name, Block.Offset);
         return Decoder->DecodeBlock(Block);
       }
+
     private:
       const ChainDecoder::Ptr Decoder;
       const FileBlock Block;
@@ -322,6 +315,7 @@ namespace Archived
       {
         return Blocks.GetOffset();
       }
+
     private:
       void SkipNonFileBlocks()
       {
@@ -330,6 +324,7 @@ namespace Archived
           Blocks.Next();
         }
       }
+
     private:
       const ChainDecoder::Ptr Decoder;
       BlocksIterator Blocks;
@@ -347,7 +342,7 @@ namespace Archived
         Dbg("Found %1% files. Size is %2%", filesCount, Delegate->Size());
       }
 
-      //Archive::Container
+      // Archive::Container
       void ExploreFiles(const Container::Walker& walker) const override
       {
         for (FileIterator iter(Decoder, *Delegate); !iter.IsEof(); iter.Next())
@@ -377,36 +372,37 @@ namespace Archived
       {
         return FilesCount;
       }
+
     private:
       const ChainDecoder::Ptr Decoder;
       const uint_t FilesCount;
     };
 
-    const std::string FORMAT(
-      //file marker
-      "5261"       //uint16_t CRC;   "Ra"
-      "72"         //uint8_t Type;   "r"
-      "211a"       //uint16_t Flags; "!ESC^"
-      "0700"       //uint16_t Size;  "BELL^,0"
-      //archive header
-      "??"         //uint16_t CRC;
-      "73"         //uint8_t Type;
-      "??"         //uint16_t Flags;
-      "0d00"       //uint16_t Size
-    );
-  }//namespace Rar
+    const Char DESCRIPTION[] = "RAR";
+    const auto FORMAT =
+        // file marker
+        "5261"  // uint16_t CRC;   "Ra"
+        "72"    // uint8_t Type;   "r"
+        "211a"  // uint16_t Flags; "!ESC^"
+        "0700"  // uint16_t Size;  "BELL^,0"
+        // archive header
+        "??"    // uint16_t CRC;
+        "73"    // uint8_t Type;
+        "??"    // uint16_t Flags;
+        "0d00"  // uint16_t Size
+        ""_sv;
+  }  // namespace Rar
 
   class RarDecoder : public Decoder
   {
   public:
     RarDecoder()
       : Format(Binary::CreateFormat(Rar::FORMAT))
-    {
-    }
+    {}
 
     String GetDescription() const override
     {
-      return Text::RAR_DECODER_DESCRIPTION;
+      return Rar::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -440,6 +436,7 @@ namespace Archived
         return Container::Ptr();
       }
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -448,5 +445,4 @@ namespace Archived
   {
     return MakePtr<RarDecoder>();
   }
-}//namespace Archived
-}//namespace Formats
+}  // namespace Formats::Archived

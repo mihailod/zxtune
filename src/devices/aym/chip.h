@@ -1,31 +1,31 @@
 /**
-* 
-* @file
-*
-* @brief  AY/YM sound chip interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AY/YM sound chip interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <devices/aym.h>
-#include <devices/state.h>
 #include <sound/mixer.h>
-#include <sound/receiver.h>
 
-//supporting for AY/YM-based modules
+// supporting for AY/YM-based modules
 namespace Devices
 {
   namespace AYM
   {
     // Describes real device
-    class Chip : public Device, public StateSource
+    class Chip : public Device
     {
     public:
-      typedef std::shared_ptr<Chip> Ptr;
+      using Ptr = std::shared_ptr<Chip>;
+
+      virtual Sound::Chunk RenderTill(Stamp till) = 0;
     };
 
     enum ChannelMasks
@@ -83,6 +83,6 @@ namespace Devices
     typedef Sound::ThreeChannelsMixer MixerType;
 
     /// Virtual constructors
-    Chip::Ptr CreateChip(ChipParameters::Ptr params, MixerType::Ptr mixer, Sound::Receiver::Ptr target);
-  }
-}
+    Chip::Ptr CreateChip(ChipParameters::Ptr params, MixerType::Ptr mixer);
+  }  // namespace AYM
+}  // namespace Devices

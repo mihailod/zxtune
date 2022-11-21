@@ -1,16 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  Xsf-based files structure support implementation. Metainformation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Xsf-based files structure support implementation. Metainformation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "module/players/xsf/xsf_metainformation.h"
-//library includes
+// library includes
 #include <module/players/properties_helper.h>
 #include <parameters/modifier.h>
 #include <sound/sound_parameters.h>
@@ -27,7 +27,7 @@ namespace Module
         dst = src;
       }
     }
-    
+
     void MetaInformation::Merge(const MetaInformation& rh)
     {
       MergeVal(Title, rh.Title);
@@ -38,14 +38,14 @@ namespace Module
       MergeVal(Comment, rh.Comment);
       MergeVal(Copyright, rh.Copyright);
       MergeVal(Dumper, rh.Dumper);
-      
+
       MergeVal(RefreshRate, rh.RefreshRate);
       MergeVal(Duration, rh.Duration);
       MergeVal(Fadeout, rh.Fadeout);
       MergeVal(Volume, rh.Volume);
-      //TODO: merge tags
+      // TODO: merge tags
     }
-    
+
     void MetaInformation::Dump(Parameters::Modifier& out) const
     {
       PropertiesHelper props(out);
@@ -59,7 +59,7 @@ namespace Module
         props.SetTitle(*game);
         game = nullptr;
       }
-    
+
       auto copyright = Copyright.empty() ? nullptr : &Copyright;
       auto dumper = Dumper.empty() ? nullptr : &Dumper;
       if (!Artist.empty())
@@ -102,18 +102,18 @@ namespace Module
         props.SetProgram(*game);
         game = nullptr;
       }
-      
+
       props.SetDate(Year);
-      
+
       if (Volume)
       {
         out.SetValue(Parameters::ZXTune::Sound::GAIN, Parameters::ZXTune::Sound::GAIN_PRECISION * Volume);
       }
 
-      if (const auto fadeout = Fadeout.Get())
+      if (Fadeout)
       {
-        out.SetValue(Parameters::ZXTune::Sound::FADEOUT, Parameters::ZXTune::Sound::FADEOUT_PRECISION * fadeout / Fadeout.PER_SECOND);
+        props.SetFadeout(Fadeout);
       }
     }
-  }
-}
+  }  // namespace XSF
+}  // namespace Module

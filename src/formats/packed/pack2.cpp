@@ -1,90 +1,84 @@
 /**
-* 
-* @file
-*
-* @brief  Pack2 packer support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Pack2 packer support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <make_ptr.h>
 #include <pointers.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 #include <formats/packed.h>
-//std includes
+// std includes
 #include <algorithm>
 #include <iterator>
-//text includes
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace Pack2
   {
     const std::size_t MAX_DECODED_SIZE = 0xc000;
 
-    const std::string DEPACKER_PATTERN(
-      "21??"          // ld hl,xxxx end of packed
-      "11??"          // ld de,xxxx end of unpacked
-      "e5"            // push hl
-      "01??"          // ld bc,xxxx first of unpacked
-      "b7"            // or a
-      "ed42"          // sbc hl,bc
-      "e1"            // pop hl
-      "d8"            // ret c
-      "7e"            // ld a,(hl)
-      "fe?"           // cp xx
-      "2804"          // jr z,xx
-      "eda8"          // ldd
-      "18ee"          // jr
-      "2b"            // dec hl
-      "46"            // ld b,(hl)
-      "cb78"          // bit 7,b
-      "2810"          // jr z,xxx
-      "cbb8"          // res 7,b
-      "78"            // ld a,b
-      "a7"            // and a
-      "280c"          // jr z,xxx
-      "fe?"           // cp xx
-      "3e?"           // ld a,xx
-      "3006"          // jr nc,xx
-      "3e?"           // ld a,xx
-      "1802"          // jr xx
-      "2b"            // dec hl
-      "7e"            // ld a,(hl)
-      "12"            // ld (de),a
-      "1b"            // dec de
-      "10fc"          // djnz xx
-      "2b"            // dec hl
-      "18cf"          // jr xx
-    );
+    const Char DESCRIPTION[] = "Pack v2.x";
+    const auto DEPACKER_PATTERN =
+        "21??"  // ld hl,xxxx end of packed
+        "11??"  // ld de,xxxx end of unpacked
+        "e5"    // push hl
+        "01??"  // ld bc,xxxx first of unpacked
+        "b7"    // or a
+        "ed42"  // sbc hl,bc
+        "e1"    // pop hl
+        "d8"    // ret c
+        "7e"    // ld a,(hl)
+        "fe?"   // cp xx
+        "2804"  // jr z,xx
+        "eda8"  // ldd
+        "18ee"  // jr
+        "2b"    // dec hl
+        "46"    // ld b,(hl)
+        "cb78"  // bit 7,b
+        "2810"  // jr z,xxx
+        "cbb8"  // res 7,b
+        "78"    // ld a,b
+        "a7"    // and a
+        "280c"  // jr z,xxx
+        "fe?"   // cp xx
+        "3e?"   // ld a,xx
+        "3006"  // jr nc,xx
+        "3e?"   // ld a,xx
+        "1802"  // jr xx
+        "2b"    // dec hl
+        "7e"    // ld a,(hl)
+        "12"    // ld (de),a
+        "1b"    // dec de
+        "10fc"  // djnz xx
+        "2b"    // dec hl
+        "18cf"  // jr xx
+        ""_sv;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawHeader
+    struct RawHeader
     {
       //+0
       char Padding1;
       //+1
-      uint16_t EndOfPacked;
+      le_uint16_t EndOfPacked;
       //+3
       char Padding2;
       //+4
-      uint16_t EndOfUnpacked;
+      le_uint16_t EndOfUnpacked;
       //+6
       char Padding3[2];
       //+8
-      uint16_t FirstOfUnpacked;
+      le_uint16_t FirstOfUnpacked;
       //+0xa
       char Padding4[7];
       //+0x11
@@ -106,12 +100,9 @@ namespace Packed
       //+0x37
 
       uint8_t PackedData[1];
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
 
-    static_assert(sizeof(RawHeader) == 0x38, "Invalid layout");
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 0x38, "Invalid layout");
 
     const std::size_t MIN_SIZE = sizeof(RawHeader);
 
@@ -121,8 +112,7 @@ namespace Packed
       Container(const void* data, std::size_t size)
         : Data(static_cast<const uint8_t*>(data))
         , Size(size)
-      {
-      }
+      {}
 
       bool FastCheck() const
       {
@@ -131,11 +121,11 @@ namespace Packed
           return false;
         }
         const RawHeader& header = GetHeader();
-        if (fromLE(header.EndOfPacked) < fromLE(header.FirstOfUnpacked))
+        if (header.EndOfPacked < header.FirstOfUnpacked)
         {
           return false;
         }
-        if (fromLE(header.EndOfUnpacked) < fromLE(header.EndOfPacked))
+        if (header.EndOfUnpacked < header.EndOfPacked)
         {
           return false;
         }
@@ -150,14 +140,14 @@ namespace Packed
       std::size_t GetUsedSize() const
       {
         const RawHeader& header = GetHeader();
-        const std::size_t selfAddr = fromLE(header.FirstOfUnpacked) - (sizeof(header) - 1);
-        return fromLE(header.EndOfPacked) - selfAddr + 1;
+        const std::size_t selfAddr = header.FirstOfUnpacked - (sizeof(header) - 1);
+        return header.EndOfPacked - selfAddr + 1;
       }
 
       std::size_t GetPackedSize() const
       {
         const RawHeader& header = GetHeader();
-        return fromLE(header.EndOfPacked) - fromLE(header.FirstOfUnpacked);
+        return header.EndOfPacked - header.FirstOfUnpacked;
       }
 
       const RawHeader& GetHeader() const
@@ -165,6 +155,7 @@ namespace Packed
         assert(Size >= sizeof(RawHeader));
         return *safe_ptr_cast<const RawHeader*>(Data);
       }
+
     private:
       const uint8_t* const Data;
       const std::size_t Size;
@@ -174,9 +165,9 @@ namespace Packed
     {
     public:
       ReverseByteStream(const uint8_t* data, std::size_t size)
-        : Data(data), Pos(Data + size)
-      {
-      }
+        : Data(data)
+        , Pos(Data + size)
+      {}
 
       bool Eof() const
       {
@@ -187,6 +178,7 @@ namespace Packed
       {
         return Eof() ? 0 : *--Pos;
       }
+
     private:
       const uint8_t* const Data;
       const uint8_t* Pos;
@@ -199,7 +191,7 @@ namespace Packed
         : IsValid(container.FastCheck())
         , Header(container.GetHeader())
         , Stream(Header.PackedData, container.GetPackedSize())
-        , Result(new Dump())
+        , Result(new Binary::Dump())
         , Decoded(*Result)
       {
         if (IsValid && !Stream.Eof())
@@ -208,16 +200,15 @@ namespace Packed
         }
       }
 
-      std::unique_ptr<Dump> GetResult()
+      std::unique_ptr<Binary::Dump> GetResult()
       {
-        return IsValid
-          ? std::move(Result)
-          : std::unique_ptr<Dump>();
+        return IsValid ? std::move(Result) : std::unique_ptr<Binary::Dump>();
       }
+
     private:
       bool DecodeData()
       {
-        //assume that first byte always exists due to header format
+        // assume that first byte always exists due to header format
         while (!Stream.Eof() && Decoded.size() < MAX_DECODED_SIZE)
         {
           const uint_t data = Stream.GetByte();
@@ -232,9 +223,7 @@ namespace Packed
             {
               if (const std::size_t len = token & 0x7f)
               {
-                const uint8_t filler = len < Header.RleThreshold
-                  ? Header.FirstRleByte
-                  : Header.SecondRleByte;
+                const uint8_t filler = len < Header.RleThreshold ? Header.FirstRleByte : Header.SecondRleByte;
                 std::fill_n(std::back_inserter(Decoded), len, filler);
               }
               else
@@ -254,26 +243,26 @@ namespace Packed
         std::reverse(Decoded.begin(), Decoded.end());
         return true;
       }
+
     private:
       bool IsValid;
       const RawHeader& Header;
       ReverseByteStream Stream;
-      std::unique_ptr<Dump> Result;
-      Dump& Decoded;
+      std::unique_ptr<Binary::Dump> Result;
+      Binary::Dump& Decoded;
     };
-  }//namespace Pack2
+  }  // namespace Pack2
 
   class Pack2Decoder : public Decoder
   {
   public:
     Pack2Decoder()
       : Depacker(Binary::CreateFormat(Pack2::DEPACKER_PATTERN, Pack2::MIN_SIZE))
-    {
-    }
+    {}
 
     String GetDescription() const override
     {
-      return Text::PACK2_DECODER_DESCRIPTION;
+      return Pack2::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -295,6 +284,7 @@ namespace Packed
       Pack2::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), container.GetUsedSize());
     }
+
   private:
     const Binary::Format::Ptr Depacker;
   };
@@ -303,5 +293,4 @@ namespace Packed
   {
     return MakePtr<Pack2Decoder>();
   }
-  }//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

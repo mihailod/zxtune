@@ -8,7 +8,6 @@ package app.zxtune.fs;
 
 import android.content.Context;
 import android.net.Uri;
-import android.text.format.Formatter;
 
 import androidx.annotation.Nullable;
 
@@ -19,33 +18,32 @@ import java.util.Locale;
 
 import app.zxtune.Log;
 import app.zxtune.R;
+import app.zxtune.Util;
 import app.zxtune.fs.http.MultisourceHttpProvider;
 import app.zxtune.fs.modarchive.Author;
-import app.zxtune.fs.modarchive.CachingCatalog;
 import app.zxtune.fs.modarchive.Catalog;
 import app.zxtune.fs.modarchive.Genre;
 import app.zxtune.fs.modarchive.Identifier;
 import app.zxtune.fs.modarchive.RemoteCatalog;
 import app.zxtune.fs.modarchive.Track;
 
-@Icon(R.drawable.ic_browser_vfs_modarchive)
 final class VfsRootModarchive extends StubObject implements VfsRoot {
 
   private static final String TAG = VfsRootModarchive.class.getName();
 
   private final VfsObject parent;
   private final Context context;
-  private final CachingCatalog catalog;
+  private final Catalog catalog;
   private final GroupingDir[] groupings;
 
-  VfsRootModarchive(VfsObject parent, Context context, MultisourceHttpProvider http) {
+  VfsRootModarchive(VfsObject parent, Context context, MultisourceHttpProvider http, String key) {
     this.parent = parent;
     this.context = context;
-    this.catalog = Catalog.create(context, http);
+    this.catalog = Catalog.create(context, http, key);
     this.groupings = new GroupingDir[]{
-            new AuthorsDir(),
-            new GenresDir(),
-            new RandomDir(),
+        new AuthorsDir(),
+        new GenresDir(),
+        new RandomDir(),
     };
   }
 
@@ -74,6 +72,8 @@ final class VfsRootModarchive extends StubObject implements VfsRoot {
     if (VfsExtensions.SEARCH_ENGINE.equals(id)) {
       //assume root will search by authors
       return new AuthorsSearchEngine();
+    } else if (VfsExtensions.ICON.equals(id)) {
+      return R.drawable.ic_browser_vfs_modarchive;
     } else {
       return super.getExtension(id);
     }
@@ -218,7 +218,6 @@ final class VfsRootModarchive extends StubObject implements VfsRoot {
     }
   }
 
-  @Icon(R.drawable.ic_browser_vfs_radio)
   private final class RandomDir extends GroupingDir {
 
     @Override
@@ -249,6 +248,8 @@ final class VfsRootModarchive extends StubObject implements VfsRoot {
     public Object getExtension(String id) {
       if (VfsExtensions.FEED.equals(id)) {
         return new FeedIterator();
+      } else if (VfsExtensions.ICON.equals(id)) {
+        return R.drawable.ic_browser_vfs_radio;
       } else {
         return super.getExtension(id);
       }
@@ -283,15 +284,19 @@ final class VfsRootModarchive extends StubObject implements VfsRoot {
       final int[] newHash = new int[1];
       try {
         catalog.findRandomTracks(new Catalog.TracksVisitor() {
+          // TODO: remove
+          @Override
+          public void setCountHint(int count) {}
+
           @Override
           public void accept(Track obj) {
             tracks.addLast(obj);
             // use associative hashing to cover random ordered result
-            newHash[0] += obj.id;
+            newHash[0] += obj.getId();
           }
         });
       } catch (IOException e) {
-        Log.w(TAG, e,"Failed to load random tracks");
+        Log.w(TAG, e, "Failed to load random tracks");
       }
       if (hash == newHash[0]) {
         if (++count > MAX_REPEATS) {
@@ -320,7 +325,7 @@ final class VfsRootModarchive extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return author.alias;
+      return author.getAlias();
     }
 
     @Override
@@ -360,12 +365,12 @@ final class VfsRootModarchive extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return genre.name;
+      return genre.getName();
     }
 
     @Override
     public String getDescription() {
-      return context.getResources().getQuantityString(R.plurals.tracks, genre.tracks, genre.tracks);
+      return context.getResources().getQuantityString(R.plurals.tracks, genre.getTracks(), genre.getTracks());
     }
 
     @Override
@@ -407,20 +412,20 @@ final class VfsRootModarchive extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return track.filename;
+      return track.getFilename();
     }
 
     @Override
     public String getDescription() {
-      return track.title;
+      return track.getTitle();
     }
 
     @Override
     public Object getExtension(String id) {
       if (VfsExtensions.CACHE_PATH.equals(id)) {
-        return Integer.toString(track.id);
+        return Integer.toString(track.getId());
       } else if (VfsExtensions.DOWNLOAD_URIS.equals(id)) {
-        return RemoteCatalog.getTrackUris(track.id);
+        return RemoteCatalog.getTrackUris(track.getId());
       } else if (VfsExtensions.SHARE_URL.equals(id)) {
         return getShareUrl();
       } else {
@@ -436,13 +441,13 @@ final class VfsRootModarchive extends StubObject implements VfsRoot {
 
     @Override
     public String getSize() {
-      return Formatter.formatShortFileSize(context, track.size);
+      return Util.formatSize(track.getSize());
     }
 
     private String getShareUrl() {
       return String.format(Locale.US, "https://modarchive.org/index" +
               ".php?request=view_player&query=%d",
-              track.id);
+          track.getId());
     }
   }
 
@@ -451,6 +456,10 @@ final class VfsRootModarchive extends StubObject implements VfsRoot {
     @Override
     public void find(String query, final Visitor visitor) throws IOException {
       catalog.findTracks(query, new Catalog.FoundTracksVisitor() {
+
+        // TODO: remove
+        @Override
+        public void setCountHint(int count) {}
 
         @Override
         public void accept(Author author, Track track) {

@@ -12,9 +12,9 @@
 
  Custom programmed Mitsubishi M60016 Gate Array, 3608 gates, 148 Max I/O ports
 
-    The X1-010 is 16 Voices sound generator, each channel gets it's
-    waveform from RAM (128 bytes per waveform, 8 bit unsigned data)
-    or sampling PCM(8bit unsigned data).
+    The X1-010 is a 16-Voice sound generator, each channel gets its
+    waveform from RAM (128 bytes per waveform, 8 bit signed data)
+    or sampling PCM (8 bit signed data).
 
 Registers:
     8 registers per channel (mapped to the lower bytes of 16 words on the 68K)
@@ -23,7 +23,7 @@ Registers:
 
     0       7--- ----   Frequency divider flag (only downtown seems to set this)
             -654 3---
-            ---- -2--   PCM/Waveform repeat flag (0:Ones 1:Repeat) (*1)
+            ---- -2--   PCM/Waveform repeat flag (0:Once 1:Repeat) (*1)
             ---- --1-   Sound out select (0:PCM 1:Waveform)
             ---- ---0   Key on / off
 
@@ -31,23 +31,24 @@ Registers:
             ---- 3210   PCM Volume 2 (R?)
                         Waveform No.
 
-    2                   PCM Frequency
-                        Waveform Pitch Lo
+    2                   PCM Frequency (4.4 fixed point)
+                        Waveform Pitch Lo (6.10 fixed point)
 
-    3                   Waveform Pitch Hi
+    3                   Waveform Pitch Hi (6.10 fixed point)
 
     4                   PCM Sample Start / 0x1000           [Start/End in bytes]
-                        Waveform Envelope Time
+                        Waveform Envelope Time (.10 fixed point)
 
     5                   PCM Sample End 0x100 - (Sample End / 0x1000)    [PCM ROM is Max 1MB?]
                         Waveform Envelope No.
     6                   Reserved
     7                   Reserved
 
-    offset 0x0000 - 0x0fff  Wave form data
-    offset 0x1000 - 0x1fff  Envelope data
+    offset 0x0000 - 0x007f  Channel data
+    offset 0x0080 - 0x0fff  Envelope data
+    offset 0x1000 - 0x1fff  Wave form data
 
-    *1 : when 0 is specified, hardware interrupt is caused(allways return soon)
+    *1 : when 0 is specified, hardware interrupt is caused (always return soon)
 
 ***************************************************************************/
 
@@ -60,6 +61,7 @@ Registers:
 #include "../EmuCores.h"
 #include "../snddef.h"
 #include "../EmuHelper.h"
+#include "../logging.h"
 #include "x1_010.h"
 
 
@@ -75,6 +77,7 @@ static void x1_010_alloc_rom(void* info, UINT32 memsize);
 static void x1_010_write_rom(void *chip, UINT32 offset, UINT32 length, const UINT8* data);
 
 static void x1_010_set_mute_mask(void *chip, UINT32 MuteMask);
+static void x1_010_set_log_cb(void *chip, DEVCB_LOG func, void* param);
 
 
 static DEVDEF_RWFUNC devFunc[] =
@@ -83,6 +86,7 @@ static DEVDEF_RWFUNC devFunc[] =
 	{RWF_REGISTER | RWF_READ, DEVRW_A16D8, 0, seta_sound_r},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_BLOCK, 0, x1_010_write_rom},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_MEMSIZE, 0, x1_010_alloc_rom},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, x1_010_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef =
@@ -98,6 +102,7 @@ static DEV_DEF devDef =
 	x1_010_set_mute_mask,
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	x1_010_set_log_cb,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs
@@ -114,14 +119,14 @@ const DEV_DEF* devDefList_X1_010[] =
 #define VERBOSE_REGISTER_WRITE 0
 #define VERBOSE_REGISTER_READ 0
 
-#define LOG_SOUND(x) do { if (VERBOSE_SOUND) logerror x; } while (0)
+//#define LOG_SOUND(x) do { if (VERBOSE_SOUND) logerror x; } while (0)
 #define LOG_REGISTER_WRITE(x) do { if (VERBOSE_REGISTER_WRITE) logerror x; } while (0)
 #define LOG_REGISTER_READ(x) do { if (VERBOSE_REGISTER_READ) logerror x; } while (0)
 
 #define SETA_NUM_CHANNELS 16
 
 //#define FREQ_BASE_BITS          8                 // Frequency fixed decimal shift bits
-#define FREQ_BASE_BITS        14                // Frequency fixed decimal shift bits
+#define FREQ_BASE_BITS        11                // using UINT32, 20 bits (1 MB) of address space -> 32-20=12 bits left, -1 for position overflow checking
 #define ENV_BASE_BITS        16                 // wave form envelope fixed decimal shift bits
 #define VOL_BASE    (2*32*256/30)               // Volume base
 
@@ -140,6 +145,7 @@ typedef struct _x1_010_state x1_010_state;
 struct _x1_010_state
 {
 	DEV_DATA _devData;
+	DEV_LOGGER logger;
 	
 	/* Variables only used here */
 	UINT32 ROMSize;
@@ -177,6 +183,8 @@ static void seta_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 	// mixer buffer zero clear
 	memset( outputs[0], 0, samples*sizeof(*outputs[0]) );
 	memset( outputs[1], 0, samples*sizeof(*outputs[1]) );
+	if (info->rom == NULL)
+		return;
 
 //	if( info->sound_enable == 0 ) return;
 
@@ -196,9 +204,9 @@ static void seta_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 				if( freq == 0 ) freq = 4;
 				smp_step = (UINT32)((float)info->base_clock/8192.0f
 							*freq*(1<<FREQ_BASE_BITS)/(float)info->rate+0.5f);
-				if( smp_offs == 0 ) {
-					LOG_SOUND(( "Play sample %p - %p, channel %X volume %d:%d freq %X step %X offset %X\n",
-						start, end, ch, volL, volR, freq, smp_step, smp_offs ));
+				if( smp_offs == 0 && VERBOSE_SOUND ) {
+					emu_logf(&info->logger, DEVLOG_TRACE, "Play sample %p - %p, channel %X volume %d:%d freq %X step %X offset %X\n",
+						start, end, ch, volL, volR, freq, smp_step, smp_offs );
 				}
 				for( i = 0; i < samples; i++ ) {
 					delta = smp_offs>>FREQ_BASE_BITS;
@@ -223,9 +231,9 @@ static void seta_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 				env_offs = info->env_offset[ch];
 				env_step = (UINT32)((float)info->base_clock/128.0/1024.0/4.0*reg->start*(1<<ENV_BASE_BITS)/(float)info->rate+0.5f);
 				/* Print some more debug info */
-				if( smp_offs == 0 ) {
-					LOG_SOUND(( "Play waveform %X, channel %X volume %X freq %4X step %X offset %X\n",
-						reg->volume, ch, reg->end, freq, smp_step, smp_offs ));
+				if( smp_offs == 0 && VERBOSE_SOUND ) {
+					emu_logf(&info->logger, DEVLOG_TRACE, "Play waveform %X, channel %X volume %X freq %4X step %X offset %X\n",
+						reg->volume, ch, reg->end, freq, smp_step, smp_offs );
 				}
 				for( i = 0; i < samples; i++ ) {
 					int vol;
@@ -372,5 +380,12 @@ static void x1_010_set_mute_mask(void *chip, UINT32 MuteMask)
 	for (CurChn = 0; CurChn < SETA_NUM_CHANNELS; CurChn ++)
 		info->Muted[CurChn] = (MuteMask >> CurChn) & 0x01;
 	
+	return;
+}
+
+static void x1_010_set_log_cb(void *chip, DEVCB_LOG func, void* param)
+{
+	x1_010_state *info = (x1_010_state *)chip;
+	dev_logger_set(&info->logger, info, func, param);
 	return;
 }

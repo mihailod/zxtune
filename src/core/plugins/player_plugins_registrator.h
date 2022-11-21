@@ -1,12 +1,12 @@
 /**
-* 
-* @file
-*
-* @brief  Plugins registrator interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Plugins registrator interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
@@ -15,5 +15,6 @@
 
 namespace ZXTune
 {
-  typedef PluginsRegistrator<PlayerPlugin> PlayerPluginsRegistrator;
-}
+  class PlayerPluginsRegistrator : public PluginsRegistrator<PlayerPlugin>
+  {};
+}  // namespace ZXTune

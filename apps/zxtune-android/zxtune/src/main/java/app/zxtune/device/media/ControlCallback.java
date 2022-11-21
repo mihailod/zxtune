@@ -12,7 +12,6 @@ import android.support.v4.media.session.MediaSessionCompat;
 
 import androidx.annotation.Nullable;
 
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import app.zxtune.BroadcastReceiverConnection;
@@ -54,7 +53,7 @@ class ControlCallback extends MediaSessionCompat.Callback {
     this.ctx = ctx;
     this.manager = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
     this.focusListener = new AudioFocusChangeListener();
-    this.noisyConnection = new AtomicReference<>(ReleaseableStub.instance());
+    this.noisyConnection = new AtomicReference<>(ReleaseableStub.INSTANCE);
     this.svc = svc;
     this.ctrl = svc.getPlaybackControl();
     this.seek = svc.getSeekControl();
@@ -102,7 +101,7 @@ class ControlCallback extends MediaSessionCompat.Callback {
   @Override
   public void onSeekTo(long ms) {
     try {
-      seek.setPosition(TimeStamp.createFrom(ms, TimeUnit.MILLISECONDS));
+      seek.setPosition(TimeStamp.fromMilliseconds(ms));
     } catch (Exception e) {
       Log.w(TAG, e, "Failed to seek");
     }
@@ -224,6 +223,6 @@ class ControlCallback extends MediaSessionCompat.Callback {
   }
 
   private void unregisterNoisyReceiver() {
-    noisyConnection.getAndSet(ReleaseableStub.instance()).release();
+    noisyConnection.getAndSet(ReleaseableStub.INSTANCE).release();
   }
 }

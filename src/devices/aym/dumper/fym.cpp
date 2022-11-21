@@ -1,44 +1,38 @@
 /**
-* 
-* @file
-*
-* @brief  FYM dumper implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  FYM dumper implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "devices/aym/dumper/dump_builder.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <contract.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/compression/zlib_stream.h>
-//std includes
+// std includes
 #include <algorithm>
 #include <iterator>
 #include <utility>
 
-namespace Devices
+namespace Devices::AYM
 {
-namespace AYM
-{
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-  PACK_PRE struct FYMHeader
+  struct FYMHeader
   {
-    uint32_t HeaderSize;
-    uint32_t FramesCount;
-    uint32_t LoopFrame;
-    uint32_t PSGFreq;
-    uint32_t IntFreq;
-  } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    le_uint32_t HeaderSize;
+    le_uint32_t FramesCount;
+    le_uint32_t LoopFrame;
+    le_uint32_t PSGFreq;
+    le_uint32_t IntFreq;
+  };
+
+  static_assert(sizeof(FYMHeader) * alignof(FYMHeader) == 20, "Invalid layout");
 
   class FYMBuilder : public FramedDumpBuilder
   {
@@ -46,17 +40,16 @@ namespace AYM
     explicit FYMBuilder(FYMDumperParameters::Ptr params)
       : Params(std::move(params))
       , Delegate(CreateRawDumpBuilder())
-    {
-    }
+    {}
 
     void Initialize() override
     {
       return Delegate->Initialize();
     }
 
-    void GetResult(Dump& data) const override
+    void GetResult(Binary::Dump& data) const override
     {
-      Dump unpacked;
+      Binary::Dump unpacked;
       GetUnpackedResult(unpacked);
       Binary::DataBuilder output;
       {
@@ -70,10 +63,11 @@ namespace AYM
     {
       return Delegate->WriteFrame(framesPassed, state, update);
     }
+
   private:
-    void GetUnpackedResult(Dump& result) const
+    void GetUnpackedResult(Binary::Dump& result) const
     {
-      Dump rawDump;
+      Binary::Dump rawDump;
       Delegate->GetResult(rawDump);
       Require(0 == rawDump.size() % Registers::TOTAL);
       const uint32_t framesCount = rawDump.size() / Registers::TOTAL;
@@ -86,11 +80,11 @@ namespace AYM
 
       Binary::DataBuilder builder(headerSize + contentSize);
       FYMHeader& header = builder.Add<FYMHeader>();
-      header.HeaderSize = fromLE(headerSize);
-      header.FramesCount = fromLE(framesCount);
-      header.LoopFrame = fromLE(static_cast<uint32_t>(Params->LoopFrame()));
-      header.PSGFreq = fromLE(static_cast<uint32_t>(Params->ClockFreq()));
-      header.IntFreq = fromLE(static_cast<uint32_t>(Params->FrameDuration().ToFrequency()));
+      header.HeaderSize = headerSize;
+      header.FramesCount = framesCount;
+      header.LoopFrame = Params->LoopFrame();
+      header.PSGFreq = Params->ClockFreq();
+      header.IntFreq = Params->FrameDuration().ToFrequency();
       builder.AddCString(title);
       builder.AddCString(author);
 
@@ -104,6 +98,7 @@ namespace AYM
       }
       builder.CaptureResult(result);
     }
+
   private:
     const FYMDumperParameters::Ptr Params;
     const FramedDumpBuilder::Ptr Delegate;
@@ -114,5 +109,4 @@ namespace AYM
     const FramedDumpBuilder::Ptr builder = MakePtr<FYMBuilder>(params);
     return CreateDumper(params, builder);
   }
-}
-}
+}  // namespace Devices::AYM

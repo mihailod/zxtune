@@ -1,20 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief Playlist container internal implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playlist container internal implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "container_impl.h"
-//common includes
+// common includes
 #include <contract.h>
 #include <error.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <debug/log.h>
 #include <module/properties/path.h>
 #include <parameters/merged_accessor.h>
@@ -28,14 +28,11 @@ namespace
   public:
     explicit CollectorStub(const Parameters::Accessor& params)
       : Params(params)
-    {
-    }
+    {}
 
     Parameters::Container::Ptr CreateInitialAdjustedParameters() const override
     {
-      const Parameters::Container::Ptr res = Parameters::Container::Create();
-      Params.Process(*res);
-      return res;
+      return Parameters::Container::Clone(Params);
     }
 
     void ProcessItem(Playlist::Item::Data::Ptr item) override
@@ -53,6 +50,7 @@ namespace
     {
       return Item;
     }
+
   private:
     const Parameters::Accessor& Params;
     Playlist::Item::Data::Ptr Item;
@@ -69,7 +67,12 @@ namespace
       params.Process(*Params);
     }
 
-    //common
+    bool IsLoaded() const override
+    {
+      return true;
+    }
+
+    // common
     Module::Holder::Ptr GetModule() const override
     {
       return Module::Holder::Ptr();
@@ -79,7 +82,12 @@ namespace
     {
       return Binary::Data::Ptr();
     }
-    
+
+    Parameters::Accessor::Ptr GetModuleProperties() const override
+    {
+      return Params;
+    }
+
     Parameters::Container::Ptr GetAdjustedParameters() const override
     {
       return Params;
@@ -90,7 +98,7 @@ namespace
       return Playlist::Item::Capabilities(0);
     }
 
-    //playlist-related
+    // playlist-related
     Error GetState() const override
     {
       return State;
@@ -130,7 +138,7 @@ namespace
     {
       return String();
     }
-    
+
     String GetComment() const override
     {
       return String();
@@ -150,6 +158,7 @@ namespace
     {
       return 0;
     }
+
   private:
     const String Path;
     const Parameters::Container::Ptr Params;
@@ -161,12 +170,13 @@ namespace
   public:
     typedef std::unique_ptr<const DelayLoadItemProvider> Ptr;
 
-    DelayLoadItemProvider(Playlist::Item::DataProvider::Ptr provider, Parameters::Accessor::Ptr playlistParams, const Playlist::IO::ContainerItem& item)
+    DelayLoadItemProvider(Playlist::Item::DataProvider::Ptr provider, Parameters::Accessor::Ptr playlistParams,
+                          const Playlist::IO::ContainerItem& item)
       : Provider(std::move(provider))
-      , Params(Parameters::CreateMergedAccessor(Module::CreatePathProperties(item.Path), item.AdjustedParameters, playlistParams))
+      , Params(Parameters::CreateMergedAccessor(Module::CreatePathProperties(item.Path), item.AdjustedParameters,
+                                                playlistParams))
       , Path(item.Path)
-    {
-    }
+    {}
 
     Playlist::Item::Data::Ptr OpenItem() const
     {
@@ -193,6 +203,7 @@ namespace
       Params->Process(*res);
       return res;
     }
+
   private:
     const Playlist::Item::DataProvider::Ptr Provider;
     const Parameters::Accessor::Ptr Params;
@@ -204,20 +215,27 @@ namespace
   public:
     explicit DelayLoadItemData(DelayLoadItemProvider::Ptr provider)
       : Provider(std::move(provider))
+    {}
+
+    bool IsLoaded() const override
     {
+      return !Provider;
     }
 
-    //common
+    // common
     Module::Holder::Ptr GetModule() const override
     {
-      AcquireDelegate();
-      return Delegate->GetModule();
+      return AcquireDelegate().GetModule();
     }
-    
+
     Binary::Data::Ptr GetModuleData() const override
     {
-      AcquireDelegate();
-      return Delegate->GetModuleData();
+      return AcquireDelegate().GetModuleData();
+    }
+
+    Parameters::Accessor::Ptr GetModuleProperties() const override
+    {
+      return AcquireDelegate().GetModuleProperties();
     }
 
     Parameters::Container::Ptr GetAdjustedParameters() const override
@@ -227,15 +245,13 @@ namespace
 
     Playlist::Item::Capabilities GetCapabilities() const override
     {
-      AcquireDelegate();
-      return Delegate->GetCapabilities();
+      return AcquireDelegate().GetCapabilities();
     }
 
-    //playlist-related
+    // playlist-related
     Error GetState() const override
     {
-      AcquireDelegate();
-      return Delegate->GetState();
+      return AcquireDelegate().GetState();
     }
 
     String GetFullPath() const override
@@ -245,72 +261,65 @@ namespace
 
     String GetFilePath() const override
     {
-      AcquireDelegate();
-      return Delegate->GetFilePath();
+      return AcquireDelegate().GetFilePath();
     }
 
     String GetType() const override
     {
-      AcquireDelegate();
-      return Delegate->GetType();
+      return AcquireDelegate().GetType();
     }
 
     String GetDisplayName() const override
     {
-      AcquireDelegate();
-      return Delegate->GetDisplayName();
+      return AcquireDelegate().GetDisplayName();
     }
 
     Time::Milliseconds GetDuration() const override
     {
-      AcquireDelegate();
-      return Delegate->GetDuration();
+      return AcquireDelegate().GetDuration();
     }
 
     String GetAuthor() const override
     {
-      AcquireDelegate();
-      return Delegate->GetAuthor();
+      return AcquireDelegate().GetAuthor();
     }
 
     String GetTitle() const override
     {
-      AcquireDelegate();
-      return Delegate->GetTitle();
+      return AcquireDelegate().GetTitle();
     }
 
     String GetComment() const override
     {
-      AcquireDelegate();
-      return Delegate->GetComment();
+      return AcquireDelegate().GetComment();
     }
 
     uint32_t GetChecksum() const override
     {
-      AcquireDelegate();
-      return Delegate->GetChecksum();
+      return AcquireDelegate().GetChecksum();
     }
 
     uint32_t GetCoreChecksum() const override
     {
-      AcquireDelegate();
-      return Delegate->GetCoreChecksum();
+      return AcquireDelegate().GetCoreChecksum();
     }
 
     std::size_t GetSize() const override
     {
-      AcquireDelegate();
-      return Delegate->GetSize();
+      return AcquireDelegate().GetSize();
     }
+
   private:
-    void AcquireDelegate() const
+    const Playlist::Item::Data& AcquireDelegate() const
     {
       if (!Delegate)
       {
         Delegate = Provider->OpenItem();
         Provider.reset();
       }
+      return *Delegate;
     }
+
   private:
     mutable DelayLoadItemProvider::Ptr Provider;
     mutable Playlist::Item::Data::Ptr Delegate;
@@ -319,14 +328,13 @@ namespace
   class DelayLoadItemsIterator : public Playlist::Item::Collection
   {
   public:
-    DelayLoadItemsIterator(Playlist::Item::DataProvider::Ptr provider,
-      Parameters::Accessor::Ptr properties, Playlist::IO::ContainerItems::Ptr items)
+    DelayLoadItemsIterator(Playlist::Item::DataProvider::Ptr provider, Parameters::Accessor::Ptr properties,
+                           Playlist::IO::ContainerItems::Ptr items)
       : Provider(std::move(provider))
       , Properties(std::move(properties))
       , Items(std::move(items))
       , Current(Items->begin())
-    {
-    }
+    {}
 
     bool IsValid() const override
     {
@@ -345,6 +353,7 @@ namespace
       Require(Current != Items->end());
       ++Current;
     }
+
   private:
     const Playlist::Item::DataProvider::Ptr Provider;
     const Parameters::Accessor::Ptr Properties;
@@ -355,14 +364,12 @@ namespace
   class ContainerImpl : public Playlist::IO::Container
   {
   public:
-    ContainerImpl(Playlist::Item::DataProvider::Ptr provider,
-      Parameters::Accessor::Ptr properties,
-      Playlist::IO::ContainerItems::Ptr items)
+    ContainerImpl(Playlist::Item::DataProvider::Ptr provider, Parameters::Accessor::Ptr properties,
+                  Playlist::IO::ContainerItems::Ptr items)
       : Provider(std::move(provider))
       , Properties(std::move(properties))
       , Items(std::move(items))
-    {
-    }
+    {}
 
     Parameters::Accessor::Ptr GetProperties() const override
     {
@@ -378,22 +385,22 @@ namespace
     {
       return MakePtr<DelayLoadItemsIterator>(Provider, Properties, Items);
     }
+
   private:
     const Playlist::Item::DataProvider::Ptr Provider;
     const Parameters::Accessor::Ptr Properties;
     const Playlist::IO::ContainerItems::Ptr Items;
   };
-}
+}  // namespace
 
 namespace Playlist
 {
   namespace IO
   {
-    Container::Ptr CreateContainer(Item::DataProvider::Ptr provider,
-      Parameters::Accessor::Ptr properties,
-      ContainerItems::Ptr items)
+    Container::Ptr CreateContainer(Item::DataProvider::Ptr provider, Parameters::Accessor::Ptr properties,
+                                   ContainerItems::Ptr items)
     {
       return MakePtr<ContainerImpl>(provider, properties, items);
     }
-  }
-}
+  }  // namespace IO
+}  // namespace Playlist

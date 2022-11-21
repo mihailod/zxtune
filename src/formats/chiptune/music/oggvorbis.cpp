@@ -1,103 +1,116 @@
 /**
-* 
-* @file
-*
-* @brief  Ogg Vorbis parser implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Ogg Vorbis parser implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/chiptune/music/oggvorbis.h"
-#include "formats/chiptune/music/tags_vorbis.h"
 #include "formats/chiptune/container.h"
-//common includes
+#include "formats/chiptune/music/tags_vorbis.h"
+// common includes
 #include <byteorder.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/data_builder.h>
 #include <binary/format_factories.h>
 #include <binary/input_stream.h>
 #include <math/bitops.h>
 #include <strings/encoding.h>
 #include <strings/trim.h>
-//std includes
+// std includes
 #include <cctype>
 #include <numeric>
-//text includes
-#include <formats/text/chiptune.h>
+#include <unordered_map>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   namespace Ogg
   {
-    const uint8_t SIGNATURE[] = {'O', 'g', 'g', 'S'};
-    const uint8_t VERSION = 0;
+    const uint8_t SIGNATURE[] = {'O', 'g', 'g', 'S', 0};
     const uint64_t UNFINISHED_PAGE_POSITION = ~0ull;
     const uint_t MAX_SEGMENT_SIZE = 255;
     const uint_t MAX_PAGE_SIZE = 32768;
 
-    //https://xiph.org/ogg/doc/framing.html
+    const uint8_t* SeekSignature(Binary::DataInputStream& stream, const uint8_t* needle, std::size_t size)
+    {
+      const auto avail = stream.GetRestSize();
+      if (avail < size)
+      {
+        return nullptr;
+      }
+      const auto* start = stream.PeekRawData(avail);
+      const auto* end = start + avail;
+      const auto* pos = std::search(start, end, needle, needle + size);
+      if (pos != end)
+      {
+        stream.Skip(pos - start);
+        return pos;
+      }
+      return nullptr;
+    }
+
+    // https://xiph.org/ogg/doc/framing.html
     class Format
     {
     public:
       explicit Format(const Binary::Container& data)
         : Stream(data)
-      {
-      }
-      
+      {}
+
       class Callback
       {
       public:
         virtual ~Callback() = default;
-        
+
         virtual void OnStream(uint32_t streamId) = 0;
         virtual void OnPage(std::size_t offset, uint_t positionsCount, Binary::DataInputStream& payload) = 0;
       };
-      
+
       Binary::Container::Ptr Parse(Callback& target)
       {
         static const std::size_t MIN_PAGE_SIZE = 27;
-        uint32_t streamId = 0;
-        uint32_t nextPageNumber = 0;
-        uint64_t position = 0;
-        while (Stream.GetRestSize() >= MIN_PAGE_SIZE)
+        uint32_t lastStreamId = ~0;
+        struct StreamData
+        {
+          uint32_t NextPageNumber = 0;
+          uint64_t Position = 0;
+        };
+        std::unordered_map<uint32_t, StreamData> streams;
+        while (Stream.GetRestSize() >= MIN_PAGE_SIZE && SyncToPage())
         {
           const auto offset = Stream.GetPosition();
-          //TODO: support seeking for pages
-          if (0 != std::memcmp(Stream.PeekRawData(sizeof(SIGNATURE)), SIGNATURE, sizeof(SIGNATURE)))
-          {
-            return Container::Ptr();
-          }
           Stream.Skip(sizeof(SIGNATURE));
-          Require(VERSION == Stream.ReadByte());
-          /*const auto flags = */Stream.ReadByte();
-          const auto nextPosition = Stream.ReadLE<uint64_t>();
+          /*const auto flags = */ Stream.ReadByte();
+          const uint64_t nextPosition = Stream.Read<le_uint64_t>();
           const auto hasNextPosition = nextPosition != UNFINISHED_PAGE_POSITION;
-          if (const auto stream = Stream.ReadLE<uint32_t>())
-          {
-            if (!streamId)
-            {
-              streamId = stream;
-              target.OnStream(streamId);
-            }
-            else
-            {
-              //multiple streams are not suported
-              Require(streamId == stream);
-            }
-          }
-          Require(nextPageNumber++ == Stream.ReadLE<uint32_t>());
-          /*const auto crc = */Stream.ReadLE<uint32_t>();
+          const uint_t streamId = Stream.Read<le_uint32_t>();
+          auto& stream = streams[streamId];
+          const uint32_t pageNumber = Stream.Read<le_uint32_t>();
+          Require(stream.NextPageNumber <= pageNumber);
+          stream.NextPageNumber = pageNumber + 1;
+          /*const auto crc = */ Stream.Read<le_uint32_t>();
           const auto segmentsCount = Stream.ReadByte();
           const auto segmentsSizes = Stream.PeekRawData(segmentsCount);
-          const auto payloadSize = std::accumulate(segmentsSizes, segmentsSizes + segmentsCount, std::size_t(0));
+          if (!segmentsSizes)
           {
-            Stream.Skip(segmentsCount);
-            Binary::DataInputStream payload(Stream.ReadData(payloadSize));
+            Stream.Seek(offset);
+            break;
+          }
+          Stream.Skip(segmentsCount);
+          auto& position = stream.Position;
+          if (const auto payloadSize = std::accumulate(segmentsSizes, segmentsSizes + segmentsCount, std::size_t(0)))
+          {
+            if (lastStreamId != streamId)
+            {
+              lastStreamId = streamId;
+              target.OnStream(streamId);
+            }
+            Binary::DataInputStream payload(Stream.ReadData(std::min(payloadSize, Stream.GetRestSize())));
             target.OnPage(offset, hasNextPosition ? static_cast<uint_t>(nextPosition - position) : 0, payload);
           }
           if (hasNextPosition)
@@ -107,6 +120,17 @@ namespace Chiptune
         }
         return Stream.GetReadContainer();
       }
+
+    private:
+      bool SyncToPage()
+      {
+        if (0 == std::memcmp(Stream.PeekRawData(sizeof(SIGNATURE)), SIGNATURE, sizeof(SIGNATURE)))
+        {
+          return true;
+        }
+        return SeekSignature(Stream, SIGNATURE, sizeof(SIGNATURE));
+      }
+
     private:
       Binary::InputStream Stream;
     };
@@ -116,8 +140,7 @@ namespace Chiptune
     public:
       explicit Builder(std::size_t sizeHint)
         : Storage(sizeHint)
-      {
-      }
+      {}
 
       void SetStreamId(uint32_t streamId)
       {
@@ -144,6 +167,7 @@ namespace Chiptune
         CalculateCrc();
         return Storage.CaptureResult();
       }
+
     private:
       enum Flags
       {
@@ -164,14 +188,13 @@ namespace Chiptune
         Storage.Allocate(LastPageSize);
         Storage.Resize(LastPageOffset);
         Storage.Add(SIGNATURE);
-        Storage.Add(VERSION);
-        //assume single stream, so first page is always first
+        // assume single stream, so first page is always first
         const uint8_t flag = PagesDone == 0 ? FIRST_PAGE : (continued ? CONTINUED_PACKET : 0);
         Storage.Add(flag);
-        Storage.Add(fromLE(position));
-        Storage.Add(fromLE(StreamId));
-        Storage.Add(fromLE(PagesDone++));
-        const uint32_t EMPTY_CRC = 0;
+        Storage.Add<le_uint64_t>(position);
+        Storage.Add<le_uint32_t>(StreamId);
+        Storage.Add<le_uint32_t>(PagesDone++);
+        const le_uint32_t EMPTY_CRC = 0;
         Storage.Add(EMPTY_CRC);
         Storage.Add(segmentsCount);
         WriteSegments(data.Size(), static_cast<uint8_t*>(Storage.Allocate(segmentsCount)));
@@ -199,10 +222,9 @@ namespace Chiptune
       void CalculateCrc()
       {
         auto* const page = static_cast<uint8_t*>(Storage.Get(LastPageOffset));
-        auto* const rawCrc = page + 22;
-        std::memset(rawCrc, 0, sizeof(uint32_t));
-        const auto crc = fromLE(Crc32::Calculate(page, LastPageSize));
-        std::memcpy(rawCrc, &crc, sizeof(uint32_t));
+        auto* const rawCrc = safe_ptr_cast<le_uint32_t*>(page + 22);
+        *rawCrc = 0;
+        *rawCrc = Crc32::Calculate(page, LastPageSize);
       }
 
       class Crc32
@@ -230,9 +252,11 @@ namespace Chiptune
           }
           return crc;
         }
+
       private:
         uint32_t Table[256];
       };
+
     private:
       Binary::DataBuilder Storage;
       uint32_t StreamId = 0x2054585a;
@@ -240,9 +264,10 @@ namespace Chiptune
       std::size_t LastPageOffset = 0;
       std::size_t LastPageSize = 0;
     };
-  }
-  
-  //https://xiph.org/vorbis/doc/Vorbis_I_spec.html
+
+  }  // namespace Ogg
+
+  // https://xiph.org/vorbis/doc/Vorbis_I_spec.html
   namespace Vorbis
   {
     const uint32_t VERSION = 0;
@@ -253,7 +278,7 @@ namespace Chiptune
       Identification = 1,
       Comment = 3,
       Setup = 5,
-      Audio = 0 //arbitrary
+      Audio = 0  // arbitrary
     };
 
     class Format : public Ogg::Format::Callback
@@ -261,13 +286,12 @@ namespace Chiptune
     public:
       explicit Format(OggVorbis::Builder& target)
         : Target(target)
-        , NextPacketType(Identification)
-      {
-      }
+      {}
 
       void OnStream(uint32_t streamId) override
       {
         Target.SetStreamId(streamId);
+        NextPacketType = &StreamsNextPacketTypes.try_emplace(streamId, Identification).first->second;
       }
 
       void OnPage(std::size_t offset, uint_t positionsCount, Binary::DataInputStream& payload) override
@@ -277,60 +301,66 @@ namespace Chiptune
           ReadPacket(offset, positionsCount, payload);
         }
       }
+
     private:
       void ReadPacket(std::size_t pageOffset, uint_t samplesCount, Binary::DataInputStream& payload)
       {
-        if (NextPacketType != Audio)
+        if (*NextPacketType != Audio)
         {
-          const auto type = FindHeaderPacket(payload);
-          Require(NextPacketType == type);
-          ReadHeaderPacket(type, payload);
+          if (const auto* type = FindHeaderPacket(*NextPacketType, payload))
+          {
+            Require(*NextPacketType == *type);
+            ReadHeaderPacket(*type, payload);
+          }
+          else
+          {
+            Target.AddUnknownPacket(payload.ReadRestData());
+          }
         }
         else
         {
           Target.AddFrame(pageOffset, samplesCount, payload.ReadRestData());
         }
       }
-      
-      static uint8_t FindHeaderPacket(Binary::DataInputStream& payload)
+
+      static const uint8_t* FindHeaderPacket(uint8_t type, Binary::DataInputStream& payload)
       {
-        const auto avail = payload.GetRestSize();
-        Require(avail > SIGNATURE.size() + 1);
-        const auto raw = payload.PeekRawData(avail);
-        const auto end = raw + avail;
-        const auto sign = std::search(raw + 1, end, SIGNATURE.begin(), SIGNATURE.end());
-        Require(sign != end);
-        payload.Skip(sign + SIGNATURE.size() - raw);
-        return sign[-1];
+        const uint8_t needle[] = {type, 'v', 'o', 'r', 'b', 'i', 's'};
+        if (const auto* sign = Ogg::SeekSignature(payload, needle, std::size(needle)))
+        {
+          payload.Skip(std::size(needle));
+          return sign;
+        }
+        return nullptr;
       }
-      
+
       void ReadHeaderPacket(uint_t type, Binary::DataInputStream& payload)
       {
         switch (type)
         {
         case Identification:
           ReadIdentification(payload);
-          NextPacketType = Comment;
+          *NextPacketType = Comment;
           break;
         case Comment:
           ParseComment(payload, Target.GetMetaBuilder());
-          NextPacketType = Setup;
+          *NextPacketType = Setup;
           break;
         case Setup:
           payload.Seek(payload.GetPosition() - SIGNATURE.size() - 1);
           Target.SetSetup(payload.ReadRestData());
-          NextPacketType = Audio;
+          *NextPacketType = Audio;
           break;
         default:
           Require(false);
         }
       }
-      
+
       void ReadIdentification(Binary::DataInputStream& payload)
       {
-        const auto version = payload.ReadLE<uint32_t>();
+        const uint_t version = payload.Read<le_uint32_t>();
         const auto channels = payload.ReadByte();
-        const auto frequency = payload.ReadLE<uint32_t>();
+        const uint_t frequency = payload.Read<le_uint32_t>();
         payload.Skip(4 * 3);
         const auto blocksize = payload.ReadByte();
         const auto framing = payload.ReadByte();
@@ -345,14 +375,18 @@ namespace Chiptune
         Require(framing & 1);
         Target.SetProperties(channels, frequency, 1 << blockLo, 1 << blockHi);
       }
+
     private:
       OggVorbis::Builder& Target;
-      PacketType NextPacketType;
+      std::unordered_map<uint32_t, PacketType> StreamsNextPacketTypes;
+      PacketType* NextPacketType = nullptr;
     };
-  }
-  
+  }  // namespace Vorbis
+
   namespace OggVorbis
   {
+    const Char DESCRIPTION[] = "OGG Vorbis";
+
     Formats::Chiptune::Container::Ptr Parse(const Binary::Container& data, Builder& target)
     {
       try
@@ -373,7 +407,7 @@ namespace Chiptune
         return Formats::Chiptune::Container::Ptr();
       }
     }
-    
+
     class StubBuilder : public Builder
     {
     public:
@@ -383,11 +417,14 @@ namespace Chiptune
       }
 
       void SetStreamId(uint32_t /*streamId*/) override {}
-      void SetProperties(uint_t /*channels*/, uint_t /*frequency*/, uint_t /*blockSizeLo*/, uint_t /*blockSizeHi*/) override {}
+      void AddUnknownPacket(Binary::View /*data*/) override {}
+      void SetProperties(uint_t /*channels*/, uint_t /*frequency*/, uint_t /*blockSizeLo*/,
+                         uint_t /*blockSizeHi*/) override
+      {}
       void SetSetup(Binary::View /*data*/) override {}
       void AddFrame(std::size_t /*offset*/, uint_t /*samplesCount*/, Binary::View /*data*/) override {}
     };
-    
+
     Builder& GetStubBuilder()
     {
       static StubBuilder stub;
@@ -399,17 +436,21 @@ namespace Chiptune
     public:
       explicit SimpleDumpBuilder(std::size_t sizeHint)
         : Storage(sizeHint)
-      {
-      }
+      {}
 
       MetaBuilder& GetMetaBuilder() override
       {
         return GetStubMetaBuilder();
       }
-      
+
       void SetStreamId(uint32_t id) override
       {
         Storage.SetStreamId(id);
+      }
+
+      void AddUnknownPacket(Binary::View data) override
+      {
+        Storage.AddData(0, data.As<uint8_t>(), data.Size());
       }
 
       void SetProperties(uint_t channels, uint_t frequency, uint_t blockSizeLo, uint_t blockSizeHi) override
@@ -418,7 +459,7 @@ namespace Chiptune
         WriteIdentification(channels, frequency, blockSizes);
         WriteComment();
       }
-      
+
       void SetSetup(Binary::View data) override
       {
         Storage.AddData(0, data.As<uint8_t>(), data.Size());
@@ -429,40 +470,35 @@ namespace Chiptune
         TotalFrames += framesCount;
         Storage.AddData(TotalFrames, data.As<uint8_t>(), data.Size());
       }
-      
+
       Binary::Container::Ptr GetDump() override
       {
         return Storage.CaptureResult();
       }
+
     private:
       void WriteIdentification(uint8_t channels, uint32_t frequency, uint8_t blockSizes)
       {
         Binary::DataBuilder builder(30);
-        builder.Add(uint8_t(Vorbis::Identification));
+        builder.Add<uint8_t>(Vorbis::Identification);
         builder.Add(Vorbis::SIGNATURE);
-        builder.Add(Vorbis::VERSION);
+        builder.Add<le_uint32_t>(Vorbis::VERSION);
         builder.Add(channels);
-        builder.Add(fromLE(frequency));
+        builder.Add<le_uint32_t>(frequency);
         builder.Allocate(3 * sizeof(uint32_t));
         builder.Add(blockSizes);
-        builder.Add(uint8_t(1));
+        builder.Add<uint8_t>(1);
         assert(builder.Size() == 30);
         Storage.AddData(0, static_cast<const uint8_t*>(builder.Get(0)), builder.Size());
       }
 
       void WriteComment()
       {
-        static const uint8_t DATA[] =
-        {
-          Vorbis::Comment,
-          'v', 'o', 'r', 'b', 'i', 's',
-          6, 0, 0, 0,
-          'z', 'x', 't', 'u', 'n', 'e',
-          0, 0, 0, 0,
-          1
-        };
+        static const uint8_t DATA[] = {
+            Vorbis::Comment, 'v', 'o', 'r', 'b', 'i', 's', 6, 0, 0, 0, 'z', 'x', 't', 'u', 'n', 'e', 0, 0, 0, 0, 1};
         Storage.AddData(0, DATA, sizeof(DATA));
       }
+
     private:
       Ogg::Builder Storage;
       uint64_t TotalFrames = 0;
@@ -473,45 +509,26 @@ namespace Chiptune
       return MakePtr<SimpleDumpBuilder>(sizeHint);
     }
 
-    const std::string FORMAT =
-      //first page
-      "'O'g'g'S" //signature
-      "00"       //version
-      "02"       //flags, first page of logical bitstream
-      "00{8}"    //position
-      "?{4}"     //serial
-      "00000000" //page
-      "?{4}"     //crc
-      "01 1e"    //1 lace for 30-bytes block size
-        "01"           //identification
-        "'v'o'r'b'i's" //signature
-        "00{4}"        //version
-        "01-02"        //mono/stereo supported
-        "? ? 00-01 00" //up to 96kHz
-        "?{12}"        //bitrate
-        "66-dd"
-        "%xxxxxxx1"    //frame sync
-      "'O'g'g'S" //signature
-      "00"       //version
-      "00"       //flags
-      "????00{4}"//first page may contain also audio data
-      "?{4}"     //serial
-      "01000000" //page
-      "?{4}"     //crc
-      "01-ff 01-ff" //more than one lace
-    ;
-    
+    // Check only OGG container
+    const auto FORMAT =
+        "'O'g'g'S"  // signature
+        "00"        // version
+        "02"        // flags, first page of logical bitstream
+        "00{8}"     // position
+        "?{4}"      // serial
+        "00000000"  // page
+        ""_sv;
+
     class Decoder : public Formats::Chiptune::Decoder
     {
     public:
       Decoder()
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
-      {
-      }
+      {}
 
       String GetDescription() const override
       {
-        return Text::OGGVORBIS_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -519,7 +536,7 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Format->Match(rawData);
       }
@@ -535,14 +552,14 @@ namespace Chiptune
           return Formats::Chiptune::Container::Ptr();
         }
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
-  } //namespace OggVorbis
+  }  // namespace OggVorbis
 
   Decoder::Ptr CreateOGGDecoder()
   {
     return MakePtr<OggVorbis::Decoder>();
   }
-}
-}
+}  // namespace Formats::Chiptune

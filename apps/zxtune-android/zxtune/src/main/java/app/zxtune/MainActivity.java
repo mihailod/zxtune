@@ -30,12 +30,12 @@ import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.Observer;
-import androidx.lifecycle.ViewModelProviders;
 import androidx.viewpager.widget.ViewPager;
 
 import app.zxtune.analytics.Analytics;
-import app.zxtune.models.MediaSessionConnection;
-import app.zxtune.models.MediaSessionModel;
+import app.zxtune.device.Permission;
+import app.zxtune.device.media.MediaSessionConnection;
+import app.zxtune.device.media.MediaSessionModel;
 import app.zxtune.ui.AboutFragment;
 import app.zxtune.ui.NowPlayingFragment;
 import app.zxtune.ui.ViewPagerAdapter;
@@ -73,10 +73,13 @@ public class MainActivity extends AppCompatActivity {
   @Nullable
   private MediaSessionConnection sessionConnection;
 
+  public static final int PENDING_INTENT_FLAG = Build.VERSION.SDK_INT >= 23
+      ? PendingIntent.FLAG_IMMUTABLE : 0;
+
   public static PendingIntent createPendingIntent(Context ctx) {
     final Intent intent = new Intent(ctx, MainActivity.class);
     intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-    return PendingIntent.getActivity(ctx, 0, intent, 0);
+    return PendingIntent.getActivity(ctx, 0, intent, PENDING_INTENT_FLAG);
   }
 
   public MainActivity() {
@@ -90,9 +93,7 @@ public class MainActivity extends AppCompatActivity {
     TRACE.checkpoint("super");
 
     fillPages();
-    if (Build.VERSION.SDK_INT >= 16) {
-      Permission.request(this, Manifest.permission.READ_EXTERNAL_STORAGE);
-    }
+    Permission.request(this, Manifest.permission.READ_EXTERNAL_STORAGE);
     Permission.request(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
     TRACE.checkpoint("perm");
 
@@ -176,7 +177,7 @@ public class MainActivity extends AppCompatActivity {
     if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction())) {
       final Uri uri = intent.getData();
       if (uri != null) {
-        final MediaSessionModel model = ViewModelProviders.of(this).get(MediaSessionModel.class);
+        final MediaSessionModel model = MediaSessionModel.of(this);
         final LiveData<MediaControllerCompat> ctrl = model.getMediaController();
         ctrl.observe(this,
             new Observer<MediaControllerCompat>() {

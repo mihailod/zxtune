@@ -1,17 +1,17 @@
 /**
-* 
-* @file
-*
-* @brief Test for version API
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Test for version API
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <platform/version/api.h>
 #include <iostream>
+#include <platform/version/api.h>
 
-namespace Text
+namespace Platform::Version
 {
   extern const Char PROGRAM_NAME[] = {'T', 'e', 's', 't', 0};
 }

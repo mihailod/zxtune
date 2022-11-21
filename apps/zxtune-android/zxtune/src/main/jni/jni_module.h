@@ -9,22 +9,6 @@ extern "C" {
 #endif
 /*
  * Class:     app_zxtune_core_jni_JniModule
- * Method:    load
- * Signature: (Ljava/nio/ByteBuffer;Ljava/lang/String;)Lapp/zxtune/core/jni/JniModule;
- */
-JNIEXPORT jobject JNICALL Java_app_zxtune_core_jni_JniModule_load
-  (JNIEnv *, jclass, jobject, jstring);
-
-/*
- * Class:     app_zxtune_core_jni_JniModule
- * Method:    detect
- * Signature: (Ljava/nio/ByteBuffer;Lapp/zxtune/core/ModuleDetectCallback;)V
- */
-JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniModule_detect
-  (JNIEnv *, jclass, jobject, jobject);
-
-/*
- * Class:     app_zxtune_core_jni_JniModule
  * Method:    close
  * Signature: (I)V
  */
@@ -33,19 +17,19 @@ JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniModule_close
 
 /*
  * Class:     app_zxtune_core_jni_JniModule
- * Method:    getDuration
+ * Method:    getDurationMs
  * Signature: ()I
  */
-JNIEXPORT jint JNICALL Java_app_zxtune_core_jni_JniModule_getDuration
+JNIEXPORT jint JNICALL Java_app_zxtune_core_jni_JniModule_getDurationMs
   (JNIEnv *, jobject);
 
 /*
  * Class:     app_zxtune_core_jni_JniModule
  * Method:    createPlayer
- * Signature: ()Lapp/zxtune/core/Player;
+ * Signature: (I)Lapp/zxtune/core/Player;
  */
 JNIEXPORT jobject JNICALL Java_app_zxtune_core_jni_JniModule_createPlayer
-  (JNIEnv *, jobject);
+  (JNIEnv *, jobject, jint);
 
 /*
  * Class:     app_zxtune_core_jni_JniModule

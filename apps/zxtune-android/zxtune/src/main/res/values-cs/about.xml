@@ -39,6 +39,12 @@
     \tv2m-player od <b>Farbrausch</b> a <b>Joakim L.Gilje</b>\n
     \tFFmpeg\n
     \tlibvgm od <b>Valley Bell</b>\n
+    \tlibopenmpt\n
+    \tsseqplayer od <b>Christopher Snowhill</b>\n
+    \tLibAtrac9 od <b>Alex Barney</b>\n
+    \tmpg123 od <b>Thomas Orgis</b>\n
+    \tOGG Vorbis\n
+    \tvgmstream\n
     \n
     Věnováno <b>Lizzi</b>
   </string>
@@ -48,5 +54,6 @@
   <!-- containers -->
   <string name="plugin_multitrack">Víceskladbové kontejnery</string>
   <string name="plugin_archive">Archivátory</string>
+  <string name="plugin_compressor">Datové balírny</string>
   <string name="plugin_decompiler">Dekompilátory</string>
 </resources>

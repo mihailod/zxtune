@@ -1,112 +1,108 @@
 /**
-* 
-* @file
-*
-* @brief  ASAP-based formats support plugin
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ASAP-based formats support plugin
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
+#include "core/plugins/archive_plugins_registrator.h"
 #include "core/plugins/player_plugins_registrator.h"
+#include "core/plugins/players/multitrack_plugin.h"
 #include "core/plugins/players/plugin.h"
-//common includes
+// common includes
 #include <byteorder.h>
 #include <contract.h>
 #include <error.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
 #include <core/plugin_attrs.h>
 #include <debug/log.h>
 #include <formats/chiptune/decoders.h>
 #include <formats/multitrack/decoders.h>
-#include <formats/chiptune/multitrack/decoders.h>
-#include <formats/chiptune/multitrack/multitrack.h>
 #include <math/numeric.h>
 #include <module/attributes.h>
-#include <module/players/analyzer.h>
 #include <module/players/duration.h>
+#include <module/players/platforms.h>
 #include <module/players/properties_helper.h>
 #include <module/players/streaming.h>
-#include <parameters/tracking_helper.h>
-#include <sound/chunk_builder.h>
-#include <sound/render_params.h>
 #include <sound/resampler.h>
 #include <strings/optimize.h>
-//boost includes
-#include <boost/algorithm/string/predicate.hpp>
-//3rdparty
+// 3rdparty
 #include <3rdparty/asap/asap.h>
-//text includes
-#include <module/text/platforms.h>
 
 #define FILE_TAG 90B9A91A
 
-namespace Module
-{
-namespace ASAP
+namespace Module::ASAP
 {
   const Debug::Stream Dbg("Core::ASAPSupp");
-  
+
+  using TimeUnit = Time::Millisecond;
+
   class AsapTune
   {
   public:
     using Ptr = std::shared_ptr<AsapTune>;
-  
+
     AsapTune(const String& id, Binary::View data, int track)
       : Module(::ASAP_New())
       , Info()
       , Track(track)
       , Channels()
     {
-      CheckError(::ASAP_Load(Module, ("dummy." + id).c_str(), static_cast<const unsigned char*>(data.Start()), data.Size()), "ASAP_Load");
-      Reset();//required for subsequential calls
+      CheckError(
+          ::ASAP_Load(Module, ("dummy." + id).c_str(), static_cast<const unsigned char*>(data.Start()), data.Size()),
+          "ASAP_Load");
+      Reset();  // required for subsequential calls
       Info = ::ASAP_GetInfo(Module);
       Require(Track == ::ASAPInfo_GetDefaultSong(Info));
       Channels = ::ASAPInfo_GetChannels(Info);
       Dbg("Track %1%, %2% channels", Track, Channels);
       Require(Channels == 1 || Channels == 2);
     }
-    
+
     ~AsapTune()
     {
       ::ASAP_Delete(Module);
     }
-    
+
     int GetSongsCount() const
     {
       return ::ASAPInfo_GetSongs(Info);
     }
-    
-    Time::Milliseconds GetDuration(Time::Milliseconds defValue) const
+
+    void FillDuration(const Parameters::Accessor& params)
     {
-      const auto duration = ::ASAPInfo_GetDuration(Info, Track);
-      if (duration > 0)
+      if (::ASAPInfo_GetDuration(Info, Track) <= 0)
       {
-        return Time::Milliseconds(duration);
-      }
-      else
-      {
-        return defValue;
+        const auto duration = GetDefaultDuration(params);
+        ::ASAPInfo_SetDuration(const_cast<ASAPInfo*>(Info), Track, duration.CastTo<TimeUnit>().Get());
       }
     }
-    
+
+    Time::Duration<TimeUnit> GetDuration() const
+    {
+      return Time::Duration<TimeUnit>(::ASAPInfo_GetDuration(Info, Track));
+    }
+
     void GetProperties(Binary::View data, PropertiesHelper& props) const
     {
       const auto title = Strings::OptimizeAscii(::ASAPInfo_GetTitle(Info));
       const auto author = Strings::OptimizeAscii(::ASAPInfo_GetAuthor(Info));
       const auto date = Strings::OptimizeAscii(::ASAPInfo_GetDate(Info));
-      
+
       props.SetTitle(title);
       props.SetAuthor(author);
       props.SetDate(date);
-      props.SetFramesFrequency(::ASAPInfo_GetPlayerRateHz(Info));
       Strings::Array instruments;
-      for (int idx = 0; ; ++idx)
+      for (int idx = 0;; ++idx)
       {
-        if (const auto ins = ::ASAPInfo_GetInstrumentName(Info, static_cast<const unsigned char*>(data.Start()), data.Size(), idx))
+        if (const auto ins =
+                ::ASAPInfo_GetInstrumentName(Info, static_cast<const unsigned char*>(data.Start()), data.Size(), idx))
         {
           instruments.push_back(Strings::OptimizeAscii(ins));
         }
@@ -117,36 +113,40 @@ namespace ASAP
       }
       props.SetStrings(instruments);
     }
-    
+
     void Reset()
     {
       CheckError(::ASAP_PlaySong(Module, Track, -1), "ASAP_PlaySong");
     }
-    
-    void Render(uint_t samples, Sound::ChunkBuilder& target)
+
+    Sound::Chunk Render(uint_t samples)
     {
       static_assert(Sound::Sample::BITS == 16, "Incompatible sound bits count");
       static_assert(Sound::Sample::CHANNELS == 2, "Incompatible sound channels count");
+      Sound::Chunk result(samples);
       const auto fmt = isLE() ? ASAPSampleFormat_S16_L_E : ASAPSampleFormat_S16_B_E;
-      const auto stereo = target.Allocate(samples);
+      const auto stereo = result.data();
       if (Channels == 2)
       {
         const int bytes = samples * sizeof(*stereo);
-        CheckError(bytes == ::ASAP_Generate(Module, safe_ptr_cast<unsigned char*>(stereo), bytes, fmt), "ASAP_Generate");
+        CheckError(bytes == ::ASAP_Generate(Module, safe_ptr_cast<unsigned char*>(stereo), bytes, fmt),
+                   "ASAP_Generate");
       }
       else
       {
         const auto mono = safe_ptr_cast<Sound::Sample::Type*>(stereo) + samples;
         const int bytes = samples * sizeof(*mono);
         CheckError(bytes == ::ASAP_Generate(Module, safe_ptr_cast<unsigned char*>(mono), bytes, fmt), "ASAP_Generate");
-        std::transform(mono, mono + samples, stereo, [](Sound::Sample::Type val) {return Sound::Sample(val, val);});
+        std::transform(mono, mono + samples, stereo, [](Sound::Sample::Type val) { return Sound::Sample(val, val); });
       }
+      return result;
     }
-    
-    void Seek(Time::Microseconds frameDuration, uint_t framesCount)
+
+    void Seek(Time::Instant<TimeUnit> request)
     {
-      CheckError(::ASAP_Seek(Module, frameDuration.Get() * framesCount / 1000), "ASAP_Seek");
+      CheckError(::ASAP_Seek(Module, request.Get()), "ASAP_Seek");
     }
+
   private:
     void CheckError(bool ok, const char* msg)
     {
@@ -155,67 +155,52 @@ namespace ASAP
         throw Error(THIS_LINE, msg);
       }
     }
+
   private:
     struct ASAP* const Module;
     const struct ASAPInfo* Info;
     int Track;
     int Channels;
   };
-  
+
+  const auto FRAME_DURATION = Time::Milliseconds(100);
+
+  uint_t GetSamples(Time::Microseconds period)
+  {
+    return period.Get() * ASAP_SAMPLE_RATE / period.PER_SECOND;
+  }
+
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(AsapTune::Ptr tune, StateIterator::Ptr iterator, Sound::Receiver::Ptr target, Parameters::Accessor::Ptr params)
+    Renderer(AsapTune::Ptr tune, Sound::Converter::Ptr target)
       : Tune(std::move(tune))
-      , Iterator(std::move(iterator))
-      , Analyzer(Module::CreateSoundAnalyzer())
-      , SoundParams(Sound::RenderParameters::Create(std::move(params)))
+      , State(MakePtr<TimedState>(Tune->GetDuration()))
       , Target(std::move(target))
-      , Looped()
-      , SamplesPerFrame()
+    {}
+
+    Module::State::Ptr GetState() const override
     {
-      ApplyParameters();
+      return State;
     }
 
-    State::Ptr GetState() const override
+    Sound::Chunk Render(const Sound::LoopParameters& looped) override
     {
-      return Iterator->GetStateObserver();
-    }
-
-    Module::Analyzer::Ptr GetAnalyzer() const override
-    {
-      return Analyzer;
-    }
-
-    bool RenderFrame() override
-    {
-      try
+      if (!State->IsValid())
       {
-        ApplyParameters();
+        return {};
+      }
+      const auto avail = State->Consume(FRAME_DURATION, looped);
 
-        Sound::ChunkBuilder builder;
-        builder.Reserve(SamplesPerFrame);
-        Tune->Render(SamplesPerFrame, builder);
-        auto buf = builder.CaptureResult();
-        Analyzer->AddSoundData(buf);
-        Resampler->ApplyData(std::move(buf));
-        Iterator->NextFrame(Looped);
-        return Iterator->IsValid();
-      }
-      catch (const std::exception&)
-      {
-        return false;
-      }
+      return Target->Apply(Tune->Render(GetSamples(avail)));
     }
 
     void Reset() override
     {
       try
       {
-        SoundParams.Reset();
-        Iterator->Reset();
+        State->Reset();
         Tune->Reset();
-        Looped = {};
       }
       catch (const std::exception& e)
       {
@@ -223,53 +208,36 @@ namespace ASAP
       }
     }
 
-    void SetPosition(uint_t frame) override
+    void SetPosition(Time::AtMillisecond request) override
     {
+      State->Seek(request);
       try
       {
-        Tune->Seek(SoundParams->FrameDuration(), frame);
+        Tune->Seek(State->At());
       }
       catch (const std::exception& e)
       {
         Dbg(e.what());
       }
-      Module::SeekIterator(*Iterator, frame);
     }
-  private:
-    void ApplyParameters()
-    {
-      if (SoundParams.IsChanged())
-      {
-        Looped = SoundParams->Looped();
-        const auto frameDuration = SoundParams->FrameDuration();
-        SamplesPerFrame = static_cast<uint_t>(frameDuration.Get() * ASAP_SAMPLE_RATE / frameDuration.PER_SECOND);
-        Resampler = Sound::CreateResampler(ASAP_SAMPLE_RATE, SoundParams->SoundFreq(), Target);
-      }
-    }
+
   private:
     const AsapTune::Ptr Tune;
-    const StateIterator::Ptr Iterator;
-    const Module::SoundAnalyzer::Ptr Analyzer;
-    Parameters::TrackingHelper<Sound::RenderParameters> SoundParams;
-    const Sound::Receiver::Ptr Target;
-    Sound::Receiver::Ptr Resampler;
-    Sound::LoopParameters Looped;
-    std::size_t SamplesPerFrame;
+    const TimedState::Ptr State;
+    const Sound::Converter::Ptr Target;
   };
-  
+
   class Holder : public Module::Holder
   {
   public:
-    Holder(AsapTune::Ptr tune, Information::Ptr info, Parameters::Accessor::Ptr props)
+    Holder(AsapTune::Ptr tune, Parameters::Accessor::Ptr props)
       : Tune(std::move(tune))
-      , Info(std::move(info))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     Module::Information::Ptr GetModuleInformation() const override
     {
-      return Info;
+      return CreateTimedInfo(Tune->GetDuration());
     }
 
     Parameters::Accessor::Ptr GetModuleProperties() const override
@@ -277,92 +245,71 @@ namespace ASAP
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
     {
       try
       {
-        return MakePtr<Renderer>(Tune, Module::CreateStreamStateIterator(Info), target, params);
+        return MakePtr<Renderer>(Tune, Sound::CreateResampler(ASAP_SAMPLE_RATE, samplerate));
       }
       catch (const std::exception& e)
       {
         throw Error(THIS_LINE, e.what());
       }
     }
+
   private:
     const AsapTune::Ptr Tune;
-    const Information::Ptr Info;
     const Parameters::Accessor::Ptr Properties;
   };
-  
+
   struct PluginDescription
   {
     const Char* const Id;
     const uint_t ChiptuneCaps;
   };
-  
-  class MultitrackFactory : public Module::Factory
+
+  class MultitrackFactory : public Module::MultitrackFactory
   {
   public:
-    MultitrackFactory(PluginDescription desc, Formats::Multitrack::Decoder::Ptr decoder)
+    explicit MultitrackFactory(PluginDescription desc)
       : Desc(std::move(desc))
-      , Decoder(std::move(decoder))
-    {
-    }
-    
-    Module::Holder::Ptr CreateModule(const Parameters::Accessor& params, const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    {}
+
+    Module::Holder::Ptr CreateModule(const Parameters::Accessor& params,
+                                     const Formats::Multitrack::Container& container,
+                                     Parameters::Container::Ptr properties) const override
     {
       try
       {
-        if (const Formats::Multitrack::Container::Ptr container = Decoder->Decode(rawData))
-        {
-          if (container->TracksCount() > 1)
-          {
-            Require(HasContainer(Desc.Id, properties));
-          }
+        auto tune = MakePtr<AsapTune>(Desc.Id, container, container.StartTrackIndex());
 
-          const auto tune = MakePtr<AsapTune>(Desc.Id, rawData, container->StartTrackIndex());
-          
-          PropertiesHelper props(*properties);
-          props.SetPlatform(Platforms::ATARI);
-          tune->GetProperties(rawData, props);
-          const auto defaultDuration = GetDuration(params);
-          const auto duration = tune->GetDuration(defaultDuration);
-          const auto frameDuration = Sound::GetFrameDuration(*properties);
-          const Information::Ptr info = CreateStreamInfo(duration.Divide<uint_t>(frameDuration));
-        
-          props.SetSource(*Formats::Chiptune::CreateMultitrackChiptuneContainer(container));
-        
-          return MakePtr<Holder>(tune, info, properties);
-        }
+        PropertiesHelper props(*properties);
+        props.SetPlatform(Platforms::ATARI);
+        tune->GetProperties(container, props);
+
+        tune->FillDuration(params);
+        return MakePtr<Holder>(std::move(tune), std::move(properties));
       }
       catch (const std::exception& e)
       {
         Dbg("Failed to create %1%: %2%", Desc.Id, e.what());
       }
-      return Module::Holder::Ptr();
+      return {};
     }
-  private:
-    static bool HasContainer(const String& type, Parameters::Accessor::Ptr params)
-    {
-      Parameters::StringType container;
-      Require(params->FindValue(Module::ATTR_CONTAINER, container));
-      return container == type || boost::algorithm::ends_with(container, ">" + type);
-    }
+
   private:
     const PluginDescription Desc;
-    const Formats::Multitrack::Decoder::Ptr Decoder;
   };
-  
+
   struct MultitrackPluginDescription
   {
     typedef Formats::Multitrack::Decoder::Ptr (*MultitrackDecoderCreator)();
-    typedef Formats::Chiptune::Decoder::Ptr (*ChiptuneDecoderCreator)(Formats::Multitrack::Decoder::Ptr);
 
     PluginDescription Desc;
     const MultitrackDecoderCreator CreateMultitrackDecoder;
-    const ChiptuneDecoderCreator CreateChiptuneDecoder;
   };
-  
+
+  // clang-format off
   const MultitrackPluginDescription MULTITRACK_PLUGINS[] =
   {
     {
@@ -372,53 +319,45 @@ namespace ASAP
         ZXTune::Capabilities::Module::Type::MEMORYDUMP | ZXTune::Capabilities::Module::Device::CO12294,
       },
       &Formats::Multitrack::CreateSAPDecoder,
-      &Formats::Chiptune::CreateSAPDecoder,
     }
   };
+  // clang-format on
 
-  class SingletrackFactory : public Module::Factory
+  class SingletrackFactory : public Module::ExternalParsingFactory
   {
   public:
-    SingletrackFactory(PluginDescription desc, Formats::Chiptune::Decoder::Ptr decoder)
+    explicit SingletrackFactory(PluginDescription desc)
       : Desc(std::move(desc))
-      , Decoder(std::move(decoder))
-    {
-    }
-    
-    Module::Holder::Ptr CreateModule(const Parameters::Accessor& params, const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    {}
+
+    Module::Holder::Ptr CreateModule(const Parameters::Accessor& params, const Formats::Chiptune::Container& container,
+                                     Parameters::Container::Ptr properties) const override
     {
       try
       {
-        if (const auto container = Decoder->Decode(rawData))
-        {
-          const auto tune = MakePtr<AsapTune>(Desc.Id, rawData, 0);
-          
-          Require(tune->GetSongsCount() == 1);
-          
-          PropertiesHelper props(*properties);
-          props.SetPlatform(Platforms::ATARI);
-          tune->GetProperties(rawData, props);
-          const auto defaultDuration = GetDuration(params);
-          const auto duration = tune->GetDuration(defaultDuration);
-          const auto frameDuration = Sound::GetFrameDuration(*properties);
-          const Information::Ptr info = CreateStreamInfo(duration.Divide<uint_t>(frameDuration));
-        
-          props.SetSource(*container);
-        
-          return MakePtr<Holder>(tune, info, properties);
-        }
+        auto tune = MakePtr<AsapTune>(Desc.Id, container, 0);
+
+        Require(tune->GetSongsCount() == 1);
+
+        PropertiesHelper props(*properties);
+        props.SetPlatform(Platforms::ATARI);
+        tune->GetProperties(container, props);
+
+        tune->FillDuration(params);
+        return MakePtr<Holder>(std::move(tune), std::move(properties));
       }
       catch (const std::exception& e)
       {
         Dbg("Failed to create %1%: %2%", Desc.Id, e.what());
       }
-      return Module::Holder::Ptr();
+      return {};
     }
+
   private:
     const PluginDescription Desc;
     const Formats::Chiptune::Decoder::Ptr Decoder;
   };
-  
+
   struct SingletrackPluginDescription
   {
     typedef Formats::Chiptune::Decoder::Ptr (*ChiptuneDecoderCreator)();
@@ -427,6 +366,7 @@ namespace ASAP
     const ChiptuneDecoderCreator CreateChiptuneDecoder;
   };
 
+  // clang-format off
   const SingletrackPluginDescription SINGLETRACK_PLUGINS[] =
   {
     //rmt
@@ -438,29 +378,34 @@ namespace ASAP
       &Formats::Chiptune::CreateRasterMusicTrackerDecoder
     },
   };
-}
-}
+  // clang-format on
+}  // namespace Module::ASAP
 
 namespace ZXTune
 {
-  void RegisterASAPPlugins(PlayerPluginsRegistrator& registrator)
+  void RegisterASAPPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegistrator& archives)
   {
     for (const auto& desc : Module::ASAP::MULTITRACK_PLUGINS)
     {
-      const Formats::Multitrack::Decoder::Ptr multi = desc.CreateMultitrackDecoder();
-      const Formats::Chiptune::Decoder::Ptr decoder = desc.CreateChiptuneDecoder(multi);
-      const Module::Factory::Ptr factory = MakePtr<Module::ASAP::MultitrackFactory>(desc.Desc, multi);
-      const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(desc.Desc.Id, desc.Desc.ChiptuneCaps, decoder, factory);
-      registrator.RegisterPlugin(plugin);
+      auto decoder = desc.CreateMultitrackDecoder();
+      auto factory = MakePtr<Module::ASAP::MultitrackFactory>(desc.Desc);
+      {
+        auto plugin = CreatePlayerPlugin(desc.Desc.Id, desc.Desc.ChiptuneCaps, decoder, factory);
+        players.RegisterPlugin(std::move(plugin));
+      }
+      {
+        auto plugin = CreateArchivePlugin(desc.Desc.Id, std::move(decoder), std::move(factory));
+        archives.RegisterPlugin(std::move(plugin));
+      }
     }
     for (const auto& desc : Module::ASAP::SINGLETRACK_PLUGINS)
     {
-      const Formats::Chiptune::Decoder::Ptr decoder = desc.CreateChiptuneDecoder();
-      const Module::Factory::Ptr factory = MakePtr<Module::ASAP::SingletrackFactory>(desc.Desc, decoder);
-      const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(desc.Desc.Id, desc.Desc.ChiptuneCaps, decoder, factory);
-      registrator.RegisterPlugin(plugin);
+      auto decoder = desc.CreateChiptuneDecoder();
+      auto factory = MakePtr<Module::ASAP::SingletrackFactory>(desc.Desc);
+      auto plugin = CreatePlayerPlugin(desc.Desc.Id, desc.Desc.ChiptuneCaps, std::move(decoder), std::move(factory));
+      players.RegisterPlugin(std::move(plugin));
     }
   }
-}
+}  // namespace ZXTune
 
 #undef FILE_TAG

@@ -6,12 +6,7 @@
 
 package app.zxtune.ui;
 
-import androidx.lifecycle.Observer;
-import androidx.lifecycle.ViewModelProviders;
 import android.net.Uri;
-
-import androidx.annotation.Nullable;
-import androidx.fragment.app.FragmentActivity;
 import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 import android.text.Html;
@@ -19,9 +14,13 @@ import android.text.TextUtils;
 import android.text.method.ScrollingMovementMethod;
 import android.view.View;
 import android.widget.TextView;
+
+import androidx.annotation.Nullable;
+import androidx.fragment.app.FragmentActivity;
+
 import app.zxtune.R;
 import app.zxtune.core.ModuleAttributes;
-import app.zxtune.models.MediaSessionModel;
+import app.zxtune.device.media.MediaSessionModel;
 
 class InformationView {
 
@@ -44,16 +43,13 @@ class InformationView {
     this.commentField = activity.getString(R.string.information_comment);
     this.locationField = activity.getString(R.string.information_location);
     this.content.setMovementMethod(ScrollingMovementMethod.getInstance());
-    final MediaSessionModel model = ViewModelProviders.of(activity).get(MediaSessionModel.class);
-    model.getMetadata().observe(activity, new Observer<MediaMetadataCompat>() {
-      @Override
-      public void onChanged(@Nullable MediaMetadataCompat mediaMetadataCompat) {
-        if (mediaMetadataCompat != null) {
-          update(mediaMetadataCompat);
-          content.setEnabled(true);
-        } else {
-          content.setEnabled(false);
-        }
+    final MediaSessionModel model = MediaSessionModel.of(activity);
+    model.getMetadata().observe(activity, mediaMetadataCompat -> {
+      if (mediaMetadataCompat != null) {
+        update(mediaMetadataCompat);
+        content.setEnabled(true);
+      } else {
+        content.setEnabled(false);
       }
     });
   }
@@ -65,7 +61,7 @@ class InformationView {
     addNonEmptyField(builder, titleField, description.getTitle());
     addNonEmptyField(builder, authorField, description.getSubtitle());
     addNonEmptyField(builder, programField, metadata.getString(ModuleAttributes.PROGRAM));
-    addNonEmptyField(builder, commentField, description.getDescription());
+    addNonEmptyField(builder, commentField, metadata.getString(ModuleAttributes.COMMENT));
     addNonEmptyRawField(builder, metadata.getString(ModuleAttributes.STRINGS));
     final CharSequence styledVal = Html.fromHtml(builder.toString());
     content.setText(styledVal);

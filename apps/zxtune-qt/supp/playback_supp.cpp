@@ -1,25 +1,27 @@
 /**
-* 
-* @file
-*
-* @brief Playback support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playback support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "playback_supp.h"
 #include "playlist/supp/data.h"
+#include "supp/thread_utils.h"
 #include "ui/utils.h"
-//common includes
+// common includes
 #include <contract.h>
 #include <error.h>
+#include <lazy.h>
 #include <pointers.h>
-//library includes
+// library includes
 #include <parameters/merged_accessor.h>
 #include <sound/service.h>
-//qt includes
+// qt includes
 #include <QtCore/QTimer>
 
 namespace
@@ -27,22 +29,14 @@ namespace
   class StubControl : public Sound::PlaybackControl
   {
   public:
-    void Play() override
-    {
-    }
+    void Play() override {}
 
-    void Pause() override
-    {
-    }
+    void Pause() override {}
 
-    void Stop() override
-    {
-    }
+    void Stop() override {}
 
-    void SetPosition(uint_t /*frame*/) override
-    {
-    }
-    
+    void SetPosition(Time::AtMillisecond /*request*/) override {}
+
     State GetCurrentState() const override
     {
       return STOPPED;
@@ -55,44 +49,50 @@ namespace
     }
   };
 
-  class PlaybackSupportImpl : public PlaybackSupport
-                            , private Sound::BackendCallback
+  class PlaybackSupportImpl
+    : public PlaybackSupport
+    , private Sound::BackendCallback
   {
   public:
     PlaybackSupportImpl(QObject& parent, Parameters::Accessor::Ptr sndOptions)
       : PlaybackSupport(parent)
-      , Service(Sound::CreateSystemService(sndOptions))
+      , Service(&Sound::CreateSystemService, std::move(sndOptions))
       , Control(StubControl::Instance())
     {
       const unsigned UI_UPDATE_FPS = 5;
       Timer.setInterval(1000 / UI_UPDATE_FPS);
-      Require(Timer.connect(this, SIGNAL(OnStartModule(Sound::Backend::Ptr, Playlist::Item::Data::Ptr)), SLOT(start())));
+      Require(
+          Timer.connect(this, SIGNAL(OnStartModule(Sound::Backend::Ptr, Playlist::Item::Data::Ptr)), SLOT(start())));
       Require(Timer.connect(this, SIGNAL(OnStopModule()), SLOT(stop())));
       Require(connect(&Timer, SIGNAL(timeout()), SIGNAL(OnUpdateState())));
     }
 
     void SetDefaultItem(Playlist::Item::Data::Ptr item) override
     {
-      if (Backend)
-      {
-        return;
-      }
-      LoadItem(item);
+      IOThread::Execute([this, item]() {
+        if (Backend)
+        {
+          return;
+        }
+        LoadItem(item);
+      });
     }
 
     void SetItem(Playlist::Item::Data::Ptr item) override
     {
-      try
-      {
-        if (LoadItem(item))
+      IOThread::Execute([this, item]() {
+        try
         {
-          Control->Play();
+          if (LoadItem(item))
+          {
+            Control->Play();
+          }
         }
-      }
-      catch (const Error& e)
-      {
-        emit ErrorOccurred(e);
-      }
+        catch (const Error& e)
+        {
+          emit ErrorOccurred(e);
+        }
+      });
     }
 
     void ResetItem() override
@@ -147,11 +147,11 @@ namespace
       }
     }
 
-    void Seek(int frame) override
+    void Seek(Time::AtMillisecond request) override
     {
       try
       {
-        Control->SetPosition(frame);
+        Control->SetPosition(request);
       }
       catch (const Error& e)
       {
@@ -159,15 +159,13 @@ namespace
       }
     }
 
-    //BackendCallback
+    // BackendCallback
     void OnStart() override
     {
       emit OnStartModule(Backend, Item);
     }
 
-    void OnFrame(const Module::State& /*state*/) override
-    {
-    }
+    void OnFrame(const Module::State& /*state*/) override {}
 
     void OnStop() override
     {
@@ -188,6 +186,7 @@ namespace
     {
       emit OnFinishModule();
     }
+
   private:
     bool LoadItem(Playlist::Item::Data::Ptr item)
     {
@@ -216,8 +215,9 @@ namespace
 
     Sound::Backend::Ptr CreateBackend(Module::Holder::Ptr module)
     {
-      //create backend
-      const Sound::BackendCallback::Ptr cb(static_cast<Sound::BackendCallback*>(this), NullDeleter<Sound::BackendCallback>());
+      // create backend
+      const Sound::BackendCallback::Ptr cb(static_cast<Sound::BackendCallback*>(this),
+                                           NullDeleter<Sound::BackendCallback>());
       std::list<Error> errors;
       const Strings::Array systemBackends = Service->GetAvailableBackends();
       for (const auto& id : systemBackends)
@@ -242,18 +242,19 @@ namespace
         emit ErrorOccurred(err);
       }
     }
+
   private:
-    const Sound::Service::Ptr Service;
+    const Lazy<Sound::Service::Ptr> Service;
     QTimer Timer;
     Playlist::Item::Data::Ptr Item;
     Sound::Backend::Ptr Backend;
     Sound::PlaybackControl::Ptr Control;
   };
-}
+}  // namespace
 
-PlaybackSupport::PlaybackSupport(QObject& parent) : QObject(&parent)
-{
-}
+PlaybackSupport::PlaybackSupport(QObject& parent)
+  : QObject(&parent)
+{}
 
 PlaybackSupport* PlaybackSupport::Create(QObject& parent, Parameters::Accessor::Ptr sndOptions)
 {

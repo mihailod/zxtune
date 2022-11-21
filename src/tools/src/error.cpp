@@ -1,18 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  Error object implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Error object implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
+// common includes
 #include <error_tools.h>
-//text includes
-#include <tools/text/tools.h>
-//std includes
+// std includes
 #include <utility>
 
 namespace
@@ -22,25 +20,33 @@ namespace
     try
     {
 #ifdef NDEBUG
-      return Strings::Format(Text::ERROR_FORMAT, text, loc);
+      constexpr const Char FORMAT[] =
+          "%1%\n"
+          "@%2$08x\n"
+          "--------\n";
+      return Strings::Format(FORMAT, text, loc);
 #else
-      return Strings::Format(Text::ERROR_FORMAT_DEBUG, text, loc.Tag, loc.File, loc.Line, loc.Function);
+      constexpr const Char FORMAT[] =
+          "%1%\n"
+          "@%2$08x (%3%:%4%, %5%)\n"
+          "--------\n";
+      return Strings::Format(FORMAT, text, loc.Tag, loc.File, loc.Line, loc.Function);
 #endif
     }
     catch (const std::exception& e)
     {
-      return FromStdString(e.what());
+      return e.what();
     }
   }
-}
+}  // namespace
 
 // implementation of error's core used to keep data
 struct Error::Meta
 {
   Meta(LocationRef loc, String txt)
-    : Location(std::move(loc)), Text(std::move(txt))
-  {
-  }
+    : Location(std::move(loc))
+    , Text(std::move(txt))
+  {}
 
   // source error location
   Error::Location Location;
@@ -52,12 +58,11 @@ struct Error::Meta
 
 Error::Error(LocationRef loc, const String& txt)
   : ErrorMeta(std::make_shared<Meta>(loc, txt))
-{
-}
+{}
 
 Error& Error::AddSuberror(const Error& e)
 {
-  //do not add/add to 'success' error
+  // do not add/add to 'success' error
   if (e && *this)
   {
     MetaPtr ptr = ErrorMeta;
@@ -90,7 +95,7 @@ Error::operator Error::BoolType() const
   return ErrorMeta ? &Error::TrueFunc : nullptr;
 }
 
-bool Error::operator ! () const
+bool Error::operator!() const
 {
   return !ErrorMeta;
 }

@@ -1,26 +1,23 @@
 /**
-*
-* @file
-*
-* @brief  Win32 backend stub
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Win32 backend stub
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "sound/backends/win32.h"
 #include "sound/backends/storage.h"
-//library includes
-#include <l10n/api.h>
+#include "sound/backends/win32.h"
+// library includes
 #include <sound/backend_attrs.h>
-//text includes
-#include <sound/backends/text/backends.h>
 
 namespace Sound
 {
   void RegisterWin32Backend(BackendsStorage& storage)
   {
-    storage.Register(Text::WIN32_BACKEND_ID, L10n::translate("Win32 sound system backend"), CAP_TYPE_SYSTEM);
+    storage.Register(Win32::BACKEND_ID, Win32::BACKEND_DESCRIPTION, CAP_TYPE_SYSTEM);
   }
 
   namespace Win32
@@ -29,6 +26,5 @@ namespace Sound
     {
       return Device::Iterator::CreateStub();
     }
-  }
-}
-
+  }  // namespace Win32
+}  // namespace Sound

@@ -1,17 +1,20 @@
 /**
-*
-* @file
-*
-* @brief  Base64 functions
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Base64 functions
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
+// common includes
 #include <types.h>
+// library includes
+#include <binary/dump.h>
+#include <binary/view.h>
 
 namespace Binary
 {
@@ -27,16 +30,16 @@ namespace Binary
     //! @return End of decoded data
     uint8_t* Decode(const char* inBegin, const char* inEnd, uint8_t* outBegin, uint8_t* outEnd);
 
-    //easy-to-use wrappers
-    inline std::string Encode(const Dump& input)
+    // easy-to-use wrappers
+    inline String Encode(View input)
     {
-      std::vector<char> result(CalculateConvertedSize(input.size()));
-      const uint8_t* const in = input.data();
-      char* const out = result.data();
-      char* const outEnd = Encode(in, in + input.size(), out, out + result.size());
-      return std::string(out, outEnd);
+      String result(CalculateConvertedSize(input.Size()), ' ');
+      const uint8_t* const in = input.As<uint8_t>();
+      char* const out = &result[0];
+      Encode(in, in + input.Size(), out, out + result.size());
+      return result;
     }
 
-    Dump Decode(const std::string& input);
-  }
-}
+    Dump Decode(StringView input);
+  }  // namespace Base64
+}  // namespace Binary

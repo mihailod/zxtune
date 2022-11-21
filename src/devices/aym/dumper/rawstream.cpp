@@ -1,24 +1,22 @@
 /**
-* 
-* @file
-*
-* @brief  Raw stream dumper implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Raw stream dumper implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "devices/aym/dumper/dump_builder.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//std includes
+// std includes
 #include <algorithm>
 #include <iterator>
 
-namespace Devices
-{
-namespace AYM
+namespace Devices::AYM
 {
   class RawDumpBuilder : public FramedDumpBuilder
   {
@@ -27,13 +25,13 @@ namespace AYM
     {
       NO_R13 = 0xff
     };
-    
+
     void Initialize() override
     {
       Data.clear();
     }
 
-    void GetResult(Dump& data) const override
+    void GetResult(Binary::Dump& data) const override
     {
       data = Data;
     }
@@ -41,10 +39,10 @@ namespace AYM
     void WriteFrame(uint_t framesPassed, const Registers& state, const Registers& update) override
     {
       assert(framesPassed);
-      std::back_insert_iterator<Dump> inserter(Data);
+      std::back_insert_iterator<Binary::Dump> inserter(Data);
       if (const uint_t toSkip = framesPassed - 1)
       {
-        Dump dup;
+        Binary::Dump dup;
         if (Data.empty())
         {
           dup.resize(Registers::TOTAL);
@@ -66,8 +64,9 @@ namespace AYM
       const uint8_t* const rawStart = &fixedState[Registers::TONEA_L];
       std::copy(rawStart, rawStart + Registers::TOTAL, inserter);
     }
+
   private:
-    Dump Data;
+    Binary::Dump Data;
   };
 
   FramedDumpBuilder::Ptr CreateRawDumpBuilder()
@@ -80,5 +79,4 @@ namespace AYM
     const FramedDumpBuilder::Ptr builder = CreateRawDumpBuilder();
     return CreateDumper(params, builder);
   }
-}
-}
+}  // namespace Devices::AYM

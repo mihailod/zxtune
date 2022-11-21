@@ -1,48 +1,44 @@
 /**
-*
-* @file
-*
-* @brief  libvgm-based formats support plugin
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  libvgm-based formats support plugin
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "core/plugins/players/vgm/videogamemusic.h"
+// local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-//common includes
+#include "core/plugins/players/vgm/videogamemusic.h"
+// common includes
 #include <contract.h>
 #include <error_tools.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <core/plugin_attrs.h>
 #include <debug/log.h>
+#include <formats/chiptune/multidevice/sound98.h>
 #include <formats/chiptune/multidevice/videogamemusic.h>
 #include <math/numeric.h>
 #include <module/attributes.h>
-#include <module/players/analyzer.h>
 #include <module/players/duration.h>
+#include <module/players/platforms.h>
 #include <module/players/properties_helper.h>
 #include <module/players/properties_meta.h>
 #include <module/players/streaming.h>
-#include <parameters/tracking_helper.h>
-#include <sound/render_params.h>
-#include <sound/sound_parameters.h>
-//3rdparty includes
+#include <sound/loop.h>
+// 3rdparty includes
+#include <3rdparty/vgm/player/s98player.hpp>
 #include <3rdparty/vgm/player/vgmplayer.hpp>
 #include <3rdparty/vgm/utils/DataLoader.h>
-//std includes
+// std includes
 #include <map>
-//text includes
-#include <module/text/platforms.h>
 
 #define FILE_TAG 975CF2F9
 
-namespace Module
-{
-namespace LibVGM
+namespace Module::LibVGM
 {
   const Debug::Stream Dbg("Core::VGMSupp");
 
@@ -60,14 +56,13 @@ namespace LibVGM
   {
     using Ptr = std::shared_ptr<Model>;
 
-    Model(PlayerCreator create, Dump data)
+    Model(PlayerCreator create, Binary::View data)
       : CreatePlayer(create)
-      , Data(std::move(data))
-    {
-    }
+      , Data(static_cast<const uint8_t*>(data.Start()), static_cast<const uint8_t*>(data.Start()) + data.Size())
+    {}
 
     PlayerCreator CreatePlayer;
-    Dump Data;
+    Binary::Dump Data;
   };
 
   class LoaderAdapter
@@ -77,16 +72,12 @@ namespace LibVGM
       : Raw(raw)
     {
       std::memset(&Delegate, 0, sizeof(Delegate));
-      static const DATA_LOADER_CALLBACKS CALLBACKS =
-      {
-        0xdeadbeef,
-        "",
-        &Open, &Read, nullptr, &Close, &Tell, &Length, &Eof
-      };
+      static const DATA_LOADER_CALLBACKS CALLBACKS = {0xdeadbeef, "",    &Open,   &Read, nullptr,
+                                                      &Close,     &Tell, &Length, &Eof};
       ::DataLoader_Setup(&Delegate, &CALLBACKS, this);
       Require(0 == ::DataLoader_Load(Get()));
     }
-    
+
     ~LoaderAdapter()
     {
       ::DataLoader_Reset(&Delegate);
@@ -96,6 +87,7 @@ namespace LibVGM
     {
       return &Delegate;
     }
+
   private:
     static LoaderAdapter* Cast(void* ctx)
     {
@@ -143,6 +135,7 @@ namespace LibVGM
       const auto* self = Cast(ctx);
       return self->Position >= self->Raw.Size();
     }
+
   private:
     const Binary::View Raw;
     DATA_LOADER Delegate;
@@ -156,27 +149,32 @@ namespace LibVGM
   public:
     using RWPtr = std::shared_ptr<VGMEngine>;
 
-    explicit VGMEngine(Model::Ptr tune)
+    VGMEngine(Model::Ptr tune, uint_t samplerate)
       : Tune(std::move(tune))
       , Loader(Tune->Data)
       , Delegate(Tune->CreatePlayer())
     {
       Require(0 == Delegate->LoadFile(Loader.Get()));
+      Require(0 == Delegate->SetSampleRate(samplerate));
+      Delegate->Start();
       LoopTicks = Delegate->GetLoopTicks();
     }
 
-    uint_t Frame() const override
+    Time::AtMillisecond At() const override
     {
       auto ticks = Delegate->GetCurPos(PLAYPOS_TICK);
       const auto totalTicks = Delegate->GetTotalTicks();
       if (ticks >= totalTicks)
       {
-        ticks = LoopTicks != 0
-          ? (totalTicks - LoopTicks) + (ticks - totalTicks) % LoopTicks
-          : ticks % totalTicks;
+        ticks = LoopTicks != 0 ? (totalTicks - LoopTicks) + (ticks - totalTicks) % LoopTicks : ticks % totalTicks;
       }
-      const auto seconds = Delegate->Tick2Second(ticks);
-      return FRAME_DURATION.PER_SECOND * seconds / FRAME_DURATION.Get();
+      return Time::AtMillisecond() + Time::Seconds(Delegate->Tick2Second(ticks));
+    }
+
+    Time::Milliseconds Total() const override
+    {
+      const auto ticks = Delegate->GetCurPos(PLAYPOS_TICK);
+      return Time::Seconds(Delegate->Tick2Second(ticks));
     }
 
     uint_t LoopCount() const override
@@ -191,21 +189,13 @@ namespace LibVGM
       WholeLoopCount = 0;
     }
 
-    void SetSoundFreq(uint_t freq)
-    {
-      if (Delegate->GetSampleRate() != freq) {
-        Delegate->Stop();
-        Require(0 == Delegate->SetSampleRate(freq));
-        Delegate->Start();
-      }
-    }
-
-    Sound::Chunk Render(uint_t samples)
+    Sound::Chunk Render()
     {
       static_assert(Sound::Sample::CHANNELS == 2, "Incompatible sound channels count");
       static_assert(Sound::Sample::BITS == 16, "Incompatible sound bits count");
       static_assert(Sound::Sample::MID == 0, "Incompatible sound sample type");
 
+      const auto samples = FRAME_DURATION.Get() * Delegate->GetSampleRate() / FRAME_DURATION.PER_SECOND;
       Buffer.resize(samples);
       std::memset(Buffer.data(), 0, samples * sizeof(Buffer.front()));
       const auto outSamples = Delegate->Render(samples, Buffer.data());
@@ -213,11 +203,13 @@ namespace LibVGM
       return ConvertBuffer(outSamples);
     }
 
-    void Seek(uint_t samples)
+    void Seek(Time::AtMillisecond request)
     {
+      const auto samples = uint64_t(Delegate->GetSampleRate()) * request.Get() / request.PER_SECOND;
       Require(0 == Delegate->Seek(PLAYPOS_SAMPLE, samples));
       WholeLoopCount = 0;
     }
+
   private:
     void CheckForWholeLoop()
     {
@@ -244,6 +236,7 @@ namespace LibVGM
     {
       return Math::Clamp<Sound::Sample::WideType>(in >> 8, Sound::Sample::MIN, Sound::Sample::MAX);
     }
+
   private:
     const Model::Ptr Tune;
     LoaderAdapter Loader;
@@ -256,42 +249,25 @@ namespace LibVGM
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(Model::Ptr tune, Sound::Receiver::Ptr target, Parameters::Accessor::Ptr params)
-      : Engine(MakeRWPtr<VGMEngine>(std::move(tune)))
-      , Analyzer(CreateSoundAnalyzer())
-      , SoundParams(Sound::RenderParameters::Create(std::move(params)))
-      , Target(std::move(target))
-      , Looped()
-    {
-      ApplyParameters();
-    }
+    Renderer(Model::Ptr tune, uint_t samplerate)
+      : Engine(MakeRWPtr<VGMEngine>(std::move(tune), samplerate))
+    {}
 
     State::Ptr GetState() const override
     {
       return Engine;
     }
 
-    Module::Analyzer::Ptr GetAnalyzer() const override
+    Sound::Chunk Render(const Sound::LoopParameters& looped) override
     {
-      return Analyzer;
-    }
-
-    bool RenderFrame() override
-    {
-      try
+      const auto loops = Engine->LoopCount();
+      if (loops == 0 || looped(loops))
       {
-        ApplyParameters();
-
-        auto data = Engine->Render(SoundParams->SamplesPerFrame());
-        Analyzer->AddSoundData(data);
-        Target->ApplyData(std::move(data));
-
-        const auto loops = Engine->LoopCount();
-        return loops == 0 || Looped(loops);
+        return Engine->Render();
       }
-      catch (const std::exception&)
+      else
       {
-        return false;
+        return {};
       }
     }
 
@@ -299,9 +275,7 @@ namespace LibVGM
     {
       try
       {
-        SoundParams.Reset();
         Engine->Reset();
-        Looped = {};
       }
       catch (const std::exception& e)
       {
@@ -309,44 +283,30 @@ namespace LibVGM
       }
     }
 
-    void SetPosition(uint_t frame) override
+    void SetPosition(Time::AtMillisecond request) override
     {
       try
       {
-        Engine->Seek(frame * SoundParams->SamplesPerFrame());
+        Engine->Seek(request);
       }
       catch (const std::exception& e)
       {
         Dbg(e.what());
-      }
-    }
-  private:
-    void ApplyParameters()
-    {
-      if (SoundParams.IsChanged())
-      {
-        Looped = SoundParams->Looped();
-        Engine->SetSoundFreq(SoundParams->SoundFreq());
       }
     }
 
   private:
     const VGMEngine::RWPtr Engine;
-    const SoundAnalyzer::Ptr Analyzer;
-    Parameters::TrackingHelper<Sound::RenderParameters> SoundParams;
-    const Sound::Receiver::Ptr Target;
-    Sound::LoopParameters Looped;
   };
-  
+
   class Holder : public Module::Holder
   {
   public:
-    Holder(Model::Ptr tune, Information::Ptr info, Parameters::Accessor::Ptr props)
+    Holder(Model::Ptr tune, Module::Information::Ptr info, Parameters::Accessor::Ptr props)
       : Tune(std::move(tune))
       , Info(std::move(info))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     Module::Information::Ptr GetModuleInformation() const override
     {
@@ -358,25 +318,26 @@ namespace LibVGM
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
     {
       try
       {
-        return MakePtr<Renderer>(Tune, target, params);
+        return MakePtr<Renderer>(Tune, samplerate);
       }
       catch (const std::exception& e)
       {
         throw Error(THIS_LINE, e.what());
       }
     }
+
   private:
     const Model::Ptr Tune;
-    const Information::Ptr Info;
+    const Module::Information::Ptr Info;
     const Parameters::Accessor::Ptr Properties;
   };
-} //namespace LibVGM
+}  // namespace Module::LibVGM
 
-namespace VideoGameMusic
+namespace Module::VideoGameMusic
 {
   class DataBuilder : public Formats::Chiptune::VideoGameMusic::Builder
   {
@@ -384,8 +345,7 @@ namespace VideoGameMusic
     explicit DataBuilder(PropertiesHelper& props)
       : Properties(props)
       , Meta(props)
-    {
-    }
+    {}
 
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
@@ -394,28 +354,25 @@ namespace VideoGameMusic
 
     void SetTimings(Time::Milliseconds total, Time::Milliseconds loop) override
     {
-      Info = CreateStreamInfo(total.Get() / LibVGM::FRAME_DURATION.Get(), loop.Get() / LibVGM::FRAME_DURATION.Get());
+      Info = CreateTimedInfo(total, loop);
     }
 
-    Information::Ptr GetInfo() const
+    Module::Information::Ptr CaptureResult() const
     {
-      return Info;
+      return std::move(Info);
     }
+
   private:
     PropertiesHelper& Properties;
     MetaProperties Meta;
-    Information::Ptr Info;
+    Module::Information::Ptr Info;
   };
-  
-  Dump CreateData(Binary::View data)
-  {
-    return Dump(static_cast<const uint8_t*>(data.Start()), static_cast<const uint8_t*>(data.Start()) + data.Size());
-  }
 
   class Factory : public Module::Factory
   {
   public:
-    Module::Holder::Ptr CreateModule(const Parameters::Accessor& params, const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    Module::Holder::Ptr CreateModule(const Parameters::Accessor& /*params*/, const Binary::Container& rawData,
+                                     Parameters::Container::Ptr properties) const override
     {
       try
       {
@@ -423,25 +380,82 @@ namespace VideoGameMusic
         DataBuilder dataBuilder(props);
         if (const auto container = Formats::Chiptune::VideoGameMusic::Parse(rawData, dataBuilder))
         {
-          auto data = CreateData(*container);
-          //TODO: move to builder
-          props.SetPlatform(DetectPlatform(data));
-          auto tune = MakePtr<LibVGM::Model>(&LibVGM::Create< ::VGMPlayer>, std::move(data));
-        
+          auto tune = MakePtr<LibVGM::Model>(&LibVGM::Create< ::VGMPlayer>, *container);
+          // TODO: move to builder
+          props.SetPlatform(DetectPlatform(tune->Data));
+
           props.SetSource(*container);
-        
-          return MakePtr<LibVGM::Holder>(std::move(tune), dataBuilder.GetInfo(), std::move(properties));
+
+          return MakePtr<LibVGM::Holder>(std::move(tune), dataBuilder.CaptureResult(), std::move(properties));
         }
       }
       catch (const std::exception& e)
       {
-        LibVGM::Dbg("Failed to create VGM: %2%", e.what());
+        LibVGM::Dbg("Failed to create VGM: %1%", e.what());
       }
-      return Module::Holder::Ptr();
+      return {};
     }
   };
-}
-}
+}  // namespace Module::VideoGameMusic
+
+namespace Module::Sound98
+{
+  class DataBuilder : public Formats::Chiptune::Sound98::Builder
+  {
+  public:
+    explicit DataBuilder(PropertiesHelper& props)
+      : Properties(props)
+      , Meta(props)
+    {}
+
+    Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
+    {
+      return Meta;
+    }
+
+    void SetTimings(Time::Milliseconds total, Time::Milliseconds loop) override
+    {
+      Info = CreateTimedInfo(total, loop);
+    }
+
+    Module::Information::Ptr CaptureResult() const
+    {
+      return std::move(Info);
+    }
+
+  private:
+    PropertiesHelper& Properties;
+    MetaProperties Meta;
+    Module::Information::Ptr Info;
+  };
+
+  class Factory : public Module::Factory
+  {
+  public:
+    Module::Holder::Ptr CreateModule(const Parameters::Accessor& /*params*/, const Binary::Container& rawData,
+                                     Parameters::Container::Ptr properties) const override
+    {
+      try
+      {
+        PropertiesHelper props(*properties);
+        DataBuilder dataBuilder(props);
+        if (const auto container = Formats::Chiptune::Sound98::Parse(rawData, dataBuilder))
+        {
+          auto tune = MakePtr<LibVGM::Model>(&LibVGM::Create< ::S98Player>, *container);
+
+          props.SetSource(*container);
+
+          return MakePtr<LibVGM::Holder>(std::move(tune), dataBuilder.CaptureResult(), std::move(properties));
+        }
+      }
+      catch (const std::exception& e)
+      {
+        LibVGM::Dbg("Failed to create S98: %1%", e.what());
+      }
+      return {};
+    }
+  };
+}  // namespace Module::Sound98
 
 namespace ZXTune
 {
@@ -455,7 +469,15 @@ namespace ZXTune
       auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
       registrator.RegisterPlugin(plugin);
     }
+    {
+      const Char ID[] = {'S', '9', '8', 0};
+      const uint_t CAPS = ZXTune::Capabilities::Module::Type::STREAM | ZXTune::Capabilities::Module::Device::MULTI;
+      auto decoder = Formats::Chiptune::CreateSound98Decoder();
+      auto factory = MakePtr<Module::Sound98::Factory>();
+      auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
+      registrator.RegisterPlugin(plugin);
+    }
   }
-}
+}  // namespace ZXTune
 
 #undef FILE_TAG

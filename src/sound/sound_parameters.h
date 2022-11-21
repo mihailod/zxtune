@@ -1,17 +1,18 @@
 /**
-*
-* @file
-*
-* @brief  Render parameters names
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Render parameters names
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
+// library includes
 #include <parameters/types.h>
+#include <zxtune.h>
 
 namespace Parameters
 {
@@ -21,7 +22,7 @@ namespace Parameters
     namespace Sound
     {
       //! @brief Parameters#ZXTune#Sound namespace prefix
-      extern const NameType PREFIX;
+      const auto PREFIX = ZXTune::PREFIX + "sound"_id;
 
       //@{
       //! @name %Sound frequency in Hz
@@ -29,67 +30,55 @@ namespace Parameters
       //! Default value- 44.1kHz
       const IntType FREQUENCY_DEFAULT = 44100;
       //! Parameter name
-      extern const NameType FREQUENCY;
-      //@}
-
-      //@{
-      //! @name Frame duration in microseconds
-      const IntType FRAMEDURATION_PRECISION = 1000000;
-
-      //! Default value- 20mS (50Hz)
-      const IntType FRAMEDURATION_DEFAULT = 20000;
-      const IntType FRAMEDURATION_MIN = 1000;
-      const IntType FRAMEDURATION_MAX = 1000000;
-      //! Parameter name
-      extern const NameType FRAMEDURATION;
+      const auto FREQUENCY = PREFIX + "frequency"_id;
       //@}
 
       //@{
       //! @name Looped playback
 
       //! Parameter name
-      extern const NameType LOOPED;
-      extern const NameType LOOP_LIMIT;
+      const auto LOOPED = PREFIX + "looped"_id;
+      const auto LOOP_LIMIT = PREFIX + "looplimit"_id;
       //@}
 
       //@{
-      //! @name Fadein in microseconds
-      const IntType FADEIN_PRECISION = 1000000;
+      //! @name Fadein in seconds
+      const IntType FADEIN_PRECISION = 1;
 
       //! Default value- no fading
       const IntType FADEIN_DEFAULT = 0;
       //! Parameter name
-      extern const NameType FADEIN;
+      const auto FADEIN = PREFIX + "fadein"_id;
       //@}
 
       //@{
-      //! @name Fadeout in microseconds
-      const IntType FADEOUT_PRECISION = 1000000;
+      //! @name Fadeout in seconds
+      const IntType FADEOUT_PRECISION = 1;
 
       //! Default value- no fading
       const IntType FADEOUT_DEFAULT = 0;
       //! Parameter name
-      extern const NameType FADEOUT;
+      const auto FADEOUT = PREFIX + "fadeout"_id;
       //@}
-      
+
       //@{
       //! @name Gain in percents
       const IntType GAIN_PRECISION = 100;
-      
+
       //! Default value - no gain
       const IntType GAIN_DEFAULT = GAIN_PRECISION;
       //! Parameter name
-      extern const NameType GAIN;
+      const auto GAIN = PREFIX + "gain"_id;
       //@}
-      
+
       //@{
       const IntType SILENCE_LIMIT_PRECISION = 1;
-      
+
       //! Default value - no silence detection
       const IntType SILENCE_LIMIT_DEFAULT = 0;
       //! Parameter name
-      extern const NameType SILENCE_LIMIT;
+      const auto SILENCE_LIMIT = PREFIX + "silencelimit"_id;
       //@}
-    }
-  }
-}
+    }  // namespace Sound
+  }    // namespace ZXTune
+}  // namespace Parameters

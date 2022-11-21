@@ -52,7 +52,6 @@ public final class AsyncPlayer implements Player {
 
   @Override
   public void setSource(SamplesSource src) {
-    src.initialize(target.getSampleRate());
     synchronized(state) {
       source.set(src);
       seekRequest.set(null);
@@ -156,9 +155,12 @@ public final class AsyncPlayer implements Player {
         final SamplesSource src = source.get();
         maybeSeek(src);
         final short[] buf = target.getBuffer();
+        final TimeStamp pos = src.getPosition();
         if (src.getSamples(buf)) {
           if (!commitSamples()) {
             break;
+          } else if (pos.compareTo(src.getPosition()) > 0) {
+            events.onStart();// looped
           }
         } else {
           events.onFinish();
@@ -170,7 +172,7 @@ public final class AsyncPlayer implements Player {
       }
     } catch (InterruptedException e) {
       if (isStarted()) {
-        Log.w(TAG, e,"Interrupted transfer cycle");
+        Log.w(TAG, e, "Interrupted transfer cycle");
       }
     } catch (Exception e) {
       events.onError(e);

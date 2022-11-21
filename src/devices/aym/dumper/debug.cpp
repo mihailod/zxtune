@@ -1,18 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  Debug stream dumper implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Debug stream dumper implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "devices/aym/dumper/dump_builder.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//std includes
+// std includes
 #include <algorithm>
 
 namespace
@@ -21,28 +21,25 @@ namespace
   {
     return sym >= 10 ? 'A' + sym - 10 : '0' + sym;
   }
-}
+}  // namespace
 
-namespace Devices
-{
-namespace AYM
+namespace Devices::AYM
 {
   class DebugDumpBuilder : public FramedDumpBuilder
   {
   public:
     DebugDumpBuilder()
       : FrameNumber()
-    {
-    }
-    
+    {}
+
     void Initialize() override
     {
-      static const std::string HEADER("000102030405060708090a0b0c0d\n");
+      static const String HEADER("000102030405060708090a0b0c0d\n");
       Data.assign(HEADER.begin(), HEADER.end());
       FrameNumber = 0;
     }
 
-    void GetResult(Dump& data) const override
+    void GetResult(Binary::Dump& data) const override
     {
       data = Data;
     }
@@ -54,7 +51,7 @@ namespace AYM
       {
         AddNochangesMessage();
       }
-      Dump str(Registers::TOTAL * 2, ' ');
+      Binary::Dump str(Registers::TOTAL * 2, ' ');
       for (Registers::IndicesIterator it(update); it; ++it)
       {
         const uint8_t val = update[*it];
@@ -64,6 +61,7 @@ namespace AYM
       AddData(str);
       AddEndOfFrame();
     }
+
   private:
     void AddNochangesMessage()
     {
@@ -71,7 +69,7 @@ namespace AYM
       AddEndOfFrame();
     }
 
-    void AddData(const Dump& str)
+    void AddData(const Binary::Dump& str)
     {
       std::copy(str.begin(), str.end(), std::back_inserter(Data));
     }
@@ -81,8 +79,9 @@ namespace AYM
       Data.push_back('\n');
       ++FrameNumber;
     }
+
   private:
-    Dump Data;
+    Binary::Dump Data;
     uint_t FrameNumber;
   };
 
@@ -91,5 +90,4 @@ namespace AYM
     const FramedDumpBuilder::Ptr builder = MakePtr<DebugDumpBuilder>();
     return CreateDumper(params, builder);
   }
-}
-}
+}  // namespace Devices::AYM

@@ -1,9 +1,9 @@
 #basic definitions for tools
-tools.cxx ?= $($(platform).$(arch).execprefix)clang++
-tools.cc ?= $($(platform).$(arch).execprefix)clang
+tools.cxx ?= $(tools.cxxwrapper) $($(platform).$(arch).execprefix)clang++
+tools.cc ?= $(tools.ccwrapper) $($(platform).$(arch).execprefix)clang
 tools.ld ?= $($(platform).$(arch).execprefix)clang++
 tools.ar ?= $($(platform).$(arch).execprefix)ar
-tools.objcopy ?= $($(platform).$(arch).execprefix)echo # STUB!
+tools.objcopy ?= $($(platform).$(arch).execprefix)objcopy
 tools.strip ?= $($(platform).$(arch).execprefix)strip
 
 LINKER_BEGIN_GROUP ?= -Wl,'-('
@@ -43,12 +43,6 @@ DEFINES = $(defines) $(defines.$(platform)) $(defines.$(platform).$(arch))
 INCLUDES_DIRS = $(sort $(includes.dirs) $(includes.dirs.$(platform)) $(includes.dirs.$(notdir $1)))
 INCLUDES_FILES = $(includes.files) $(includes.files.$(platform))
 
-linux.cxx.flags += -stdlib=libstdc++
-linux.ld.flags += -stdlib=libstdc++
-
-darwin.cxx.flags += -stdlib=libc++
-darwin.ld.flags += -stdlib=libc++
-
 #setup flags
 CCFLAGS = -g $(CXX_MODE_FLAGS) $(cxx_flags) $($(platform).cxx.flags) $($(platform).$(arch).cxx.flags) \
 	$(addprefix -D,$(DEFINES)) \
@@ -56,7 +50,7 @@ CCFLAGS = -g $(CXX_MODE_FLAGS) $(cxx_flags) $($(platform).cxx.flags) $($(platfor
 	-W -Wall -Wextra -pipe \
 	$(addprefix -I,$(INCLUDES_DIRS)) $(addprefix -include ,$(INCLUDES_FILES))
 
-CXXFLAGS = $(CCFLAGS) -std=c++11 -fvisibility-inlines-hidden
+CXXFLAGS = $(CCFLAGS) -std=c++17 -fvisibility-inlines-hidden
 
 ARFLAGS := crus
 LDFLAGS = $(LD_MODE_FLAGS) $($(platform).ld.flags) $($(platform).$(arch).ld.flags) $(ld_flags)
@@ -68,11 +62,15 @@ build_obj_cmd_cc = $(tools.cc) $(CCFLAGS) -c $1 -o $2
 build_lib_cmd = $(tools.ar) $(ARFLAGS) $2 $1
 link_cmd = $(tools.ld) $(LDFLAGS) -o $@ $(OBJECTS) $(RESOURCES) \
         -L$(libraries.dir) $(LINKER_BEGIN_GROUP) $(addprefix -l,$(libraries)) $(LINKER_END_GROUP) \
+        $(if $(libraries.static),$(LINKER_BEGIN_GROUP) $(addprefix -l:,$(foreach l,$(libraries.static),$(call makelib_name,$(l)))) $(LINKER_END_GROUP)) \
         $(addprefix -L,$(libraries.dirs.$(platform)))\
         $(LINKER_BEGIN_GROUP) $(addprefix -l,$(sort $(libraries.$(platform)))) $(LINKER_END_GROUP)\
 	$(if $(libraries.dynamic),-L$(output_dir) $(addprefix -l,$(libraries.dynamic)),)
 
-postlink_cmd = $(tools.strip) $@ && touch $@.pdb
+#specify postlink command- generate pdb file
+postlink_cmd ?= $(tools.objcopy) --only-keep-debug $@ $@.pdb && $(sleep_cmd) && \
+	$(tools.objcopy) --strip-all $@ && $(sleep_cmd) && \
+	$(tools.objcopy) --add-gnu-debuglink=$@.pdb $@
 
 #include generated dependensies
 include $(wildcard $(objects_dir)/*.d)

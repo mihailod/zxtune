@@ -3,17 +3,11 @@ package app.zxtune.core.jni;
 import java.lang.annotation.Native;
 import java.nio.ByteBuffer;
 
+import app.zxtune.TimeStamp;
 import app.zxtune.core.Module;
-import app.zxtune.core.ModuleDetectCallback;
 import app.zxtune.core.Player;
-import app.zxtune.core.Properties;
-import app.zxtune.core.ResolvingException;
 
-public final class JniModule implements Module {
-
-  static {
-    JniLibrary.load();
-  }
+final class JniModule implements Module {
 
   @Native
   private final int handle;
@@ -23,10 +17,6 @@ public final class JniModule implements Module {
     JniGC.register(this, handle);
   }
 
-  public static native JniModule load(ByteBuffer data, String subpath) throws ResolvingException;
-
-  public static native void detect(ByteBuffer data, ModuleDetectCallback callback);
-
   @Override
   public final void release() {
     close(handle);
@@ -35,16 +25,14 @@ public final class JniModule implements Module {
   static native void close(int handle);
 
   @Override
-  public long getDurationInMs() {
-    final long frameDuration = getProperty(Properties.Sound.FRAMEDURATION,
-        Properties.Sound.FRAMEDURATION_DEFAULT) / 1000;
-    return frameDuration * getDuration();
+  public TimeStamp getDuration() {
+    return TimeStamp.fromMilliseconds(getDurationMs());
   }
 
-  private native int getDuration();
+  private native int getDurationMs();
 
   @Override
-  public native Player createPlayer();
+  public native Player createPlayer(int samplerate);
 
   @Override
   public native long getProperty(String name, long defVal);

@@ -5,6 +5,67 @@ Annotation:
 [-] - removed feature/rudiment
 [*] - fix/improvement
 
+--- Rev5020 from 28.09.2022
+
+[*] Fixed playback of multitrack .hes files
+[*] Fixed playback of some .usf and .vgm files
+[*] zxtune-qt: asynchronous playlist items loading
+[*] zxtune123: fixed commandline parameters processing
+[+] zxtune-android: added playlist filter
+[+] zxtune-android: added support of external equalizers
+[*] zxtune-android: added confirmation alerts on some playlist operations
+[*] zxtune-android: added persistent storage location request on playlist saving when required
+[*] zxtune-android: fixed ringtone creation on modern Android versions
+[*] zxtune-android: improved 'open with' functionality support
+
+--- Rev5010 from 20.03.2022
+
+[+] Added support of more than 150 formats from vgmstream library
+[*] Enabled plugins emulation in OpenMPT
+[*] Various memory and speed optimizations in core
+[*] zxtune-qt: migrated to Qt5
+[*] zxtune-android: reworked local storages enumeration
+[*] zxtune-android: Android 11 support
+[*] zxtune-android: added browser notifications about possible problems
+
+--- Rev5000 from 06.08.2021
+
+[+] Added support of Digital Symphony (DSYM) and Symphonie (SYMMOD) formats
+[+] Added support of FMADPCM tracks in FSB containers
+[*] Updated libmpt library
+[*] Improved resampler
+[+] zxtune-android: added Portuguese translation
+[*] zxtune-android: reworked preferences structure
+[*] zxtune-android: improved memory usage and startup time
+[*] zxtune-android: fixed found and reported problems
+
+--- Rev4990 from 25.03.2021
+
+[+] Added support of NCSF format
+[*] Fixed crackling while GSF playback (GH#2185)
+[*] Fixed found and reported crashes
+[*] zxtune-android: improved startup time
+
+--- Rev4980 from 16.02.2021
+
+[+] Added support of AMS, DSM, MT2, PLM, J2B, FMT, C67 and MO3 formats
+[*] Using libopenmpt for almost all the tracker formats playback
+[*] zxtune-android: fix playlist statistics
+
+--- Rev4970 from 02.11.2020
+
+[+] Added fadein, fadeout and preamp control
+[*] Reworked modules duration and playback position processing 
+[*] zxtune-android: fixed selection menu for browser
+[*] zxtune-android: fixed saved playlists navigation
+[*] zxtune-android: fixed high memory usage while scanning
+
+--- Rev4960 from 10.08.2020
+
+[+] Added support of S98 format
+[+] zxtune-android: added s98 tracks archive to joshw.info catalogues
+[*] zxtune-android: fixed found and reported problems
+
 --- Rev4950 from 14.07.2020
 
 [+] Full support of VGM format chips and versions

@@ -1,44 +1,40 @@
 /**
-* 
-* @file
-*
-* @brief  SSF parser implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SSF parser implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/chiptune/emulation/segasaturnsoundformat.h"
-//common includes
+// common includes
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <binary/format_factories.h>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   namespace SegaSaturnSoundFormat
   {
-    const std::string FORMAT(
-      "'P'S'F"
-      "11"
-    );
-    
+    const Char DESCRIPTION[] = "Sega Saturn Sound Format";
+    const auto FORMAT =
+        "'P'S'F"
+        "11"
+        ""_sv;
+
     class Decoder : public Formats::Chiptune::Decoder
     {
     public:
       Decoder()
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
-      {
-      }
+      {}
 
       String GetDescription() const override
       {
-        return Text::SEGASATURNSOUNDFORMAT_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -46,23 +42,23 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Format->Match(rawData);
       }
 
       Formats::Chiptune::Container::Ptr Decode(const Binary::Container& /*rawData*/) const override
       {
-        return Formats::Chiptune::Container::Ptr();//TODO
+        return Formats::Chiptune::Container::Ptr();  // TODO
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
-  }
+  }  // namespace SegaSaturnSoundFormat
 
   Decoder::Ptr CreateSSFDecoder()
   {
     return MakePtr<SegaSaturnSoundFormat::Decoder>();
   }
-}
-}
+}  // namespace Formats::Chiptune

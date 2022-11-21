@@ -1,22 +1,22 @@
 /**
-* 
-* @file
-*
-* @brief  DAC-based devices support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  DAC-based devices support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <devices/state.h>
+// library includes
 #include <devices/dac/sample.h>
+#include <math/fixedpoint.h>
 #include <sound/mixer.h>
 #include <time/instant.h>
 
-//supporting for multichannel sample-based DAC
+// supporting for multichannel sample-based DAC
 namespace Devices
 {
   namespace DAC
@@ -36,8 +36,7 @@ namespace Devices
         , SampleNum()
         , PosInSample()
         , Level()
-      {
-      }
+      {}
 
       enum Flags
       {
@@ -51,6 +50,8 @@ namespace Devices
 
         ALL_PARAMETERS = 127
       };
+
+      using LevelType = Math::FixedPoint<uint8_t, 100>;
 
       uint_t Channel;
       uint_t Mask;
@@ -106,12 +107,12 @@ namespace Devices
       Channels Data;
     };
 
-    class Chip : public StateSource
+    class Chip
     {
     public:
       typedef std::shared_ptr<Chip> Ptr;
 
-      ~Chip() override = default;
+      virtual ~Chip() = default;
 
       /// Set sample for work
       virtual void SetSample(uint_t idx, Sample::Ptr sample) = 0;
@@ -124,6 +125,9 @@ namespace Devices
 
       /// reset internal state to initial
       virtual void Reset() = 0;
+
+      /// Render rest data and return result
+      virtual Sound::Chunk RenderTill(Stamp stamp) = 0;
     };
 
     class ChipParameters
@@ -140,7 +144,7 @@ namespace Devices
     };
 
     /// Virtual constructors
-    Chip::Ptr CreateChip(ChipParameters::Ptr params, Sound::ThreeChannelsMixer::Ptr mixer, Sound::Receiver::Ptr target);
-    Chip::Ptr CreateChip(ChipParameters::Ptr params, Sound::FourChannelsMixer::Ptr mixer, Sound::Receiver::Ptr target);
-  }
-}
+    Chip::Ptr CreateChip(ChipParameters::Ptr params, Sound::ThreeChannelsMixer::Ptr mixer);
+    Chip::Ptr CreateChip(ChipParameters::Ptr params, Sound::FourChannelsMixer::Ptr mixer);
+  }  // namespace DAC
+}  // namespace Devices

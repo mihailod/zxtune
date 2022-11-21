@@ -1,54 +1,51 @@
 /**
-* 
-* @file
-*
-* @brief  ZX-State snapshots support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ZX-State snapshots support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+// local includes
 #include "formats/archived/zxstate_supp.h"
-//common includes
+// common includes
 #include <contract.h>
 #include <error.h>
 #include <make_ptr.h>
-//library includes
+// library includes
+#include <binary/compression/zlib_container.h>
 #include <binary/container_base.h>
 #include <binary/container_factories.h>
 #include <binary/format_factories.h>
 #include <binary/input_stream.h>
-#include <binary/compression/zlib_container.h>
 #include <debug/log.h>
 #include <formats/archived.h>
 #include <strings/format.h>
-//std includes
+// std includes
 #include <cstring>
 #include <list>
 #include <map>
 #include <numeric>
 #include <sstream>
-//boost includes
+// boost includes
 #include <boost/range/size.hpp>
-//text include
-#include <formats/text/archived.h>
 
-namespace Formats
-{
-namespace Archived
+namespace Formats::Archived
 {
   namespace ZXState
   {
     const Debug::Stream Dbg("Formats::Archived::ZXState");
 
-    const std::string FORMAT(
-      "'Z'X'S'T" //signature
-      "01"       //major
-      "00-04"    //minor
-      "00-10"    //machineId
-      "%0000000x"//flags
-    );
+    const Char DESCRIPTION[] = "SZX (ZX-State)";
+    const auto FORMAT =
+        "'Z'X'S'T"   // signature
+        "01"         // major
+        "00-04"      // minor
+        "00-10"      // machineId
+        "%0000000x"  // flags
+        ""_sv;
 
     struct DataBlockDescription
     {
@@ -62,8 +59,7 @@ namespace Archived
         , Size()
         , IsCompressed()
         , UncompressedSize()
-      {
-      }
+      {}
     };
 
     class ChunksVisitor
@@ -85,13 +81,12 @@ namespace Archived
     public:
       explicit ChunksSet(const Binary::Container& data)
         : Data(data)
-      {
-      }
+      {}
 
       std::size_t Parse(ChunksVisitor& visitor) const
       {
         ChunksIterator iterator(Data);
-        for (std::size_t size = iterator.GetPosition(); ; size = iterator.GetPosition())
+        for (std::size_t size = iterator.GetPosition();; size = iterator.GetPosition())
         {
           if (const Chunk* cur = iterator.GetNext())
           {
@@ -104,6 +99,7 @@ namespace Archived
         }
         return 0;
       }
+
     private:
       static bool ParseChunk(const Chunk& cur, ChunksVisitor& visitor)
       {
@@ -263,7 +259,7 @@ namespace Archived
         {
           return visitor.Visit(*z80regs);
         }
-        else // unknown chunk
+        else  // unknown chunk
         {
           return false;
         }
@@ -276,7 +272,7 @@ namespace Archived
         {
           if (targetSize != 0x4000 && targetSize != 0x2000)
           {
-            //invalid size
+            // invalid size
             return false;
           }
           DataBlockDescription blk;
@@ -326,18 +322,18 @@ namespace Archived
       {
         DataBlockDescription romBlk;
         romBlk.Content = ch.Data;
-        romBlk.Size = fromLE(ch.FlashSize);
-        romBlk.IsCompressed = 0 != (fromLE(ch.Flags) & ch.COMPRESSED);
+        romBlk.Size = ch.FlashSize;
+        romBlk.IsCompressed = 0 != (ch.Flags & ch.COMPRESSED);
         romBlk.UncompressedSize = ch.DUMPSIZE;
         if (!visitor.Visit(ch, ROM_SUFFIX, romBlk))
         {
           return false;
         }
-        const uint32_t* const romDescr = safe_ptr_cast<const uint32_t*>(ch.Data + romBlk.Size);
+        const auto* const romDescr = safe_ptr_cast<const le_uint32_t*>(ch.Data + romBlk.Size);
         DataBlockDescription ramBlk;
         ramBlk.Content = romDescr + 1;
         ramBlk.Size = *romDescr;
-        ramBlk.IsCompressed = 0 != (fromLE(ch.Flags) & ch.COMPRESSED_RAM);
+        ramBlk.IsCompressed = 0 != (ch.Flags & ch.COMPRESSED_RAM);
         ramBlk.UncompressedSize = ch.DUMPSIZE;
         return visitor.Visit(ch, RAM_SUFFIX, ramBlk);
       }
@@ -348,18 +344,18 @@ namespace Archived
         typedef ChunkTraits<ChunkType> Traits;
         DataBlockDescription ramBlk;
         ramBlk.Content = Traits::GetData(ch);
-        ramBlk.Size = fromLE(ch.RamDataSize);
+        ramBlk.Size = ch.RamDataSize;
         ramBlk.IsCompressed = Traits::IsDataCompressed(ch);
         ramBlk.UncompressedSize = ch.RAMSIZE;
         if (!visitor.Visit(ch, RAM_SUFFIX, ramBlk))
         {
           return false;
         }
-        if (0 != (fromLE(ch.Flags) & ch.CUSTOMROM))
+        if (0 != (ch.Flags & ch.CUSTOMROM))
         {
           DataBlockDescription romBlk;
           romBlk.Content = Traits::GetData(ch) + ramBlk.Size;
-          romBlk.Size = fromLE(ch.RomDataSize);
+          romBlk.Size = ch.RomDataSize;
           romBlk.IsCompressed = Traits::IsDataCompressed(ch);
           romBlk.UncompressedSize = ch.ROMSIZE;
           if (!visitor.Visit(ch, ROM_SUFFIX, romBlk))
@@ -388,6 +384,7 @@ namespace Archived
           return true;
         }
       }
+
     private:
       class ChunksIterator
       {
@@ -395,7 +392,7 @@ namespace Archived
         explicit ChunksIterator(const Binary::Container& container)
           : Stream(container)
         {
-          const Header& hdr = Stream.ReadField<Header>();
+          const auto& hdr = Stream.Read<Header>();
           Require(hdr.Id == Header::SIGNATURE);
           Dbg("ZXState container ver %1%.%2%", uint_t(hdr.Major), uint_t(hdr.Minor));
         }
@@ -407,8 +404,8 @@ namespace Archived
           {
             return nullptr;
           }
-          const Chunk& chunk = Stream.ReadField<Chunk>();
-          const std::size_t chunkSize = fromLE(chunk.Size);
+          const auto& chunk = Stream.Read<Chunk>();
+          const std::size_t chunkSize = chunk.Size;
           if (rest < sizeof(Chunk) + chunkSize)
           {
             return nullptr;
@@ -421,14 +418,16 @@ namespace Archived
         {
           return Stream.GetPosition();
         }
+
       private:
         Binary::InputStream Stream;
       };
+
     private:
       const Binary::Container& Data;
     };
 
-    const std::size_t MAX_DECOMPRESS_SIZE = 2 * 1048576;//2M
+    const std::size_t MAX_DECOMPRESS_SIZE = 2 * 1048576;  // 2M
 
     Binary::Container::Ptr DecompressData(const DataBlockDescription& blk)
     {
@@ -472,13 +471,13 @@ namespace Archived
     class SingleBlockFile : public Archived::File
     {
     public:
-      SingleBlockFile(Binary::Container::Ptr archive, String name, DataBlockDescription  block)
+      SingleBlockFile(Binary::Container::Ptr archive, String name, DataBlockDescription block)
         : Data(std::move(archive))
         , Name(std::move(name))
         , Block(std::move(block))
       {
-        Dbg("Created file '%1%', size=%2%, packed size=%3%, compression=%4%",
-          Name, Block.UncompressedSize, Block.Size, Block.IsCompressed);
+        Dbg("Created file '%1%', size=%2%, packed size=%3%, compression=%4%", Name, Block.UncompressedSize, Block.Size,
+            Block.IsCompressed);
       }
 
       String GetName() const override
@@ -496,6 +495,7 @@ namespace Archived
         Dbg("Decompressing '%1%' (%2% -> %3%)", Name, Block.Size, Block.UncompressedSize);
         return ExtractData(Block);
       }
+
     private:
       const Binary::Container::Ptr Data;
       const String Name;
@@ -537,7 +537,7 @@ namespace Archived
           const std::size_t unpacked = GetSize();
           Require(unpacked != 0);
           Dbg("Decompressing '%1%' (%2% blocks, %3% butes result)", Name, Blocks.size(), unpacked);
-          std::unique_ptr<Dump> result(new Dump(unpacked));
+          std::unique_ptr<Binary::Dump> result(new Binary::Dump(unpacked));
           auto* target = result->data();
           for (const auto& block : Blocks)
           {
@@ -554,6 +554,7 @@ namespace Archived
           return Binary::Container::Ptr();
         }
       }
+
     private:
       const Binary::Container::Ptr Data;
       const String Name;
@@ -562,22 +563,17 @@ namespace Archived
 
     String GenerateChunkName(const Chunk& ch)
     {
-      char syms[sizeof(ch.Id)];
-      std::memcpy(syms, &ch.Id, sizeof(ch.Id));
-      return FromCharArray(syms);
+      std::array<char, sizeof(ch.Id)> syms;
+      std::memcpy(syms.data(), &ch.Id, sizeof(ch.Id));
+      return String(syms.data(), syms.size());
     }
 
     template<class T>
     String GenerateChunkName(const Chunk& ch, const T& suffix)
     {
       const String base = GenerateChunkName(ch);
-      if (ch.Id == ChunkATASPRAM::SIGNATURE ||
-          ch.Id == ChunkCFRAM::SIGNATURE ||
-          ch.Id == ChunkDIVIDERAMPAGE::SIGNATURE ||
-          ch.Id == ChunkDOCK::SIGNATURE ||
-          ch.Id == ChunkGSRAMPAGE::SIGNATURE ||
-          ch.Id == ChunkRAMPAGE::SIGNATURE
-         )
+      if (ch.Id == ChunkATASPRAM::SIGNATURE || ch.Id == ChunkCFRAM::SIGNATURE || ch.Id == ChunkDIVIDERAMPAGE::SIGNATURE
+          || ch.Id == ChunkDOCK::SIGNATURE || ch.Id == ChunkGSRAMPAGE::SIGNATURE || ch.Id == ChunkRAMPAGE::SIGNATURE)
       {
         return base;
       }
@@ -591,8 +587,9 @@ namespace Archived
 
     typedef std::map<String, DataBlocks> NamedBlocksMap;
 
-    class FilledBlocks : public NamedBlocksMap
-                       , public ChunksVisitor
+    class FilledBlocks
+      : public NamedBlocksMap
+      , public ChunksVisitor
     {
     public:
       bool Visit(const Chunk& ch) override
@@ -625,15 +622,15 @@ namespace Archived
         (*this)[name].push_back(blk);
         return true;
       }
+
     private:
       class DataBlocksAdapter
       {
       public:
-        DataBlocksAdapter(DataBlocks& delegate, uint32_t type)
+        DataBlocksAdapter(DataBlocks& delegate, const Identifier& type)
           : Delegate(delegate)
           , Rampages(type == ChunkRAMPAGE::SIGNATURE)
-        {
-        }
+        {}
 
         void Add(uint_t idx, const DataBlockDescription& blk)
         {
@@ -644,14 +641,14 @@ namespace Archived
           }
           Delegate[orderNum] = blk;
         }
+
       private:
         std::size_t GetOrderNum(uint_t idx) const
         {
           static const std::size_t RAMPAGES[] = {2, 3, 1, 4, 5, 0};
-          return Rampages && idx < boost::size(RAMPAGES)
-            ? RAMPAGES[idx]
-            : idx;
+          return Rampages && idx < boost::size(RAMPAGES) ? RAMPAGES[idx] : idx;
         }
+
       private:
         DataBlocks& Delegate;
         const bool Rampages;
@@ -664,8 +661,7 @@ namespace Archived
       Container(Binary::Container::Ptr archive, NamedBlocksMap blocks)
         : BaseContainer(std::move(archive))
         , Blocks(std::move(blocks))
-      {
-      }
+      {}
 
       void ExploreFiles(const Container::Walker& walker) const override
       {
@@ -679,15 +675,14 @@ namespace Archived
       File::Ptr FindFile(const String& name) const override
       {
         const NamedBlocksMap::const_iterator it = Blocks.find(name);
-        return it != Blocks.end()
-          ? CreateFileOnBlocks(it->first, it->second)
-          : File::Ptr();
+        return it != Blocks.end() ? CreateFileOnBlocks(it->first, it->second) : File::Ptr();
       }
 
       uint_t CountFiles() const override
       {
         return static_cast<uint_t>(Blocks.size());
       }
+
     private:
       File::Ptr CreateFileOnBlocks(const String& name, const DataBlocks& blocks) const
       {
@@ -700,22 +695,22 @@ namespace Archived
           return MakePtr<MultiBlockFile>(Delegate, name, blocks);
         }
       }
+
     private:
       const NamedBlocksMap Blocks;
     };
-  }//namespace ZXState
+  }  // namespace ZXState
 
   class ZXStateDecoder : public Decoder
   {
   public:
     ZXStateDecoder()
       : Format(Binary::CreateFormat(ZXState::FORMAT))
-    {
-    }
+    {}
 
     String GetDescription() const override
     {
-      return Text::ZXSTATE_DECODER_DESCRIPTION;
+      return ZXState::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -743,6 +738,7 @@ namespace Archived
       }
       return ZXState::Container::Ptr();
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -751,5 +747,4 @@ namespace Archived
   {
     return MakePtr<ZXStateDecoder>();
   }
-}//namespace Archived
-}//namespace Formats
+}  // namespace Formats::Archived

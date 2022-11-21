@@ -23,7 +23,6 @@ package app.zxtune.fs;
 import android.content.Context;
 import android.net.Uri;
 import android.text.TextUtils;
-import android.text.format.Formatter;
 
 import androidx.annotation.Nullable;
 
@@ -31,6 +30,7 @@ import java.io.IOException;
 import java.util.List;
 
 import app.zxtune.R;
+import app.zxtune.Util;
 import app.zxtune.fs.http.MultisourceHttpProvider;
 import app.zxtune.fs.modland.CachingCatalog;
 import app.zxtune.fs.modland.Catalog;
@@ -38,7 +38,6 @@ import app.zxtune.fs.modland.Group;
 import app.zxtune.fs.modland.RemoteCatalog;
 import app.zxtune.fs.modland.Track;
 
-@Icon(R.drawable.ic_browser_vfs_modland)
 final class VfsRootModland extends StubObject implements VfsRoot {
 
   //private static final String TAG = VfsRootModland.class.getName();
@@ -104,6 +103,15 @@ final class VfsRootModland extends StubObject implements VfsRoot {
   @Override
   public VfsObject getParent() {
     return parent;
+  }
+
+  @Override
+  public Object getExtension(String id) {
+    if (VfsExtensions.ICON.equals(id)) {
+      return R.drawable.ic_browser_vfs_modland;
+    } else {
+      return super.getExtension(id);
+    }
   }
 
   @Override
@@ -281,12 +289,12 @@ final class VfsRootModland extends StubObject implements VfsRoot {
 
         @Override
         public String getName() {
-          return obj.name;
+          return obj.getName();
         }
 
         @Override
         public String getDescription() {
-          return context.getResources().getQuantityString(R.plurals.tracks, obj.tracks, obj.tracks);
+          return context.getResources().getQuantityString(R.plurals.tracks, obj.getTracks(), obj.getTracks());
         }
 
         @Override
@@ -296,7 +304,7 @@ final class VfsRootModland extends StubObject implements VfsRoot {
 
         @Override
         public void enumerate(final Visitor visitor) throws IOException {
-          group.queryTracks(obj.id, new Catalog.TracksVisitor() {
+          group.queryTracks(obj.getId(), new Catalog.TracksVisitor() {
 
             @Override
             public void setCountHint(int count) {
@@ -316,15 +324,15 @@ final class VfsRootModland extends StubObject implements VfsRoot {
             return this;
           } else {
             final String filename = path.get(POS_FILENAME);
-            final Track track = group.getTrack(obj.id, filename);
+            final Track track = group.getTrack(obj.getId(), filename);
             return new TrackFile(track);
           }
         }
 
         final Uri.Builder groupUri() {
           return groupLetterUri()
-              .appendPath(obj.name)
-              .appendQueryParameter(PARAM_ID, String.valueOf(obj.id));
+              .appendPath(obj.getName())
+              .appendQueryParameter(PARAM_ID, String.valueOf(obj.getId()));
         }
 
         private class TrackFile extends FreeTrackFile {
@@ -341,7 +349,7 @@ final class VfsRootModland extends StubObject implements VfsRoot {
           @Override
           Uri.Builder trackUri() {
             return groupUri()
-                .appendPath(track.filename);
+                .appendPath(track.getFilename());
           }
         }
       }
@@ -363,7 +371,7 @@ final class VfsRootModland extends StubObject implements VfsRoot {
 
     @Override
     public String getName() {
-      return track.filename;
+      return track.getFilename();
     }
 
     @Nullable
@@ -374,22 +382,22 @@ final class VfsRootModland extends StubObject implements VfsRoot {
 
     @Override
     public String getSize() {
-      return Formatter.formatShortFileSize(context, track.size);
+      return Util.formatSize(track.getSize());
     }
 
     @Override
     public Object getExtension(String id) {
       if (VfsExtensions.CACHE_PATH.equals(id)) {
-        return track.path;
+        return track.getPath();
       } else if (VfsExtensions.DOWNLOAD_URIS.equals(id)) {
-        return RemoteCatalog.getTrackUris(track.path);
+        return RemoteCatalog.getTrackUris(track.getPath());
       } else {
         return super.getExtension(id);
       }
     }
 
     Uri.Builder trackUri() {
-      return Storage.makeUri().encodedPath(track.path);
+      return Storage.makeUri().encodedPath(track.getPath());
     }
   }
 }

@@ -1,38 +1,37 @@
 /**
-* 
-* @file
-*
-* @brief Import .xspf implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Import .xspf implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "import.h"
+// local includes
 #include "container_impl.h"
+#include "import.h"
 #include "tags/xspf.h"
 #include "ui/utils.h"
-//common includes
+// common includes
 #include <error.h>
 #include <make_ptr.h>
-//library includes
+// library includes
 #include <debug/log.h>
 #include <module/attributes.h>
 #include <parameters/convert.h>
 #include <parameters/serialize.h>
-//std includes
+#include <tools/progress_callback_helpers.h>
+// std includes
 #include <cctype>
 #include <set>
-//qt includes
+// qt includes
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtCore/QString>
 #include <QtCore/QUrl>
 #include <QtCore/QXmlStreamReader>
-//text includes
-#include "text/text.h"
 
 namespace
 {
@@ -45,39 +44,30 @@ namespace
     LAST_VERSION = 1
   };
 
-  bool IsPlaylistEnabledProperty(const Parameters::NameType& name)
+  bool IsPlaylistEnabledProperty(Parameters::Identifier name)
   {
-    return name == Playlist::ATTRIBUTE_VERSION
-        || name == Playlist::ATTRIBUTE_NAME
-    ;
+    return name == Playlist::ATTRIBUTE_VERSION || name == Playlist::ATTRIBUTE_NAME;
   };
 
-  bool IsItemDisabledProperty(const Parameters::NameType& name)
+  bool IsItemDisabledProperty(Parameters::Identifier name)
   {
-    return name == Module::ATTR_CRC
-        || name == Module::ATTR_FIXEDCRC
-        || name == Module::ATTR_SIZE
-        || name == Module::ATTR_CONTAINER
-        || name == Module::ATTR_TYPE
-        || name == Module::ATTR_VERSION
-        || name == Module::ATTR_PROGRAM
-        || name == Module::ATTR_DATE
-    ;
+    return name == Module::ATTR_CRC || name == Module::ATTR_FIXEDCRC || name == Module::ATTR_SIZE
+           || name == Module::ATTR_CONTAINER || name == Module::ATTR_TYPE || name == Module::ATTR_VERSION
+           || name == Module::ATTR_PROGRAM || name == Module::ATTR_DATE;
   };
 
   class PropertiesFilter : public Parameters::Visitor
   {
   public:
-    typedef bool (*PropertyFilter)(const Parameters::NameType&);
-    
+    typedef bool (*PropertyFilter)(Parameters::Identifier);
+
     PropertiesFilter(Parameters::Visitor& delegate, PropertyFilter filter, bool match)
       : Delegate(delegate)
       , Filter(filter)
       , Match(match)
-    {
-    }
+    {}
 
-    void SetValue(const Parameters::NameType& name, Parameters::IntType val) override
+    void SetValue(Parameters::Identifier name, Parameters::IntType val) override
     {
       if (Pass(name))
       {
@@ -85,7 +75,7 @@ namespace
       }
     }
 
-    void SetValue(const Parameters::NameType& name, const Parameters::StringType& val) override
+    void SetValue(Parameters::Identifier name, StringView val) override
     {
       if (Pass(name))
       {
@@ -93,18 +83,20 @@ namespace
       }
     }
 
-    void SetValue(const Parameters::NameType& name, const Parameters::DataType& val) override
+    void SetValue(Parameters::Identifier name, Binary::View val) override
     {
       if (Pass(name))
       {
         Delegate.SetValue(name, val);
       }
     }
+
   private:
-    bool Pass(const Parameters::NameType& name) const
+    bool Pass(Parameters::Identifier name) const
     {
       return Match == Filter(name);
     }
+
   private:
     Parameters::Visitor& Delegate;
     const PropertyFilter Filter;
@@ -153,6 +145,7 @@ namespace
     {
       return Properties;
     }
+
   private:
     bool ParsePlaylist(Log::ProgressCallback& cb)
     {
@@ -187,7 +180,7 @@ namespace
     {
       assert(XML.isStartElement() && XML.name() == XSPF::TRACKLIST_TAG);
       const uint_t REPORT_PERIOD_ITEMS = 1000;
-      const Log::ProgressCallback::Ptr progress = Log::CreatePercentProgressCallback(File.size(), cb);
+      Log::PercentProgressCallback progress(File.size(), cb);
       for (uint_t count = 0; XML.readNextStartElement(); ++count)
       {
         const QStringRef& tagName = XML.name();
@@ -195,8 +188,8 @@ namespace
         {
           if (!ParseTrackItem())
           {
-            Dbg("Failed to parse trackitem: %1% at %2%:%3%",
-              FromQString(XML.errorString()), XML.lineNumber(), XML.columnNumber());
+            Dbg("Failed to parse trackitem: %1% at %2%:%3%", FromQString(XML.errorString()), XML.lineNumber(),
+                XML.columnNumber());
             return false;
           }
         }
@@ -207,7 +200,7 @@ namespace
         }
         if (++count >= REPORT_PERIOD_ITEMS)
         {
-          progress->OnProgress(XML.device()->pos());
+          progress.OnProgress(XML.device()->pos());
           count = 0;
         }
       }
@@ -245,11 +238,10 @@ namespace
     {
       assert(XML.isStartElement() && XML.name() == XSPF::ITEM_LOCATION_TAG);
       const QString inLocation = XML.readElementText();
-      const QString location = inLocation.startsWith(XSPF::EMBEDDED_PREFIX) ? File.absoluteFilePath() + inLocation : inLocation;
+      const QString location = inLocation.startsWith(XSPF::EMBEDDED_PREFIX) ? File.absoluteFilePath() + inLocation
+                                                                            : inLocation;
       const QUrl url(QUrl::fromPercentEncoding(location.toUtf8()));
-      const QString& itemLocation = url.isRelative()
-        ? BaseDir.absoluteFilePath(url.toString())
-        : url.toString();
+      const QString& itemLocation = url.isRelative() ? BaseDir.absoluteFilePath(url.toString()) : url.toString();
       return FromQString(itemLocation);
     }
 
@@ -261,7 +253,7 @@ namespace
         const String author = ConvertString(XML.readElementText());
         props.SetValue(Module::ATTR_AUTHOR, author);
         Dbg("  parsed author %1%", author);
-     }
+      }
       else if (attr == XSPF::ITEM_TITLE_TAG)
       {
         const String title = ConvertString(XML.readElementText());
@@ -311,8 +303,7 @@ namespace
         const String propNameStr = FromQString(propName.toString());
         const String propValStr = ConvertString(propValue);
         strings[propNameStr] = propValStr;
-        Dbg("  parsing extended property %1%='%2%'",
-          propNameStr, propValStr);
+        Dbg("  parsing extended property %1%='%2%'", propNameStr, propValStr);
       }
       Parameters::Convert(strings, props);
     }
@@ -320,32 +311,30 @@ namespace
     bool CheckForZXTuneExtension()
     {
       const QXmlStreamAttributes attributes = XML.attributes();
-      return attributes.value(QLatin1String(XSPF::APPLICATION_ATTR)) == Text::PLAYLIST_APPLICATION_ID;
+      return attributes.value(QLatin1String(XSPF::APPLICATION_ATTR)) == Playlist::APPLICATION_ID;
     }
 
     String ConvertString(const QString& input) const
     {
-      const QString decoded = Version >= VERSION_WITH_TEXT_FIELDS_ESCAPING
-        ? QUrl::fromPercentEncoding(input.toUtf8())
-        : input;
+      const QString decoded = Version >= VERSION_WITH_TEXT_FIELDS_ESCAPING ? QUrl::fromPercentEncoding(input.toUtf8())
+                                                                           : input;
       const String res = FromQString(decoded);
       String unescaped;
-      return Parameters::ConvertFromString(res, unescaped)
-        ? unescaped
-        : res;
+      return Parameters::ConvertFromString(res, unescaped) ? unescaped : res;
     }
+
   private:
     const QFileInfo File;
     const QDir BaseDir;
     QXmlStreamReader XML;
-    //context
+    // context
     Parameters::IntType Version;
     const Parameters::Container::Ptr Properties;
     const Playlist::IO::ContainerItems::RWPtr Items;
   };
 
-  Playlist::IO::Container::Ptr CreateXSPFPlaylist(Playlist::Item::DataProvider::Ptr provider,
-    const QFileInfo& fileInfo, Log::ProgressCallback& cb)
+  Playlist::IO::Container::Ptr CreateXSPFPlaylist(Playlist::Item::DataProvider::Ptr provider, const QFileInfo& fileInfo,
+                                                  Log::ProgressCallback& cb)
   {
     QFile device(fileInfo.absoluteFilePath());
     if (!device.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -368,10 +357,9 @@ namespace
 
   bool CheckXSPFByName(const QString& filename)
   {
-    static const QLatin1String XSPF_SUFFIX(XSPF::SUFFIX);
-    return filename.endsWith(XSPF_SUFFIX, Qt::CaseInsensitive);
+    return filename.endsWith(XSPF::SUFFIX, Qt::CaseInsensitive);
   }
-}
+}  // namespace
 
 namespace Playlist
 {
@@ -380,12 +368,11 @@ namespace Playlist
     Container::Ptr OpenXSPF(Item::DataProvider::Ptr provider, const QString& filename, Log::ProgressCallback& cb)
     {
       const QFileInfo info(filename);
-      if (!info.isFile() || !info.isReadable() ||
-          !CheckXSPFByName(info.fileName()))
+      if (!info.isFile() || !info.isReadable() || !CheckXSPFByName(info.fileName()))
       {
         return Container::Ptr();
       }
       return CreateXSPFPlaylist(provider, info, cb);
     }
-  }
-}
+  }  // namespace IO
+}  // namespace Playlist
