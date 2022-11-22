@@ -1,4 +1,6 @@
-cmake_minimum_required(VERSION 2.8.11 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.15 FATAL_ERROR)
+
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 project(foo_input_zxtune)
 
@@ -88,19 +90,27 @@ file(GLOB RES_RC "src/*.rc")
 
 set(LIBS asap gme he ht hvl lazyusf2 lhasa mgba sidplayfp snesspc v2m vgm vio2sf xmp z80ex zlib analysis binary binary_compression binary_format core core_plugins_archives core_plugins_players dbg devices_aym devices_beeper devices_dac devices_fm devices_saa devices_z80 formats_archived formats_archived_multitrack formats_chiptune formats_packed formats_multitrack l10n_stub module module_conversion module_players module_properties parameters platform_version sound strings tools)
 
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+set(ARCH "x64/")
+set(ARCH2 "-x64")
+else()
+set(ARCH "")
+set(ARCH2 "-Win32")
+endif()
+
 set(FOOBAR_SDK_LIBRARIES
-	optimized "${FOOBAR_SDK_ROOT}/foobar2000/SDK/Release/foobar2000_SDK.lib"
-	optimized "${FOOBAR_SDK_ROOT}/foobar2000/foobar2000_component_client/Release/foobar2000_component_client.lib"
-	optimized "${FOOBAR_SDK_ROOT}/foobar2000/helpers/Release/foobar2000_sdk_helpers.lib"
-	optimized "${FOOBAR_SDK_ROOT}/foobar2000/shared/shared.lib"
-	optimized "${FOOBAR_SDK_ROOT}/pfc/Release/pfc.lib"
-	optimized "${FOOBAR_SDK_ROOT}/libPPUI/Release/libPPUI.lib"
-	debug "${FOOBAR_SDK_ROOT}/foobar2000/SDK/Debug/foobar2000_SDK.lib"
-	debug "${FOOBAR_SDK_ROOT}/foobar2000/foobar2000_component_client/Debug/foobar2000_component_client.lib"
-	debug "${FOOBAR_SDK_ROOT}/foobar2000/helpers/Debug/foobar2000_sdk_helpers.lib"
-	debug "${FOOBAR_SDK_ROOT}/foobar2000/shared/shared.lib"
-	debug "${FOOBAR_SDK_ROOT}/pfc/Debug/pfc.lib"
-	debug "${FOOBAR_SDK_ROOT}/libPPUI/Debug/libPPUI.lib"
+	optimized "${FOOBAR_SDK_ROOT}/foobar2000/SDK/${ARCH}Release/foobar2000_SDK.lib"
+	optimized "${FOOBAR_SDK_ROOT}/foobar2000/foobar2000_component_client/${ARCH}Release/foobar2000_component_client.lib"
+	optimized "${FOOBAR_SDK_ROOT}/foobar2000/helpers/${ARCH}Release/foobar2000_sdk_helpers.lib"
+	optimized "${FOOBAR_SDK_ROOT}/foobar2000/shared/shared${ARCH2}.lib"
+	optimized "${FOOBAR_SDK_ROOT}/pfc/${ARCH}Release/pfc.lib"
+	optimized "${FOOBAR_SDK_ROOT}/libPPUI/${ARCH}Release/libPPUI.lib"
+	debug "${FOOBAR_SDK_ROOT}/foobar2000/SDK/${ARCH}Debug/foobar2000_SDK.lib"
+	debug "${FOOBAR_SDK_ROOT}/foobar2000/foobar2000_component_client/${ARCH}Debug/foobar2000_component_client.lib"
+	debug "${FOOBAR_SDK_ROOT}/foobar2000/helpers/${ARCH}Debug/foobar2000_sdk_helpers.lib"
+	debug "${FOOBAR_SDK_ROOT}/foobar2000/shared/shared${ARCH2}.lib"
+	debug "${FOOBAR_SDK_ROOT}/pfc/${ARCH}Debug/pfc.lib"
+	debug "${FOOBAR_SDK_ROOT}/libPPUI/${ARCH}Debug/libPPUI.lib"
 )
 
 add_library(foo_input_zxtune MODULE ${SRCS_CXX} ${SRCS_H} ${RES_RC})

@@ -99,6 +99,7 @@ public:
 	t_uint32 get_subsong(unsigned p_index);
 	void get_info(t_uint32 p_subsong, file_info& p_info, abort_callback& p_abort);
 	t_filestats get_file_stats(abort_callback & p_abort) { return m_file->get_stats(p_abort); }
+	t_filestats2 get_stats2(uint32_t f, abort_callback& a) { return m_file->get_stats2_(f, a); }
 
 	void decode_initialize(t_uint32 p_subsong, unsigned p_flags, abort_callback& p_abort);
 	bool decode_run(audio_chunk& p_chunk, abort_callback& p_abort);
@@ -110,7 +111,8 @@ public:
 
 	void retag_set_info(t_uint32 p_subsong, const file_info & p_info,abort_callback & p_abort) { throw exception_io_unsupported_format(); }
 	void retag_commit(abort_callback & p_abort) {}
-	
+	void remove_tags(abort_callback& p_abort) {}
+
 	static bool g_is_our_content_type(const char * p_content_type) { return false; } // match against supported mime types here
 	static bool g_is_our_path(const char* p_path, const char* p_extension);
 

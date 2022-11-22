@@ -3,7 +3,6 @@
 // Used by foo_input_zxtune.rc
 //
 #define IDD_MYPREFERENCES               101
-#define IDI_SCROLL                      102
 #define IDC_PLAYER_PLUGINS              1001
 
 // Next default values for new objects
