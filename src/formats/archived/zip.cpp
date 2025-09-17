@@ -21,6 +21,7 @@
 #include "make_ptr.h"
 #include "string_view.h"
 
+#include <cassert>
 #include <memory>
 #include <numeric>
 

@@ -19,6 +19,7 @@
 
 #include "byteorder.h"
 #include "make_ptr.h"
+#include "string_type.h"
 #include "string_view.h"
 
 #include <map>
