@@ -26,7 +26,7 @@ class LengthsTable:
     print('constexpr uint8_t GROUPS[] = {', end='')
     prev = None
     prevOffset = None
-    for durations in reversed(sorted(allDurations)):
+    for durations in sorted(allDurations, reverse=True):
       if prev and len(prev) > len(durations) and prev[0:len(durations)] == durations:
         print(f'\n// reuse +{prevOffset:#x} for {durations}', end='')
         result[durations] = prevOffset
@@ -54,14 +54,17 @@ class LengthsTable:
         yield d >> 7
 
 class EntriesTable:
-  GROUP_SIZE_MASK = 0xffff0000
-  GROUP_SIZE_SHIFT = 16
+  VALUE_BITS = 16
+  VALUE_MASK = (1 << VALUE_BITS) - 1
+  GROUP_SIZE_SHIFT = VALUE_BITS
+  GROUP_SIZE_BITS = 32 - VALUE_BITS
+  GROUP_SIZE_MASK = ((1 << GROUP_SIZE_BITS) - 1) << GROUP_SIZE_SHIFT
 
   @staticmethod
   def dump(songs):
     print(f'constexpr uint32_t GROUP_SIZE_SHIFT = {EntriesTable.GROUP_SIZE_SHIFT};')
     print(f'constexpr uint32_t GROUP_SIZE_MASK = {EntriesTable.GROUP_SIZE_MASK:#x};')
-    print(f'constexpr uint32_t VALUE_MASK = 0xffff;')
+    print(f'constexpr uint32_t VALUE_MASK = {EntriesTable.VALUE_MASK:#x};')
     print('constexpr uint64_t ENTRIES[] = {')
     for crc in sorted(songs.keys()):
       assert crc > 0
@@ -76,11 +79,11 @@ class EntriesTable:
     elements = len(song.durations)
     if elements == 1:
       res = song.durations[0]
-      assert res < EntriesTable.GROUP_SIZE_MASK
+      assert res <= EntriesTable.VALUE_MASK
       return res
     else:
-      # if more than 16 bit required, reduce bits for group size
-      assert song.groupOffset < EntriesTable.GROUP_SIZE_MASK
+      assert song.groupOffset <= EntriesTable.VALUE_MASK
+      assert elements < (1 << EntriesTable.GROUP_SIZE_BITS)
       return song.groupOffset | (elements << EntriesTable.GROUP_SIZE_SHIFT)
 
   @staticmethod
