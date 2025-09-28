@@ -44,4 +44,8 @@ else ifneq ($(android.minsdk),)
 $(error Invalid android.minsdk=$(android.minsdk))
 endif
 
+# 16k pages support
+android.arm64-v8a.ld.flags += -Wl,-z,max-page-size=16384
+android.x86_64.ld.flags += -Wl,-z,max-page-size=16384
+
 libraries.android += c m
