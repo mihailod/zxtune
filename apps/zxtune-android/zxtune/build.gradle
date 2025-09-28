@@ -5,7 +5,7 @@ apply plugin: 'com.google.devtools.ksp'
 android {
     compileSdk = 36
     buildToolsVersion = '36.0.0'
-    namespace 'app.zxtune'
+    namespace = 'app.zxtune'
 
     defaultConfig {
         applicationId "app.zxtune"
@@ -22,11 +22,11 @@ android {
     }
 
     buildFeatures {
-        renderScript false
-        shaders false
-        dataBinding true
-        aidl true
-        buildConfig true
+        renderScript = false
+        shaders = false
+        dataBinding = true
+        aidl = true
+        buildConfig = true
     }
 
     packagingOptions {
@@ -115,7 +115,8 @@ dependencies {
     testImplementation "junit:junit:$junit_version"
     testImplementation 'org.robolectric:robolectric:4.12.2'
     testImplementation "org.mockito.kotlin:mockito-kotlin:$mockito_version"
-    testImplementation 'androidx.test:core-ktx:1.6.1'
+    //noinspection GradleDependency minsdk19 since 1.6.0
+    testImplementation 'androidx.test:core-ktx:1.5.0'
     testImplementation 'androidx.arch.core:core-testing:2.2.0'
     // See https://developer.android.com/guide/fragments/test#configure
     //noinspection GradleDependency minsdk=19

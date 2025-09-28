@@ -45,7 +45,7 @@ android {
     }
 
     lintOptions {
-        checkReleaseBuilds false
+        checkReleaseBuilds = false
     }
 
     signingConfigs {
@@ -75,9 +75,9 @@ android {
     buildTypes {
         release {
             // Take config from flavor
-            signingConfig null
+            signingConfig = null
             minifyEnabled true
-            shrinkResources true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
         }
 
@@ -88,17 +88,17 @@ android {
         develop {
             minifyEnabled true
             debuggable true
-            signingConfig signingConfigs.release
+            signingConfig = signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules-develop.pro'
         }
     }
 
     lintOptions {
-        abortOnError false
+        abortOnError = false
     }
 
     dependenciesInfo {
-        includeInApk false
+        includeInApk = false
     }
 }
 
