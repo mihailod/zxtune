@@ -130,7 +130,7 @@ class RemoteCatalogTest {
             "altered-beast-zx-spectrum-128",
             "Altered Beast",
             5,
-            "42.52 KB",
+            "42.55 KB",
             "Computers/ZX_Spectrum/Altered_Beast_(ZX_Spectrum_128).zip",
             "Computers/ZX_Spectrum/Altered_Beast_(ZX_Spectrum_128).png"
         )

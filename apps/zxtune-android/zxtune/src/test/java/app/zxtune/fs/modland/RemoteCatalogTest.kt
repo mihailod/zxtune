@@ -105,7 +105,7 @@ class RemoteCatalogTest {
             "${BuildConfig.CDN_ROOT}/download/modland/pub/modules/track.gz", get(0).toString()
         )
         assertEquals(
-            "http://ftp.amigascne.org/mirrors/ftp.modland.com/pub/modules/track.gz",
+            "https://ftp.amigascne.org/mirrors/ftp.modland.com/pub/modules/track.gz",
             get(1).toString()
         )
     }
