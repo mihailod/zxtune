@@ -54,7 +54,7 @@ class PathTest {
                 )
                 assertEquals(
                     "getRemoteUris[1]",
-                    "https://www.prg.dtu.dk/HVSC/C64Music/DEMOS/0-9/1_45_Tune.sid",
+                    "https://hvsc.brona.dk/HVSC/C64Music/DEMOS/0-9/1_45_Tune.sid",
                     get(1).toString()
                 )
             }
@@ -70,7 +70,7 @@ private fun verifyRoot(path: app.zxtune.fs.httpdir.Path) = with(path) {
     with(getRemoteUris()) {
         assertEquals("getRemoteUris.length", 2, size)
         assertEquals("getRemoteUris[0]", "${BuildConfig.CDN_ROOT}/browse/hvsc/", get(0).toString())
-        assertEquals("getRemoteUris[1]", "https://www.prg.dtu.dk/HVSC/C64Music/", get(1).toString())
+        assertEquals("getRemoteUris[1]", "https://hvsc.brona.dk/HVSC/C64Music/", get(1).toString())
     }
     assertEquals("getLocalId", "", getLocalId())
     assertEquals("getUri", "hvsc:", getUri().toString())
@@ -90,7 +90,7 @@ private fun verifyDir(path: app.zxtune.fs.httpdir.Path) = with(path) {
         )
         assertEquals(
             "getRemoteUris[1]",
-            "https://www.prg.dtu.dk/HVSC/C64Music/dir/",
+            "https://hvsc.brona.dk/HVSC/C64Music/dir/",
             get(1).toString()
         )
     }
@@ -111,7 +111,7 @@ private fun verifyFile(path: app.zxtune.fs.httpdir.Path) = with(path) {
         )
         assertEquals(
             "getRemoteUris[1]",
-            "https://www.prg.dtu.dk/HVSC/C64Music/dir/file.sid",
+            "https://hvsc.brona.dk/HVSC/C64Music/dir/file.sid",
             get(1).toString()
         )
     }

@@ -26,9 +26,9 @@ def getAabAbiFilters() {
 
 android {
     // required for stripping
-    ndkVersion localProperties.getProperty("ndk.version", "")
+    ndkVersion = localProperties.getProperty("ndk.version", "")
     // store debug symbols in bundle
-    defaultConfig.ndk.debugSymbolLevel 'FULL'
+    defaultConfig.ndk.debugSymbolLevel = 'FULL'
 }
 
 enum PackagingType {
@@ -64,7 +64,7 @@ android {
             dimension 'packaging'
             versionNameSuffix '-fat'
             ndk.abiFilters getFatAbiFilters()
-            signingConfig signingConfigs.release
+            signingConfig = signingConfigs.release
             packagingType = PackagingType.FAT_APK
         }
 
@@ -74,7 +74,7 @@ android {
             dimension 'packaging'
             versionNameSuffix "-${name}"
             ndk.abiFilters getAabAbiFilters()
-            signingConfig signingConfigs.getByName("aab_${name}")
+            signingConfig = signingConfigs.getByName("aab_${name}")
             packagingType = PackagingType.BUNDLE
             nameTag = name
             versionCodeOffset = idx
@@ -86,7 +86,7 @@ android {
         splitted {
             dimension 'packaging'
             versionNameSuffix '-splitted'
-            signingConfig signingConfigs.release
+            signingConfig = signingConfigs.release
             packagingType = PackagingType.SPLIT_APK
         }
 
@@ -97,7 +97,7 @@ android {
             if (signingConfigs.fdroid.keyPassword == null) {
               println 'Use empty signing for fdroid'
             } else {
-              signingConfig signingConfigs.fdroid
+              signingConfig = signingConfigs.fdroid
             }
             packagingType = PackagingType.SPLIT_APK
             nameTag = 'fdroid'

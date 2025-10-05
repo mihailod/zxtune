@@ -11,19 +11,16 @@ import android.database.sqlite.SQLiteStatement
 import androidx.annotation.VisibleForTesting
 import androidx.room.Dao
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 import androidx.room.Query
 import app.zxtune.TimeStamp
+import app.zxtune.fs.dbhelpers.Timestamps.Lifetime
 
 class Timestamps @VisibleForTesting internal constructor(
-    readable: SQLiteDatabase,
-    writable: SQLiteDatabase
+    readable: SQLiteDatabase, writable: SQLiteDatabase
 ) {
     private object Table {
-        const val CREATE_QUERY = "CREATE TABLE timestamps (" +
-                "_id  TEXT PRIMARY KEY, " +
-                "stamp DATETIME NOT NULL" +
-                ");"
+        const val CREATE_QUERY =
+            "CREATE TABLE timestamps (" + "_id  TEXT PRIMARY KEY, " + "stamp DATETIME NOT NULL" + ");"
         const val QUERY_STATEMENT =
             "SELECT strftime('%s', 'now') - strftime('%s', stamp) FROM timestamps WHERE _id = ?;"
         const val INSERT_STATEMENT = "REPLACE INTO timestamps VALUES (?, CURRENT_TIMESTAMP);"
@@ -59,8 +56,7 @@ class Timestamps @VisibleForTesting internal constructor(
     }
 
     private inner class DbLifetime(
-        private val objId: String,
-        private val TTL: TimeStamp
+        private val objId: String, private val TTL: TimeStamp
     ) : Lifetime {
         override val isExpired
             get() = try {
@@ -75,23 +71,16 @@ class Timestamps @VisibleForTesting internal constructor(
     // TODO: make the only implementation
     @Dao
     abstract class DAO {
-        @Entity(tableName = "timestamps")
-        class Record {
-            @PrimaryKey
-            var id: String = ""
-            var stamp: Long = 0
-        }
-
         @Query("SELECT strftime('%s') - stamp FROM timestamps WHERE id = :id")
         protected abstract fun queryAge(id: String): Long?
 
         @Query("REPLACE INTO timestamps VALUES (:id, strftime('%s'))")
         protected abstract fun touch(id: String)
 
-        private inner class LifetimeImpl(private val objId: String, private val TTL: TimeStamp) :
+        private inner class LifetimeImpl(private val objId: String, private val ttl: TimeStamp) :
             Lifetime {
             override val isExpired
-                get() = queryAge(objId)?.let { TimeStamp.fromSeconds(it) > TTL } ?: true
+                get() = queryAge(objId)?.let { TimeStamp.fromSeconds(it) > ttl } ?: true
 
             override fun update() = touch(objId)
         }
@@ -99,3 +88,6 @@ class Timestamps @VisibleForTesting internal constructor(
         fun getLifetime(id: String, ttl: TimeStamp): Lifetime = LifetimeImpl(id, ttl)
     }
 }
+
+@Entity(tableName = "timestamps", primaryKeys = ["id"])
+class TimestampRecord(val id: String, val stamp: Long)

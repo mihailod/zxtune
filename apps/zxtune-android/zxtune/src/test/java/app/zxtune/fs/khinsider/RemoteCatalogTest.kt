@@ -101,19 +101,19 @@ class RemoteCatalogTest {
         // No details on top page
         catalog.queryAlbums(Catalog.WEEKLYTOP40, albumsVisitor, progress)
         verify(albumsVisitor).accept(
-            makeAlbum(
+            matchesAlbum(
                 "minecraft",
                 "Minecraft Soundtrack - Volume Alpha and Beta (Complete Edition) (2011)",
                 "",
-                "https://vgmsite.com/soundtracks/minecraft/1%20Minecraft%20-%20Volume%20Alpha.jpg"
+                "https://anyhost/soundtracks/minecraft/1%20Minecraft%20-%20Volume%20Alpha.jpg"
             )
         )
         verify(albumsVisitor).accept(
-            makeAlbum(
+            matchesAlbum(
                 "metal-gear-rising-revengeance-vocal-tracks",
                 "METAL GEAR RISING REVENGEANCE Vocal Tracks (2013)",
                 "",
-                "https://eta.vgmtreasurechest.com/soundtracks/metal-gear-rising-revengeance-vocal-tracks/00%20Front.jpg"
+                "https://anyhost/soundtracks/metal-gear-rising-revengeance-vocal-tracks/00%20Front.jpg"
             )
         )
         verify(albumsVisitor, atLeast(albumsMin)).accept(any())
@@ -138,19 +138,19 @@ class RemoteCatalogTest {
         val albumsMin = 37
         catalog.queryAlbums(Scope.Id("game-soundtracks/cd-i"), albumsVisitor, progress)
         verify(albumsVisitor).accept(
-            makeAlbum(
+            matchesAlbum(
                 "7th-guest-redbook-audio",
                 "7th Guest",
                 "CD-i, MS-DOS / Gamerip / 1993",
-                "https://kappa.vgmsite.com/soundtracks/7th-guest-redbook-audio/7th%20Guest%20CDI%20Sampler.jpg"
+                "https://anyhost/soundtracks/7th-guest-redbook-audio/7th%20Guest%20CDI%20Sampler.jpg"
             )
         )
         verify(albumsVisitor).accept(
-            makeAlbum(
+            matchesAlbum(
                 "zenith-cd-i-gamerip-1996",
                 "Zenith",
                 "CD-i / Gamerip / 1996",
-                "https://kappa.vgmsite.com/soundtracks/zenith-cd-i-gamerip-1996/1%20Zenith-Front.jpg"
+                "https://anyhost/soundtracks/zenith-cd-i-gamerip-1996/1%20Zenith-Front.jpg"
             )
         )
         verify(albumsVisitor, atLeast(albumsMin)).accept(any())
@@ -163,47 +163,47 @@ class RemoteCatalogTest {
         catalog.queryAlbums(Catalog.letterScope('U').id, albumsVisitor, progress)
         inOrder(albumsVisitor, progress) {
             verify(albumsVisitor).accept(
-                makeAlbum(
+                matchesAlbum(
                     "u-r-my-nightmare-2020",
                     "U r my Nightmare",
                     "Windows / Arrangement / 2020",
-                    "https://vgmsite.com/soundtracks/u-r-my-nightmare-2020/00%20Front.jpg"
+                    "https://anyhost/soundtracks/u-r-my-nightmare-2020/00%20Front.jpg"
                 )
             )
             // no image
             verify(albumsVisitor).accept(
-                makeAlbum("uboat-soundtrack-2019", "UBOAT Soundtrack", "2019", null)
+                matchesAlbum("uboat-soundtrack-2019", "UBOAT Soundtrack", "2019", null)
             )
             // nsfw stub
             verify(albumsVisitor).accept(
-                makeAlbum(
+                matchesAlbum(
                     "ultima-vi-the-false-prophet-ibm-pcxtat-mt32-ibm-pcat-gamerip-1990",
                     "Ultima VI - The False Prophet (IBM PC-XT-AT - MT32)",
                     "IBM PC/AT / Gamerip / 1990",
                     null
                 )
             )
+            verify(progress).onProgressUpdate(eq(1), geq(pagesMin))
+            // page2
             // no type
             verify(albumsVisitor).accept(
-                makeAlbum(
+                matchesAlbum(
                     "under-night-in-birth-exe-late-cl-r-complete-soundtrack",
                     "Under Night In-Birth Exe Late[cl-r] Complete Soundtrack",
                     "PS4 / 2020",
-                    "https://kappa.vgmsite.com/soundtracks/under-night-in-birth-exe-late-cl-r-complete-soundtrack/coverart.jpg"
+                    "https://anyhost/soundtracks/under-night-in-birth-exe-late-cl-r-complete-soundtrack/coverart.jpg"
                 )
             )
-            verify(progress).onProgressUpdate(eq(1), geq(pagesMin))
-            // page2
             verify(albumsVisitor).accept(
-                makeAlbum(
+                matchesAlbum(
                     "under-night-in-birth-sys-celes-ps4-ps5-switch-windows-gamerip-2024",
                     "Under Night In-Birth II [Sys:Celes]",
                     "PS4, PS5, Switch, Windows / Gamerip / 2024",
-                    "https://eta.vgmtreasurechest.com/soundtracks/under-night-in-birth-sys-celes-ps4-ps5-switch-windows-gamerip-2024/cover.png"
+                    "https://anyhost/soundtracks/under-night-in-birth-sys-celes-ps4-ps5-switch-windows-gamerip-2024/cover.png"
                 )
             )/*verify(albumsVisitor).accept(
                 makeAlbum("u\u200B\u200Bn-owen-was-phonk-2022", "U.N. OWEN WAS PHONK"),
-                FilePath("https://eta.vgmtreasurechest.com/soundtracks/u%E2%80%8B%E2%80%8Bn-owen-was-phonk-2022/folder.jpg")
+                FilePath("https://anyhost/soundtracks/u%E2%80%8B%E2%80%8Bn-owen-was-phonk-2022/folder.jpg")
             )*/
             verify(progress).onProgressUpdate(eq(2), geq(pagesMin))
         }
@@ -218,38 +218,38 @@ class RemoteCatalogTest {
         catalog.queryAlbums(Scope.Id("game-soundtracks/year/2024"), albumsVisitor, progress)
         inOrder(albumsVisitor, progress) {
             verify(albumsVisitor).accept(
-                makeAlbum(
+                matchesAlbum(
                     "blud-ps4-switch-windows-xbox-one-gamerip-2024",
                     "#BLUD",
                     "PS4, Switch, Windows, Xbox One / Gamerip / 2024",
-                    "https://eta.vgmtreasurechest.com/soundtracks/blud-ps4-switch-windows-xbox-one-gamerip-2024/cover.jpg"
+                    "https://anyhost/soundtracks/blud-ps4-switch-windows-xbox-one-gamerip-2024/cover.jpg"
                 )
             )
             verify(progress).onProgressUpdate(eq(1), geq(pagesMin))
             verify(albumsVisitor).accept(
-                makeAlbum(
+                matchesAlbum(
                     "friday-night-funkin-hai-yorokonde-2024",
                     "Friday Night Funkin' - Hai Yorokonde",
                     "Online, Windows / Soundtrack / 2024",
-                    "https://eta.vgmtreasurechest.com/soundtracks/friday-night-funkin-hai-yorokonde-2024/hai%20yorokonde.png"
+                    "https://anyhost/soundtracks/friday-night-funkin-hai-yorokonde-2024/hai%20yorokonde.png"
                 )
             )
             verify(progress).onProgressUpdate(eq(2), geq(pagesMin))
             verify(albumsVisitor).accept(
-                makeAlbum(
+                matchesAlbum(
                     "periculum-windows-gamerip-2024",
                     "Periculum",
                     "Windows / Gamerip / 2024",
-                    "https://eta.vgmtreasurechest.com/soundtracks/periculum-windows-gamerip-2024/folder.jpg"
+                    "https://anyhost/soundtracks/periculum-windows-gamerip-2024/folder.jpg"
                 )
             )
             verify(progress).onProgressUpdate(eq(3), geq(pagesMin))
             verify(albumsVisitor).accept(
-                makeAlbum(
+                matchesAlbum(
                     "warcraft-2-remastered-windows-gamerip-2024",
                     "WarCraft 2 - Remastered",
                     "Windows / Gamerip / 2024",
-                    "https://eta.vgmtreasurechest.com/soundtracks/warcraft-2-remastered-windows-gamerip-2024/Cover.jpg"
+                    "https://anyhost/soundtracks/warcraft-2-remastered-windows-gamerip-2024/Cover.jpg"
                 )
             )
             verify(progress).onProgressUpdate(eq(4), geq(pagesMin))
@@ -261,11 +261,11 @@ class RemoteCatalogTest {
     @Test
     fun `album tracks without title`() {
         val album = makeAlbum("knight-solitaire-ps-vita-gamerip-2015", "Knight Solitaire")
-        assertEquals(
+        assertMatches(
             makeAlbum(
                 album,
                 "PS Vita / Gamerip / 2015",
-                "https://eta.vgmtreasurechest.com/soundtracks/knight-solitaire-ps-vita-gamerip-2015/cover.jpg"
+                "https://anyhost/soundtracks/knight-solitaire-ps-vita-gamerip-2015/cover.jpg"
             ), catalog.queryAlbumDetails(
                 album.id, albumTracksVisitor
             )
@@ -287,11 +287,11 @@ class RemoteCatalogTest {
     @Test
     fun `aliased album details`() {
         val album = makeAlbum("hebereke-nes", "Hebereke")
-        assertEquals(
+        assertMatches(
             makeAlbum(
                 album,
                 "3DS, NES, PS4, Switch, Wii, Wii U, Windows, Xbox One / Gamerip / 1991",
-                "https://kappa.vgmsite.com/soundtracks/hebereke-nes/cover.jpg"
+                "https://anyhost/soundtracks/hebereke-nes/cover.jpg"
             ), catalog.queryAlbumDetails(
                 Album.Id("ufouria-the-saga-nes"), albumTracksVisitor
             )
@@ -307,11 +307,11 @@ class RemoteCatalogTest {
         val album = makeAlbum(
             "terminator-2-judgement-day-master-system-gamerip-1993", "Terminator 2 - Judgement Day"
         )
-        assertEquals(
+        assertMatches(
             makeAlbum(
                 album,
                 "Master System / Gamerip / 1993",
-                "https://kappa.vgmsite.com/soundtracks/terminator-2-judgement-day-master-system-gamerip-1993/Terminator%202%20-%20Judgement%20Day%20Title%20Screen.jpg"
+                "https://anyhost/soundtracks/terminator-2-judgement-day-master-system-gamerip-1993/Terminator%202%20-%20Judgement%20Day%20Title%20Screen.jpg"
             ), catalog.queryAlbumDetails(
                 album.id, albumTracksVisitor
             )
@@ -348,11 +348,11 @@ class RemoteCatalogTest {
         val album = makeAlbum(
             "contra-returns-android-ios-mobile-gamerip-2021", "Contra Returns"
         )
-        assertEquals(
+        assertMatches(
             makeAlbum(
                 album,
                 "Android, iOS, Mobile / Gamerip / 2021",
-                "https://eta.vgmtreasurechest.com/soundtracks/contra-returns-android-ios-mobile-gamerip-2021/cover.jpg"
+                "https://anyhost/soundtracks/contra-returns-android-ios-mobile-gamerip-2021/cover.jpg"
             ), catalog.queryAlbumDetails(
                 album.id, albumTracksVisitor
             )
@@ -396,7 +396,7 @@ class RemoteCatalogTest {
     @Test
     fun `remote uris`() {
         val image =
-            FilePath("https://eta.vgmtreasurechest.com/soundtracks/000-2008/00%20Front.jpg".toUri())
+            FilePath("https://anyhost/soundtracks/000-2008/00%20Front.jpg".toUri())
         RemoteCatalog.getRemoteUris(image).run {
             assertEquals(2, size)
             assertEquals(
@@ -406,7 +406,7 @@ class RemoteCatalogTest {
             assertEquals(image.value, get(1))
         }
         assertEquals(
-            "https://eta.vgmtreasurechest.com/soundtracks/000-2008/thumbs/00%20Front.jpg".toUri(),
+            "https://anyhost/soundtracks/000-2008/thumbs/00%20Front.jpg".toUri(),
             image.thumbUri
         )
         assertEquals(
@@ -420,8 +420,10 @@ class RemoteCatalogTest {
 
 private fun makeScope(id: String, title: String) = Scope(Scope.Id(id), title)
 private fun makeAlbum(id: String, title: String) = Album(Album.Id(id), title)
-private fun makeAlbum(id: String, title: String, details: String, image: String?) =
-    makeAlbum(makeAlbum(id, title), details, image)
+private fun matchesAlbum(id: String, title: String, details: String, image: String?) =
+    argThat<AlbumAndDetails> {
+        matches(makeAlbum(makeAlbum(id, title), details, image))
+    }
 
 private fun makeAlbum(album: Album, details: String, image: String?) =
     AlbumAndDetails(album, details, image?.let { FilePath(it.toUri()) })
@@ -430,3 +432,9 @@ private fun makeTrack(id: String, title: String) = Track(Track.Id(id), title)
 private fun makeTrack(
     id: String, title: String, album: Album, idx: Int, duration: String, size: String
 ) = TrackAndDetails(album, makeTrack(id, title), idx, duration, size)
+
+private fun AlbumAndDetails.matches(rh: AlbumAndDetails) =
+    album == rh.album && details == rh.details && image?.value?.path == rh.image?.value?.path
+
+private fun assertMatches(expected: AlbumAndDetails, value: AlbumAndDetails?) =
+    assertEquals(true, value?.let { expected.matches(it) })

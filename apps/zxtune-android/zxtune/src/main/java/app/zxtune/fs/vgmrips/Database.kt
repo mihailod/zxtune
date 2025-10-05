@@ -16,6 +16,7 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import app.zxtune.TimeStamp
 import app.zxtune.fs.dbhelpers.DBStatistics
+import app.zxtune.fs.dbhelpers.TimestampRecord
 import app.zxtune.fs.dbhelpers.Timestamps
 import app.zxtune.fs.dbhelpers.Utils
 
@@ -166,7 +167,7 @@ abstract class CatalogDao {
 }
 
 @androidx.room.Database(
-    entities = [GroupEntity::class, GroupPacksRef::class, PackEntity::class, TrackEntity::class, Timestamps.DAO.Record::class],
+    entities = [GroupEntity::class, GroupPacksRef::class, PackEntity::class, TrackEntity::class, TimestampRecord::class],
     version = VERSION
 )
 @TypeConverters(Converters::class)

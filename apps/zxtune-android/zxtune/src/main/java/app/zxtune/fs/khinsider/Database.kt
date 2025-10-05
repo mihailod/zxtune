@@ -16,6 +16,7 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import app.zxtune.TimeStamp
 import app.zxtune.fs.dbhelpers.DBStatistics
+import app.zxtune.fs.dbhelpers.TimestampRecord
 import app.zxtune.fs.dbhelpers.Timestamps
 import app.zxtune.fs.dbhelpers.Utils
 
@@ -200,7 +201,7 @@ object Converters {
 }
 
 @androidx.room.Database(
-    entities = [ScopeRecord::class, AlbumRecord::class, ScopeAlbum::class, TrackRecord::class, Timestamps.DAO.Record::class],
+    entities = [ScopeRecord::class, AlbumRecord::class, ScopeAlbum::class, TrackRecord::class, TimestampRecord::class],
     version = VERSION,
 )
 @TypeConverters(Converters::class)

@@ -55,7 +55,7 @@ class IdentifierTest {
         requireNotNull(Identifier.find(uri)).run {
             assertEquals(Identifier.Category.Series, category)
             assertEquals(makeScope("seriesid", "SeriesName"), scope)
-            assertEquals(makeAlbum("albumid", "AlbumName"), album)
+            assertEquals(matchesAlbum("albumid", "AlbumName"), album)
             assertEquals(null, track)
             assertEquals(null, location)
             assertEquals(uri, toUri())
@@ -69,7 +69,7 @@ class IdentifierTest {
         requireNotNull(Identifier.find(uri)).run {
             assertEquals(Identifier.Category.AlbumsByLetter, category)
             assertEquals(makeScope("albums/by-letter/s", "S"), scope)
-            assertEquals(makeAlbum("some-album", "SomeAlbum"), album)
+            assertEquals(matchesAlbum("some-album", "SomeAlbum"), album)
             assertEquals(makeTrack("TrackId.mp3", "TrackName"), track)
             assertEquals(null, location)
             assertEquals(uri, toUri())
@@ -95,7 +95,7 @@ class IdentifierTest {
         requireNotNull(Identifier.find(uri)).run {
             assertEquals(Identifier.Category.Random, category)
             assertEquals(null, scope)
-            assertEquals(makeAlbum("albumid", "AlbumTitle"), album)
+            assertEquals(matchesAlbum("albumid", "AlbumTitle"), album)
             assertEquals(makeTrack("Track.mp3", "TrackTitle"), track)
             assertEquals(null, location)
             assertEquals(uri, toUri())
@@ -154,7 +154,7 @@ class IdentifierTest {
         requireNotNull(Identifier.find("khinsider:/Top/Scope/Album/NoTrack?scope=scopeid&album=albumid".toUri())).run {
             assertEquals(Identifier.Category.Top, category)
             assertEquals(makeScope("scopeid", "Scope"), scope)
-            assertEquals(makeAlbum("albumid", "Album"), album)
+            assertEquals(matchesAlbum("albumid", "Album"), album)
             assertEquals(null, track)
             assertEquals(null, location)
             assertEquals("khinsider:/Top/Scope/Album?scope=scopeid&album=albumid".toUri(), toUri())
@@ -163,5 +163,5 @@ class IdentifierTest {
 }
 
 private fun makeScope(id: String, title: String) = Scope(Scope.Id(id), title)
-private fun makeAlbum(id: String, title: String) = Album(Album.Id(id), title)
+private fun matchesAlbum(id: String, title: String) = Album(Album.Id(id), title)
 private fun makeTrack(id: String, title: String) = Track(Track.Id(id), title)

@@ -14,9 +14,10 @@ class Path private constructor(elements: List<String>, isDir: Boolean) :
     override fun getRemoteUris() = getRemoteId().let { path ->
         arrayOf(
             Cdn.hvsc(path),
+            // Check out end of https://hvsc.de/downloads page
             Uri.Builder()
                 .scheme("https")
-                .authority("www.prg.dtu.dk")
+                .authority("hvsc.brona.dk")
                 .path("HVSC/C64Music/${path}")
                 .build(),
         )

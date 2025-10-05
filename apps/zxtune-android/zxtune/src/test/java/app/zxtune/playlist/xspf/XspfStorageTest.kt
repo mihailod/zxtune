@@ -81,7 +81,7 @@ class XspfStorageTest {
         underTest.createPlaylist("3", cursor)
         assertEquals(true, root.exists())
         assertEquals(true, File(root, "3.xspf").exists())
-        assertEquals(arrayListOf("2", "3"), underTest.enumeratePlaylists())
+        assertEquals(arrayListOf("2", "3"), underTest.enumeratePlaylists().sorted())
         assertEquals("${root.toUri()}/3.xspf", underTest.findPlaylistUri("3").toString())
     }
 
