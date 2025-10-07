@@ -10,14 +10,15 @@
 
 #include "module/players/xsf/psf_bios.h"
 
+#include "binary/compression/zlib_container.h"
+
 namespace Module::PSF
 {
-  Binary::View GetSCPH10000HeBios()
+  Binary::Data::Ptr GetSCPH10000HeBios()
   {
-    static const uint32_t RAW[] = {
+    static const uint8_t PACKED[] = {
 #include "module/players/xsf/scph10000_he.inc"
     };
-    static const Binary::View ADAPTED(RAW, sizeof(RAW));
-    return ADAPTED;
+    return Binary::Compression::Zlib::Decompress(Binary::View{PACKED, sizeof(PACKED)}, 524288);
   }
 }  // namespace Module::PSF

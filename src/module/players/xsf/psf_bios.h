@@ -10,9 +10,9 @@
 
 #pragma once
 
-#include "binary/view.h"
+#include "binary/data.h"
 
 namespace Module::PSF
 {
-  Binary::View GetSCPH10000HeBios();
+  Binary::Data::Ptr GetSCPH10000HeBios();
 }  // namespace Module::PSF
