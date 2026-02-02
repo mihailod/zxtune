@@ -585,6 +585,10 @@ namespace ZXTune::Raw
     void SetOffset(std::size_t offset)
     {
       Offset = offset;
+      for (auto& plugin : Plugins)
+      {
+        plugin.Offset = std::max(plugin.Offset, offset);
+      }
     }
 
   private:
@@ -709,28 +713,66 @@ namespace ZXTune::Raw
     Analysis::Result::Ptr DetectIn(LookaheadPluginsStorage<PluginType>& container, DataLocation::Ptr input,
                                    CallbackType& callback) const
     {
-      const bool initialScan = 0 == Offset;
       const std::size_t maxSize = input->GetData()->Size();
+      auto unmatched =
+          std::make_unique<DelayScanResult<LookaheadPluginsStorage<PluginType>>>(container, Offset, maxSize);
       for (auto iter = container.Enumerate(); iter.IsValid(); iter.Next())
       {
         const Time::Timer detectTimer;
         const auto& plugin = iter.GetPlugin();
         auto result = plugin.Detect(Params, input, callback);
-        const auto id = plugin.Id();
         if (const auto usedSize = result->GetMatchedDataSize())
         {
           Statistic::Self().AddAimed(plugin, detectTimer);
-          Dbg("Detected {} in {} bytes at {}", id, usedSize, input->GetPath()->AsString());
+          Dbg("Detected {} in {} bytes at {}", plugin.Id(), usedSize, input->GetPath()->AsString());
           return result;
         }
-        else if (!initialScan)
+        else
         {
           Statistic::Self().AddMissed(plugin, detectTimer);
+          unmatched->AddPendingScan(std::move(result), iter);
+        }
+      }
+      return unmatched;
+    }
+
+    template<class PluginsStorage>
+    class DelayScanResult : public Analysis::Result
+    {
+    public:
+      DelayScanResult(PluginsStorage& plugins, std::size_t offset, std::size_t maxSize)
+        : Plugins(plugins)
+        , Offset(offset)
+        , MaxSize(maxSize)
+      {}
+
+      void AddPendingScan(Analysis::Result::Ptr result, typename PluginsStorage::Iterator iter)
+      {
+        PendingScans.emplace_back(std::move(result), std::move(iter));
+      }
+
+      std::size_t GetMatchedDataSize() const override
+      {
+        return 0;
+      }
+
+      std::size_t GetLookaheadOffset() const override
+      {
+        ApplyPendingScans();
+        return Plugins.GetMinimalPluginLookahead();
+      }
+
+    private:
+      void ApplyPendingScans() const
+      {
+        for (auto& [result, iter] : PendingScans)
+        {
           const Time::Timer scanTimer;
-          const std::size_t lookahead = result->GetLookaheadOffset();
+          const auto lookahead = result->GetLookaheadOffset();
           iter.SetLookahead(lookahead);
-          Dbg("Disabling check of {} for neareast {} bytes starting from {}", id, lookahead, Offset);
-          if (lookahead == maxSize)
+          const auto& plugin = iter.GetPlugin();
+          Dbg("Disabling check of {} for neareast {} bytes starting from {}", plugin.Id(), lookahead, Offset);
+          if (lookahead == MaxSize)
           {
             Statistic::Self().AddAimed(plugin, scanTimer);
           }
@@ -739,10 +781,15 @@ namespace ZXTune::Raw
             Statistic::Self().AddScanned(plugin, scanTimer);
           }
         }
+        PendingScans.clear();
       }
-      const std::size_t minLookahead = initialScan ? std::size_t(1) : container.GetMinimalPluginLookahead();
-      return Analysis::CreateUnmatchedResult(minLookahead);
-    }
+
+    private:
+      PluginsStorage& Plugins;
+      const std::size_t Offset;
+      const std::size_t MaxSize;
+      mutable std::vector<std::pair<Analysis::Result::Ptr, typename PluginsStorage::Iterator>> PendingScans;
+    };
 
   private:
     const Parameters::Accessor& Params;
