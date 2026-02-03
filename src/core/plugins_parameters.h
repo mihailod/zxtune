@@ -47,6 +47,14 @@ namespace Parameters::ZXTune::Core::Plugins
     //! Parameter name
     const auto MIN_SIZE = PREFIX + "min_size"_id;
     //@}
+
+    //@{
+    //! @name Scan window limit.
+
+    //! Default value
+    const IntType SCAN_LIMIT_DEFAULT = 5 * 1048576;
+    //! Parameter name
+    const auto SCAN_LIMIT = PREFIX + "scan_limit"_id;
   }  // namespace Raw
 
   //! @brief HRIP container parameters namespace

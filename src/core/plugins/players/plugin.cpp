@@ -10,6 +10,7 @@
 
 #include "core/plugins/players/plugin.h"
 
+#include "core/plugins/scan_result.h"
 #include "module/players/properties_helper.h"
 
 #include "core/module_detect.h"
@@ -69,7 +70,7 @@ namespace ZXTune
           return Analysis::CreateMatchedResult(usedSize);
         }
       }
-      return Analysis::CreateUnmatchedResult(Decoder->GetFormat(), std::move(data));
+      return ZXTune::CreateUnmatchedResult(params, Decoder->GetFormat(), std::move(data));
     }
 
     Module::Holder::Ptr TryOpen(const Parameters::Accessor& params, const Binary::Container& data,
@@ -148,7 +149,7 @@ namespace ZXTune
           return Analysis::CreateMatchedResult(container->Size());
         }
       }
-      return Analysis::CreateUnmatchedResult(Decoder->GetFormat(), std::move(data));
+      return ZXTune::CreateUnmatchedResult(params, Decoder->GetFormat(), std::move(data));
     }
 
     Module::Holder::Ptr TryOpen(const Parameters::Accessor& params, const Binary::Container& data,

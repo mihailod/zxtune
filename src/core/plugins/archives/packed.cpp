@@ -10,6 +10,8 @@
 
 #include "core/plugins/archives/packed.h"
 
+#include "core/plugins/scan_result.h"
+
 #include "core/plugin_attrs.h"
 
 #include "make_ptr.h"
@@ -66,7 +68,7 @@ namespace ZXTune
       return Decoder->GetFormat();
     }
 
-    Analysis::Result::Ptr Detect(const Parameters::Accessor&, DataLocation::Ptr inputData,
+    Analysis::Result::Ptr Detect(const Parameters::Accessor& params, DataLocation::Ptr inputData,
                                  ArchiveCallback& callback) const override
     {
       auto rawData = inputData->GetData();
@@ -79,7 +81,7 @@ namespace ZXTune
         return Analysis::CreateMatchedResult(packedSize);
       }
       auto format = Decoder->GetFormat();
-      return Analysis::CreateUnmatchedResult(std::move(format), std::move(rawData));
+      return ZXTune::CreateUnmatchedResult(params, std::move(format), std::move(rawData));
     }
 
     DataLocation::Ptr TryOpen(const Parameters::Accessor& /*params*/, DataLocation::Ptr inputData,
