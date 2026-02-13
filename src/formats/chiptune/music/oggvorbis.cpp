@@ -336,7 +336,7 @@ namespace Formats::Chiptune
         Vorbis::Format vorbis(target);
         if (const auto subData = ogg.Parse(vorbis))
         {
-          return CreateCalculatingCrcContainer(subData, 0, subData->Size());
+          return CreateCalculatingCrcContainer(*subData);
         }
         else
         {

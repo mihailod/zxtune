@@ -238,10 +238,9 @@ namespace Formats::Chiptune
       try
       {
         Parser parser(target);
-        if (auto subData = ParseChunks(data, parser))
+        if (const auto subData = ParseChunks(data, parser))
         {
-          const auto totalSize = subData->Size();
-          return CreateCalculatingCrcContainer(std::move(subData), 0, totalSize);
+          return CreateCalculatingCrcContainer(*subData);
         }
       }
       catch (const std::exception&)

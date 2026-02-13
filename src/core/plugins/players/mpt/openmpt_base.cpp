@@ -358,9 +358,7 @@ namespace Module::Mpt
     {
       if (Check(rawData))
       {
-        const auto size = rawData.Size();
-        auto data = rawData.GetSubcontainer(0, size);
-        return Formats::Chiptune::CreateCalculatingCrcContainer(std::move(data), 0, size);
+        return Formats::Chiptune::CreateCalculatingCrcContainer(rawData);
       }
       return {};
     }

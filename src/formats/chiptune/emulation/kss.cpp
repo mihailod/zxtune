@@ -90,8 +90,8 @@ namespace Formats::Chiptune
         const std::size_t totalSize = sizeof(hdr) + hdr.InitialDataSize + bankSize * banksCount;
         // GME support truncated files
         const std::size_t realSize = std::min(rawData.Size(), totalSize);
-        const Binary::Container::Ptr data = rawData.GetSubcontainer(0, realSize);
-        return CreateCalculatingCrcContainer(data, 0, realSize);
+        auto data = rawData.GetSubcontainer(0, realSize);
+        return CreateCalculatingCrcContainer(std::move(data), 0, realSize);
       }
 
     private:

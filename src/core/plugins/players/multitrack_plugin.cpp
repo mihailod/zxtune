@@ -190,6 +190,11 @@ namespace ZXTune
         return Delegate.GetSubcontainer(offset, size);
       }
 
+      uint_t Checksum() const override
+      {
+        return Delegate.Checksum();
+      }
+
       uint_t FixedChecksum() const override
       {
         return Delegate.FixedChecksum();

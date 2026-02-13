@@ -86,6 +86,11 @@ namespace Formats::Multitrack
         , Hdr(hdr)
       {}
 
+      uint_t Checksum() const override
+      {
+        return Binary::Crc32(*Delegate);
+      }
+
       uint_t FixedChecksum() const override
       {
         const Binary::View data(*Delegate);

@@ -584,9 +584,7 @@ namespace Module::VGMStream
       {
         if (Check(rawData))
         {
-          const auto size = rawData.Size();
-          auto data = rawData.GetSubcontainer(0, size);
-          return Formats::Chiptune::CreateCalculatingCrcContainer(std::move(data), 0, size);
+          return Formats::Chiptune::CreateCalculatingCrcContainer(rawData);
         }
         return {};
       }
@@ -635,18 +633,23 @@ namespace Module::VGMStream
   }  // namespace SingleTrack
   namespace MultiTrack
   {
-    class Container : public Binary::BaseContainer<Formats::Multitrack::Container>
+    class Container : public Binary::BaseContainer<Formats::Multitrack::Container, Formats::Chiptune::Container>
     {
     public:
-      Container(Binary::Container::Ptr delegate, uint_t totalTracks, uint_t trackIndex)
-        : BaseContainer(std::move(delegate))
+      Container(const Binary::Container& data, uint_t totalTracks, uint_t trackIndex)
+        : BaseContainer(Formats::Chiptune::CreateCalculatingCrcContainer(data))
         , TotalTracks(totalTracks)
         , TrackIndex(trackIndex)
       {}
 
+      uint_t Checksum() const override
+      {
+        return Delegate->Checksum();
+      }
+
       uint_t FixedChecksum() const override
       {
-        return Binary::Crc32(*Delegate);
+        return Delegate->FixedChecksum();
       }
 
       uint_t TracksCount() const override
@@ -691,18 +694,17 @@ namespace Module::VGMStream
       {
         if (Check(rawData))
         {
-          auto data = rawData.GetSubcontainer(0, rawData.Size());
-          auto vfs = MakePtr<Vfs>(Desc.Suffix, data);
+          auto vfs = MakePtr<Vfs>(Desc.Suffix, rawData.GetSubcontainer(0, rawData.Size()));
           if (auto stream = TryOpenStream(vfs))
           {
             // Formats clashing
             if (stream->num_streams)
             {
-              return MakePtr<Container>(std::move(data), stream->num_streams, 0);
+              return MakePtr<Container>(rawData, stream->num_streams, 0);
             }
             else
             {
-              return MakePtr<Container>(std::move(data), 1, -1);
+              return MakePtr<Container>(rawData, 1, -1);
             }
           }
         }

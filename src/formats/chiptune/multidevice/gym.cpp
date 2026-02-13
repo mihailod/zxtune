@@ -81,8 +81,8 @@ namespace Formats::Chiptune
           return {};
         }
         const std::size_t realSize = std::min(rawData.Size(), MAX_SIZE);
-        const Binary::Container::Ptr data = rawData.GetSubcontainer(0, realSize);
-        return CreateCalculatingCrcContainer(data, 0, realSize);
+        auto data = rawData.GetSubcontainer(0, realSize);
+        return CreateCalculatingCrcContainer(std::move(data), 0, realSize);
       }
 
     private:

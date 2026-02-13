@@ -165,6 +165,7 @@ namespace Module::PSF
       static const HELibrary instance;
       return instance;
     }
+
   private:
     const Binary::Data::Ptr Bios;
   };
