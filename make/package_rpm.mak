@@ -1,4 +1,3 @@
-#archlinux-related rules
 pkg_rpm = $(pkg_dir)/rpm
 pkg_root = $(pkg_dir)/root
 pkg_file = $(pkg_dir)/$(pkg_name)-$(pkg_version)-1.$(if $(distro),$(distro).,)$(arch).rpm
@@ -8,7 +7,7 @@ package_rpm:
 	-$(call rmfiles_cmd,$(pkg_file))
 	$(MAKE) $(pkg_file)
 
-$(pkg_file): $(pkg_rpm)/rpm.spec $(pkg_rpm)/BUILD/files.list
+$(pkg_file): $(pkg_rpm)/rpm.spec
 	@$(call showtime_cmd)
 	(cd $(pkg_rpm) && rpmbuild -bb --target $(arch)-unknown-linux rpm.spec \
 	-D'_topdir $(CURDIR)/$(pkg_rpm)' -D'pkg_revision $(root.version.index)' ) && \
@@ -27,11 +26,6 @@ $(pkg_rpm)/rpm.spec: dist/rpm/spec | $(pkg_rpm)
 	echo -e "\n\
 %install\n\
 make DESTDIR=%{buildroot} platform=$(platform) arch=$(arch) distro=$(distro) install -C `pwd`\n\
+find %{buildroot} -type f | sed 's|^%{buildroot}||' > fileslist.txt\n\
 \n\
-%files -f files.list\n" >> $@
-
-
-$(pkg_rpm)/BUILD/files.list: | $(pkg_rpm) $(pkg_root)
-	$(MAKE) DESTDIR=$(pkg_root) install_linux
-	find $(CURDIR)/$(pkg_root) -type f | sed -r 's/.*(\/usr.*)/\1/' > $@
-	$(call rmdir_cmd,$(pkg_root))
+%files -f fileslist.txt\n" >> $@
