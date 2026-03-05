@@ -57,8 +57,8 @@ install_linux: install_linux_binary
 
 install_linux_binary:
 	install -D $(target) $(DESTDIR)/usr/bin/$(binary_name)
-	install -m644 -D dist/linux/zxTune.desktop $(DESTDIR)/usr/share/applications/zxTune.desktop
-	install -m644 -D $(theme_resources)/zxtune.png $(DESTDIR)/usr/share/icons/zxtune.png
+	install -m644 -D dist/linux/zxTune.desktop $(DESTDIR)/usr/share/applications/zxtune-qt.desktop
+	install -m644 -D $(theme_resources)/zxtune.svg $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/zxtune.svg
 
 install_windows: install_mingw install_runtime
 
