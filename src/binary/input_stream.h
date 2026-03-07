@@ -1,26 +1,27 @@
 /**
-*
-* @file
-*
-* @brief  Input binary stream helper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Input binary stream helper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/container.h>
-#include <binary/view.h>
-//common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <pointers.h>
-#include <types.h>
-//std includes
+#include "binary/container.h"
+#include "binary/view.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "pointers.h"
+#include "string_view.h"
+#include "types.h"
+
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace Binary
 {
@@ -32,14 +33,13 @@ namespace Binary
       : Start(static_cast<const uint8_t*>(data.Start()))
       , Finish(Start + data.Size())
       , Cursor(Start)
-    {
-    }
+    {}
 
     //! @brief Simple adapter to read specified type data
     template<class T>
-    const T& ReadField()
+    const T& Read()
     {
-      static_assert(!std::is_integral<T>::value, "Use ReadByte/ReadLE/ReadBE");
+      static_assert(sizeof(T) > 1, "Use ReadByte for bytes");
       return *safe_ptr_cast<const T*>(ReadRawData(sizeof(T)));
     }
 
@@ -48,28 +48,14 @@ namespace Binary
       return *ReadRawData(1);
     }
 
-    template<class T>
-    T ReadLE()
-    {
-      return ::ReadLE<T>(ReadRawData(sizeof(T)));
-    }
-
-    template<class T>
-    T ReadBE()
-    {
-      return ::ReadBE<T>(ReadRawData(sizeof(T)));
-    }
-
     //! @brief Read ASCIIZ string with specified maximal size
     StringView ReadCString(std::size_t maxSize)
     {
-      static_assert(sizeof(StringView::value_type) == sizeof(uint8_t), "Invalid char size");
-      const auto limit = std::min(Cursor + maxSize, Finish);
-      const auto strEnd = std::find(Cursor, limit, 0);
+      const auto* const limit = std::min(Cursor + maxSize, Finish);
+      const auto* const strEnd = std::find(Cursor, limit, 0);
       Require(strEnd != limit);
-      StringView res(safe_ptr_cast<const Char*>(Cursor), safe_ptr_cast<const Char*>(strEnd));
-      Cursor = strEnd + 1;
-      return res;
+      const auto* begin = std::exchange(Cursor, strEnd + 1);
+      return MakeStringView(begin, strEnd);
     }
 
     //! @brief Read string till EOL
@@ -81,8 +67,8 @@ namespace Binary
       static const uint8_t EOLCODES[3] = {CR, LF, EOT};
 
       Require(Cursor != Finish);
-      const auto eolPos = std::find_first_of(Cursor, Finish, EOLCODES, EOLCODES + 3);
-      auto nextLine = eolPos;
+      const auto* const eolPos = std::find_first_of(Cursor, Finish, EOLCODES, EOLCODES + 3);
+      const auto* nextLine = eolPos;
       if (nextLine != Finish && CR == *nextLine++)
       {
         if (nextLine != Finish && LF == *nextLine)
@@ -90,9 +76,8 @@ namespace Binary
           ++nextLine;
         }
       }
-      StringView result(safe_ptr_cast<const Char*>(Cursor), safe_ptr_cast<const Char*>(eolPos));
-      Cursor = nextLine;
-      return result;
+      const auto* start = std::exchange(Cursor, nextLine);
+      return MakeStringView(start, eolPos);
     }
 
     template<class T>
@@ -123,7 +108,7 @@ namespace Binary
 
     View ReadData(std::size_t size)
     {
-      return View(ReadRawData(size), size);
+      return {ReadRawData(size), size};
     }
 
     View ReadRestData()
@@ -137,10 +122,10 @@ namespace Binary
       Require(size <= GetRestSize());
       Cursor += size;
     }
-    
+
     void Seek(std::size_t pos)
     {
-      Require(pos <= (Finish - Start));
+      Require(pos <= std::size_t(Finish - Start));
       Cursor = Start + pos;
     }
 
@@ -155,6 +140,7 @@ namespace Binary
     {
       return Finish - Cursor;
     }
+
   private:
     const uint8_t* ReadRawData(std::size_t size)
     {
@@ -163,23 +149,29 @@ namespace Binary
       Cursor += size;
       return res;
     }
-    
+
+    static inline StringView MakeStringView(const uint8_t* start, const uint8_t* end)
+    {
+      using Char = StringView::value_type;
+      static_assert(sizeof(Char) == sizeof(uint8_t), "Invalid char size");
+      return ::MakeStringView(safe_ptr_cast<const Char*>(start), safe_ptr_cast<const Char*>(end));
+    }
+
   protected:
     const uint8_t* const Start;
     const uint8_t* const Finish;
     const uint8_t* Cursor;
   };
-  
-  //TODO: rename
+
+  // TODO: rename
   class InputStream : public DataInputStream
   {
   public:
     explicit InputStream(const Container& rawData)
       : DataInputStream(rawData)
       , Data(rawData)
-    {
-    }
-    
+    {}
+
     Container::Ptr ReadContainer(std::size_t size)
     {
       Require(size <= GetRestSize());
@@ -203,7 +195,8 @@ namespace Binary
     {
       return Data.GetSubcontainer(0, GetPosition());
     }
+
   private:
     const Container& Data;
   };
-}
+}  // namespace Binary

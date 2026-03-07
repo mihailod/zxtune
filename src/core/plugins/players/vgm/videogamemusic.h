@@ -1,22 +1,20 @@
 /**
-*
-* @file
-*
-* @brief  VGM format support tools
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  VGM format support tools
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/view.h>
+#include "binary/view.h"
 
-namespace Module
+#include "string_view.h"
+
+namespace Module::VideoGameMusic
 {
-  namespace VideoGameMusic
-  {
-    String DetectPlatform(Binary::View blob);
-  }
-}
+  StringView DetectPlatform(Binary::View data);
+}  // namespace Module::VideoGameMusic

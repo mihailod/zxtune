@@ -1,5 +1,5 @@
 /**
- * emu2413 v1.5.2
+ * emu2413 v1.5.9
  * https://github.com/digital-sound-antiques/emu2413
  * Copyright (C) 2020 Mitsutaka Okazaki
  *
@@ -29,18 +29,21 @@
 static UINT8 device_start_ym2413_emu(const DEV_GEN_CFG* cfg, DEV_INFO* retDevInf);
 static void ym2413_update_emu(void *chip, UINT32 samples, DEV_SMPL **out);
 static void ym2413_set_mute_mask_emu(void *chip, UINT32 MuteMask);
-static void ym2413_pan_emu(void* chip, INT16* PanVals);
+static void ym2413_pan_emu(void* chip, const INT16* PanVals);
 
 
 static DEVDEF_RWFUNC devFunc[] =
 {
 	{RWF_REGISTER | RWF_WRITE, DEVRW_A8D8, 0, EOPLL_writeIO},
 	{RWF_REGISTER | RWF_QUICKWRITE, DEVRW_A8D8, 0, EOPLL_writeReg},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, ym2413_set_mute_mask_emu},
+	{RWF_CHN_PAN | RWF_WRITE, DEVRW_ALL, 0, ym2413_pan_emu},
 	{0x00, 0x00, 0, NULL}
 };
 DEV_DEF devDef_YM2413_Emu =
 {
 	"YM2413", "EMU2413", FCC_EMU_,
+	14,  // Channels
 	
 	device_start_ym2413_emu,
 	(DEVFUNC_CTRL)EOPLL_delete,
@@ -51,6 +54,7 @@ DEV_DEF devDef_YM2413_Emu =
 	ym2413_set_mute_mask_emu,
 	ym2413_pan_emu,
 	NULL,	// SetSampleRateChangeCallback
+	NULL,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs
@@ -72,7 +76,7 @@ DEV_DEF devDef_YM2413_Emu =
 #define EOPLL_TONE_NUM 3
 /* clang-format off */
 static const uint8_t default_inst[EOPLL_TONE_NUM][(16 + 3) * 8] = {{
-0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, // 0: Original
+0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, // 0: User
 0x71,0x61,0x1e,0x17,0xd0,0x78,0x00,0x17, // 1: Violin
 0x13,0x41,0x1a,0x0d,0xd8,0xf7,0x23,0x13, // 2: Guitar
 0x13,0x01,0x99,0x00,0xf2,0xc4,0x21,0x23, // 3: Piano
@@ -94,26 +98,26 @@ static const uint8_t default_inst[EOPLL_TONE_NUM][(16 + 3) * 8] = {{
 },{
 #include "opll_vrc7tone.h"
 },{
-/* YMF281B presets by Chabin */
-0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-0x62,0x21,0x1a,0x07,0xf0,0x6f,0x00,0x16,
-0x00,0x10,0x44,0x02,0xf6,0xf4,0x54,0x23,
-0x03,0x01,0x97,0x04,0xf3,0xf3,0x13,0xf3,
-0x01,0x61,0x0a,0x0f,0xfa,0x64,0x70,0x17,
-0x22,0x21,0x1e,0x06,0xf0,0x76,0x00,0x28,
-0x00,0x61,0x8a,0x0e,0xc0,0x61,0x00,0x07,
-0x21,0x61,0x1b,0x07,0x84,0x80,0x17,0x17,
-0x37,0x32,0xc9,0x01,0x66,0x64,0x40,0x28,
-0x01,0x21,0x06,0x03,0xa5,0x71,0x51,0x07,
-0x06,0x11,0x5e,0x07,0xf3,0xf2,0xf6,0x11,
-0x00,0x20,0x18,0x06,0xf5,0xf3,0x20,0x26,
-0x97,0x41,0x20,0x07,0xff,0xf4,0x22,0x22,
-0x65,0x61,0x15,0x00,0xf7,0xf3,0x16,0xf4,
-0x01,0x31,0x0e,0x07,0xfa,0xf3,0xff,0xff,
-0x48,0x61,0x09,0x07,0xf1,0x94,0xf0,0xf5,
-0x07,0x21,0x14,0x00,0xee,0xf8,0xff,0xf8,
-0x01,0x31,0x00,0x00,0xf8,0xf7,0xf8,0xf7,
-0x25,0x11,0x00,0x00,0xf8,0xfa,0xf8,0x55,
+/* YMF281B presets */
+0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, // 0: User
+0x62,0x21,0x1a,0x07,0xf0,0x6f,0x00,0x16, // 1: Electric Strings (form Chabin's patch)
+0x40,0x10,0x45,0x00,0xf6,0x83,0x73,0x63, // 2: Bow Wow (based on plgDavid's patch, KSL fixed)
+0x13,0x01,0x99,0x00,0xf2,0xc3,0x21,0x23, // 3: Electric Guitar (similar to YM2413 but different DR(C))
+0x01,0x61,0x0b,0x0f,0xf9,0x64,0x70,0x17, // 4: Organ (based on Chabin, TL/DR fixed)
+0x32,0x21,0x1e,0x06,0xe1,0x76,0x01,0x28, // 5: Clarinet (identical to YM2413)
+0x60,0x01,0x82,0x0e,0xf9,0x61,0x20,0x27, // 6: Saxophone (based on plgDavid, PM/EG fixed)
+0x21,0x61,0x1c,0x07,0x84,0x81,0x11,0x07, // 7: Trumpet (similar to YM2413 but different TL/DR(M))
+0x37,0x32,0xc9,0x01,0x66,0x64,0x40,0x28, // 8: Street Organ (from Chabin)
+0x01,0x21,0x07,0x03,0xa5,0x71,0x51,0x07, // 9: Synth Brass (based on Chabin, TL fixed)
+0x06,0x01,0x5e,0x07,0xf3,0xf3,0xf6,0x13, // A: Electric Piano (based on Chabin, DR/RR/KR fixed)
+0x00,0x00,0x18,0x06,0xf5,0xf3,0x20,0x23, // B: Bass (based on Chabin, EG fixed) 
+0x17,0xc1,0x24,0x07,0xf8,0xf8,0x22,0x12, // C: Vibraphone (identical to YM2413)
+0x35,0x64,0x00,0x00,0xff,0xf3,0x77,0xf5, // D: Chimes (from plgDavid)
+0x11,0x31,0x00,0x07,0xdd,0xf3,0xff,0xfb, // E: Tom Tom II (from plgDavid)
+0x3a,0x21,0x00,0x07,0x80,0x84,0x0f,0xf5, // F: Noise (based on plgDavid, AR fixed)
+0x01,0x01,0x18,0x0f,0xdf,0xf8,0x6a,0x6d, // R: Bass Drum (identical to YM2413)
+0x01,0x01,0x00,0x00,0xc8,0xd8,0xa7,0x68, // R: High-Hat(M) / Snare Drum(C) (identical to YM2413)
+0x05,0x01,0x00,0x00,0xf8,0xaa,0x59,0x55, // R: Tom-tom(M) / Top Cymbal(C) (identical to YM2413)
 }};
 /* clang-format on */
 
@@ -126,7 +130,7 @@ static const uint8_t default_inst[EOPLL_TONE_NUM][(16 + 3) * 8] = {{
 #define EG_STEP 0.375
 #define EG_BITS 7
 #define EG_MUTE ((1 << EG_BITS) - 1)
-#define EG_MAX (EG_MUTE - 3)
+#define EG_MAX (EG_MUTE - 4)
 
 /* dynamic range of total level */
 #define TL_STEP 0.75
@@ -246,8 +250,13 @@ static int32_t rks_table[8 * 2][2];
 static const EOPLL_PATCH null_patch = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static EOPLL_PATCH default_patch[EOPLL_TONE_NUM][(16 + 3) * 2];
 
-#define min(i, j) (((i) < (j)) ? (i) : (j))
-#define max(i, j) (((i) > (j)) ? (i) : (j))
+/* don't forget min/max is defined as a macro in stdlib.h of Visual C. */
+#ifndef min
+static INLINE int min(int i, int j) { return (i < j) ? i : j; }
+#endif
+#ifndef max
+static INLINE int max(int i, int j) { return (i > j) ? i : j; }
+#endif
 
 /***************************************************
 
@@ -412,7 +421,7 @@ static void makeRksTable(void) {
     }
 }
 
-static void makeDefaultPatch() {
+static void makeDefaultPatch(void) {
   int i, j;
   for (i = 0; i < EOPLL_TONE_NUM; i++)
     for (j = 0; j < 19; j++)
@@ -421,7 +430,7 @@ static void makeDefaultPatch() {
 
 static uint8_t table_initialized = 0;
 
-static void initializeTables() {
+static void initializeTables(void) {
   makeTllTable();
   makeRksTable();
   makeSinTable();
@@ -828,7 +837,6 @@ static INLINE void start_envelope(EOPLL_SLOT *slot) {
     slot->eg_out = 0;
   } else {
     slot->eg_state = ATTACK;
-    slot->eg_out = EG_MUTE;
   }
   request_update(slot, UPDATE_EG);
 }
@@ -853,7 +861,9 @@ static INLINE void calc_envelope(EOPLL_SLOT *slot, EOPLL_SLOT *buddy, uint16_t e
 
   switch (slot->eg_state) {
   case DAMP:
-    if (slot->eg_out >= EG_MUTE) {
+    // DAMP to ATTACK transition is occured when the envelope reaches EG_MAX (max attenuation but it's not mute).
+    // Do not forget to check (eg_counter & mask) == 0 to synchronize it with the progress of the envelope.
+    if (slot->eg_out >= EG_MAX && (eg_counter & mask) == 0) {
       start_envelope(slot);
       if (slot->type & 1) {
         if (!slot->pg_keep) {
@@ -874,6 +884,8 @@ static INLINE void calc_envelope(EOPLL_SLOT *slot, EOPLL_SLOT *buddy, uint16_t e
     break;
 
   case DECAY:
+    // DECAY to SUSTAIN transition must be checked at every cycle regardless of the conditions of the envelope rate and
+    // counter. i.e. the transition is not synchronized with the progress of the envelope.
     if ((slot->eg_out >> 3) == slot->patch->SL) {
       slot->eg_state = SUSTAIN;
       request_update(slot, UPDATE_EG);
@@ -914,7 +926,7 @@ static void update_slots(EOPLL *opll) {
 
 /* output: -4095...4095 */
 static INLINE int16_t lookup_exp_table(uint16_t i) {
-  /* from andete's expressoin */
+  /* from andete's expression */
   int16_t t = (exp_table[(i & 0xff) ^ 0xff] + 1024);
   int16_t res = t >> ((i & 0x7f00) >> 8);
   return ((i & 0x8000) ? ~res : res) << 1;
@@ -922,10 +934,10 @@ static INLINE int16_t lookup_exp_table(uint16_t i) {
 
 static INLINE int16_t to_linear(uint16_t h, EOPLL_SLOT *slot, int16_t am) {
   uint16_t att;
-  if (slot->eg_out >= EG_MAX)
+  if (slot->eg_out > EG_MAX)
     return 0;
 
-  att = min(EG_MAX, (slot->eg_out + slot->tll + am)) << 4;
+  att = min(EG_MUTE, (slot->eg_out + slot->tll + am)) << 4;
   return lookup_exp_table(h + att);
 }
 
@@ -1007,7 +1019,8 @@ static void update_output(EOPLL *opll) {
   update_slots(opll);
 
   out = opll->ch_out;
-  memset(opll->ch_out, 0, 14 * sizeof(int16_t));
+  // prevent DC offset when muting channels mid-playback
+  memset(out, 0, 14 * sizeof(int16_t));
 
   /* CH1-6 */
   for (i = 0; i < 6; i++) {
@@ -1077,10 +1090,10 @@ INLINE static void mix_output_stereo(EOPLL *opll) {
   int i;
   out[0] = out[1] = 0;
   for (i = 0; i < 14; i++) {
-    if (opll->pan[i] & 1)
-      out[1] += APPLY_PANNING_S(opll->ch_out[i], opll->pan_fine[i][1]);
     if (opll->pan[i] & 2)
       out[0] += APPLY_PANNING_S(opll->ch_out[i], opll->pan_fine[i][0]);
+    if (opll->pan[i] & 1)
+      out[1] += APPLY_PANNING_S(opll->ch_out[i], opll->pan_fine[i][1]);
   }
   if (opll->conv) {
     EOPLL_RateConv_putData(opll->conv, 0, out[0]);
@@ -1117,8 +1130,7 @@ EOPLL *EOPLL_new(uint32_t clk, uint32_t rate) {
   opll->mix_out[1] = 0;
   opll->chip_type = 0;
 
-  for (i = 0; i < 15; i++)
-  {
+  for (i = 0; i < 14; i++) {
     opll->pan[i] = 3;
     Panning_Centre(opll->pan_fine[i]);
   }
@@ -1143,8 +1155,8 @@ static void reset_rate_conversion_params(EOPLL *opll) {
   const double f_inp = opll->clk / 72.0;
 
   opll->out_time = 0;
-  opll->out_step = (uint32_t)(f_inp * 0x100);
-  opll->inp_step = (uint32_t)(f_out * 0x100);
+  opll->out_step = f_inp;
+  opll->inp_step = f_out;
 
   if (opll->conv) {
     EOPLL_RateConv_delete(opll->conv);
@@ -1177,10 +1189,13 @@ void EOPLL_reset(EOPLL *opll) {
   //opll->mask = 0;
 
   opll->rhythm_mode = 0;
-  if (opll->chip_type == 1)
-    opll->reg[0x0e] = 32;
   opll->slot_key_status = 0;
   opll->eg_counter = 0;
+  if (opll->chip_type == 1)
+  {
+    opll->reg[0x0e] = 32;
+    update_rhythm_mode(opll);
+  }
 
   reset_rate_conversion_params(opll);
 
@@ -1194,8 +1209,10 @@ void EOPLL_reset(EOPLL *opll) {
   for (i = 0; i < 0x40; i++)
     EOPLL_writeReg(opll, i, 0);
 
-  //for (i = 0; i < 14; i++)
-  //  opll->pan[i] = 3;
+  /*for (i = 0; i < 15; i++) {
+    opll->pan[i] = 3;
+    Panning_Centre(opll->pan_fine[i]);
+  }*/
 
   for (i = 0; i < 14; i++) {
     opll->ch_out[i] = 0;
@@ -1453,14 +1470,14 @@ void EOPLL_dumpToPatch(const uint8_t *dump, EOPLL_PATCH *patch) {
 }
 
 void EOPLL_getDefaultPatch(int32_t type, int32_t num, EOPLL_PATCH *patch) {
-  EOPLL_dump2patch(default_inst[type] + num * 8, patch);
+  EOPLL_dumpToPatch(default_inst[type] + num * 8, patch);
 }
 
 void EOPLL_setPatch(EOPLL *opll, const uint8_t *dump) {
   EOPLL_PATCH patch[2];
   int i;
   for (i = 0; i < 19; i++) {
-    EOPLL_dump2patch(dump + i * 8, patch);
+    EOPLL_dumpToPatch(dump + i * 8, patch);
     memcpy(&opll->patch[i * 2 + 0], &patch[0], sizeof(EOPLL_PATCH));
     memcpy(&opll->patch[i * 2 + 1], &patch[1], sizeof(EOPLL_PATCH));
   }
@@ -1601,7 +1618,7 @@ static const uint8_t PAN_MAP[14] = {
 	9, 11, 12, 13, 10
 };
 
-static void ym2413_pan_emu(void* chip, INT16* PanVals)
+static void ym2413_pan_emu(void* chip, const INT16* PanVals)
 {
 	EOPLL *opll = (EOPLL *)chip;
 	uint8_t curChn;

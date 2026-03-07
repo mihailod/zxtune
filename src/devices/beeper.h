@@ -1,73 +1,72 @@
 /**
-* 
-* @file
-*
-* @brief  Beeper support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Beeper support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//library includes
-#include <sound/receiver.h>
-#include <time/instant.h>
-//std includes
+#include "sound/chunk.h"
+#include "time/instant.h"
+
+#include "types.h"
+
 #include <memory>
 
-namespace Devices
+namespace Devices::Beeper
 {
-  namespace Beeper
+  using TimeUnit = Time::Microsecond;
+  using Stamp = Time::Instant<TimeUnit>;
+
+  struct DataChunk
   {
-    using TimeUnit = Time::Microsecond;
-    using Stamp = Time::Instant<TimeUnit>;
+    DataChunk(Stamp stamp, bool level)
+      : TimeStamp(stamp)
+      , Level(level)
+    {}
 
-    struct DataChunk
-    {
-      DataChunk() : TimeStamp(), Level()
-      {
-      }
+    Stamp TimeStamp;
+    bool Level = false;
+  };
 
-      Stamp TimeStamp;
-      bool Level;
-    };
+  class Device
+  {
+  public:
+    using Ptr = std::unique_ptr<Device>;
+    virtual ~Device() = default;
 
-    class Device
-    {
-    public:
-      typedef std::shared_ptr<Device> Ptr;
-      virtual ~Device() = default;
+    /// Render multiple data chunks
+    virtual void RenderData(const std::vector<DataChunk>& src) = 0;
 
-      /// Render multiple data chunks
-      virtual void RenderData(const std::vector<DataChunk>& src) = 0;
+    /// reset internal state to initial
+    virtual void Reset() = 0;
+  };
 
-      /// reset internal state to initial
-      virtual void Reset() = 0;
-    };
-    
-    //TODO: add StateSource if required
-    class Chip : public Device
-    {
-    public:
-      typedef std::shared_ptr<Chip> Ptr;
-    };
+  // TODO: add StateSource if required
+  class Chip : public Device
+  {
+  public:
+    using Ptr = std::unique_ptr<Chip>;
 
-    class ChipParameters
-    {
-    public:
-      typedef std::shared_ptr<const ChipParameters> Ptr;
+    virtual Sound::Chunk RenderTill(Stamp till) = 0;
+  };
 
-      virtual ~ChipParameters() = default;
+  class ChipParameters
+  {
+  public:
+    using Ptr = std::unique_ptr<const ChipParameters>;
 
-      virtual uint_t Version() const = 0;
-      virtual uint64_t ClockFreq() const = 0;
-      virtual uint_t SoundFreq() const = 0;
-    };
+    virtual ~ChipParameters() = default;
 
-    /// Virtual constructors
-    Chip::Ptr CreateChip(ChipParameters::Ptr params, Sound::Receiver::Ptr target);
-  }
-}
+    virtual uint_t Version() const = 0;
+    virtual uint64_t ClockFreq() const = 0;
+    virtual uint_t SoundFreq() const = 0;
+  };
+
+  /// Virtual constructors
+  Chip::Ptr CreateChip(ChipParameters::Ptr params);
+}  // namespace Devices::Beeper

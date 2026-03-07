@@ -1,19 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief Downloads visitor adapter factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Downloads visitor adapter factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "product.h"
-#include "rss.h"
-//std includes
+#include "apps/zxtune-qt/update/product.h"
+#include "apps/zxtune-qt/update/rss.h"
+
 #include <memory>
 
 namespace Downloads
@@ -27,4 +26,4 @@ namespace Downloads
   };
 
   std::unique_ptr<RSS::Visitor> CreateFeedVisitor(const QString& project, Visitor& delegate);
-}
+}  // namespace Downloads

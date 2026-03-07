@@ -1,105 +1,99 @@
 /**
-* 
-* @file
-*
-* @brief  FM support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  FM support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <data_streaming.h>
-#include <types.h>
-//library includes
-#include <devices/state.h>
-#include <sound/receiver.h>
-#include <time/instant.h>
-//std includes
+#include "sound/chunk.h"
+#include "time/instant.h"
+#include "tools/data_streaming.h"
+
+#include "types.h"
+
 #include <array>
+#include <memory>
 
-namespace Devices
+namespace Devices::FM
 {
-  namespace FM
+  const uint_t VOICES = 3;
+
+  using TimeUnit = Time::Microsecond;
+  using Stamp = Time::Instant<TimeUnit>;
+
+  class Register
   {
-    const uint_t VOICES = 3;
+  public:
+    Register() = default;
 
-    using TimeUnit = Time::Microsecond;
-    using Stamp = Time::Instant<TimeUnit>;
+    Register(uint_t idx, uint_t val)
+      : Val((idx << 8) | val)
+    {}
 
-    class Register
+    uint_t Index() const
     {
-    public:
-      Register()
-        : Val()
-      {
-      }
+      return (Val >> 8) & 0xff;
+    }
 
-      Register(uint_t idx, uint_t val)
-        : Val((idx << 8) | val)
-      {
-      }
-
-      uint_t Index() const
-      {
-        return (Val >> 8) & 0xff;
-      }
-
-      uint_t Value() const
-      {
-        return Val & 0xff;
-      }
-    protected:
-      uint_t Val;
-    };
-
-    typedef std::vector<Register> Registers;
-
-    struct DataChunk
+    uint_t Value() const
     {
-      DataChunk() : TimeStamp()
-      {
-      }
+      return Val & 0xff;
+    }
 
-      Stamp TimeStamp;
-      Registers Data;
-    };
+  protected:
+    uint_t Val = 0;
+  };
 
-    class Device
-    {
-    public:
-      typedef std::shared_ptr<Device> Ptr;
-      virtual ~Device() = default;
+  using Registers = std::vector<Register>;
 
-      /// render single data chunk
-      virtual void RenderData(const DataChunk& src) = 0;
+  struct DataChunk
+  {
+    DataChunk() = default;
 
-      /// reset internal state to initial
-      virtual void Reset() = 0;
-    };
+    Stamp TimeStamp;
+    Registers Data;
+  };
 
-    // Describes real device
-    class Chip : public Device, public StateSource
-    {
-    public:
-      typedef std::shared_ptr<Chip> Ptr;
-    };
+  class Device
+  {
+  public:
+    using Ptr = std::unique_ptr<Device>;
+    virtual ~Device() = default;
 
-    class ChipParameters
-    {
-    public:
-      typedef std::shared_ptr<const ChipParameters> Ptr;
+    /// render single data chunk
+    virtual void RenderData(const DataChunk& src) = 0;
 
-      virtual ~ChipParameters() = default;
+    /// reset internal state to initial
+    virtual void Reset() = 0;
+  };
 
-      virtual uint_t Version() const = 0;
-      virtual uint64_t ClockFreq() const = 0;
-      virtual uint_t SoundFreq() const = 0;
-    };
+  // Describes real device
+  class Chip : public Device
+  {
+  public:
+    using Ptr = std::unique_ptr<Chip>;
 
-    /// Virtual constructors
-    Chip::Ptr CreateChip(ChipParameters::Ptr params, Sound::Receiver::Ptr target);
-  }
-}
+    /// Render rest data and return result
+    virtual Sound::Chunk RenderTill(Stamp stamp) = 0;
+  };
+
+  class ChipParameters
+  {
+  public:
+    using Ptr = std::unique_ptr<const ChipParameters>;
+
+    virtual ~ChipParameters() = default;
+
+    virtual uint_t Version() const = 0;
+    virtual uint64_t ClockFreq() const = 0;
+    virtual uint_t SoundFreq() const = 0;
+  };
+
+  /// Virtual constructors
+  Chip::Ptr CreateChip(ChipParameters::Ptr params);
+}  // namespace Devices::FM

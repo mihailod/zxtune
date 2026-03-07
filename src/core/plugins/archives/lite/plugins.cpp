@@ -1,15 +1,14 @@
 /**
-* 
-* @file
-*
-* @brief  Archive plugins lite factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Archive plugins lite factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include <core/plugins/archives/plugins.h>
+#include "core/plugins/archives/plugins.h"
 
 namespace ZXTune
 {
@@ -20,4 +19,4 @@ namespace ZXTune
     RegisterChiptunePackerPlugins(registrator);
     RegisterDecompilePlugins(registrator);
   }
-}
+}  // namespace ZXTune

@@ -1,95 +1,87 @@
 /**
-*
-* @file
-*
-* @brief  Zip test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Zip test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../utils.h"
+#include "formats/test/utils.h"
 
 namespace
 {
-  void TestRegularFiles()
+  void TestRegular(const Binary::Container& etalon)
   {
-    Dump etalon;
-    Test::OpenFile("etalon.bin", etalon);
-    Dump zip;
-    //0ffsets:
-    //0
-    //0x4035
-    //0x6160
-    //0x826e
-    //0xa36e
-    //0xc433
-    //0xe4e9
-    //0x105a2
-    //0x1265a
-    //0x1470b
-    Test::OpenFile("test.zip", zip);
-
-    const Formats::Packed::Decoder::Ptr packed = Formats::Packed::CreateZipDecoder();
-    std::map<std::string, Dump> tests;
-    const uint8_t* const data = zip.data();
-    tests["-p0"] = Dump(data, data + 0x4035);
-    tests["-p1"] = Dump(data + 0x4035, data + 0x6160);
-    tests["-p2"] = Dump(data + 0x6160, data + 0x826e);
-    tests["-p3"] = Dump(data + 0x826e, data + 0xa36e);
-    tests["-p4"] = Dump(data + 0xa36e, data + 0xc433);
-    tests["-p5"] = Dump(data + 0xc433, data + 0xe4e9);
-    tests["-p6"] = Dump(data + 0xe4e9, data + 0x105a2);
-    tests["-p7"] = Dump(data + 0x105a2, data + 0x1265a);
-    tests["-p8"] = Dump(data + 0x1265a, data + 0x1470b);
-    tests["-p9"] = Dump(data + 0x1470b, data + 0x167bc);
+    const auto zip = Test::OpenFile("test.zip");
+    // 0ffsets:
+    // 0
+    // 0x4035
+    // 0x6160
+    // 0x826e
+    // 0xa36e
+    // 0xc433
+    // 0xe4e9
+    // 0x105a2
+    // 0x1265a
+    // 0x1470b
+    const auto packed = Formats::Packed::CreateZipDecoder();
+    std::map<std::string, Binary::Container::Ptr> tests;
+    tests["-p0"] = zip->GetSubcontainer(0, 0x4035);
+    tests["-p1"] = zip->GetSubcontainer(0x4035, 0x6160 - 0x4035);
+    tests["-p2"] = zip->GetSubcontainer(0x6160, 0x826e - 0x6160);
+    tests["-p3"] = zip->GetSubcontainer(0x826e, 0xa36e - 0x826e);
+    tests["-p4"] = zip->GetSubcontainer(0xa36e, 0xc433 - 0xa36e);
+    tests["-p5"] = zip->GetSubcontainer(0xc433, 0xe4e9 - 0xc433);
+    tests["-p6"] = zip->GetSubcontainer(0xe4e9, 0x105a2 - 0xe4e9);
+    tests["-p7"] = zip->GetSubcontainer(0x105a2, 0x1265a - 0x105a2);
+    tests["-p8"] = zip->GetSubcontainer(0x1265a, 0x1470b - 0x1265a);
+    tests["-p9"] = zip->GetSubcontainer(0x1470b, 0x167bc - 0x1470b);
     Test::TestPacked(*packed, etalon, tests);
-  }
 
-  void TestRegularArchive()
-  {
-    const Formats::Archived::Decoder::Ptr archived = Formats::Archived::CreateZipDecoder();
+    const auto archived = Formats::Archived::CreateZipDecoder();
     std::vector<std::string> files;
-    files.push_back("p0.bin");
-    files.push_back("p1.bin");
-    files.push_back("p2.bin");
-    files.push_back("p3.bin");
-    files.push_back("p4.bin");
-    files.push_back("p5.bin");
-    files.push_back("p6.bin");
-    files.push_back("p7.bin");
-    files.push_back("p8.bin");
-    files.push_back("p9.bin");
-    Test::TestArchived(*archived, "etalon.bin", "test.zip", files);
+    files.emplace_back("p0.bin");
+    files.emplace_back("p1.bin");
+    files.emplace_back("p2.bin");
+    files.emplace_back("p3.bin");
+    files.emplace_back("p4.bin");
+    files.emplace_back("p5.bin");
+    files.emplace_back("p6.bin");
+    files.emplace_back("p7.bin");
+    files.emplace_back("p8.bin");
+    files.emplace_back("p9.bin");
+    Test::TestArchived(*archived, etalon, *zip, files);
   }
 
   void TestStreamed()
   {
-    const Formats::Archived::Decoder::Ptr archived = Formats::Archived::CreateZipDecoder();
+    const auto archived = Formats::Archived::CreateZipDecoder();
     {
       std::vector<std::string> files;
-      files.push_back("p0.bin");
+      files.emplace_back("p0.bin");
       Test::TestArchived(*archived, "etalon.bin", "streamed_p0.zip", files);
     }
     {
       std::vector<std::string> files;
-      files.push_back("p9.bin");
+      files.emplace_back("p9.bin");
       Test::TestArchived(*archived, "etalon.bin", "streamed_p9.zip", files);
     }
     {
       std::vector<std::string> files;
-      files.push_back("p9.zip");
+      files.emplace_back("p9.zip");
       Test::TestArchived(*archived, "streamed_p9.zip", "streamed_p9_p0.zip", files);
     }
   }
-}
+}  // namespace
 
 int main()
 {
   try
   {
-    TestRegularFiles();
-    TestRegularArchive();
+    const auto etalon = Test::OpenFile("etalon.bin");
+    TestRegular(*etalon);
     TestStreamed();
   }
   catch (const std::exception& e)

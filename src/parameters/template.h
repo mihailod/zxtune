@@ -1,19 +1,20 @@
 /**
-*
-* @file
-*
-* @brief  Strings::Template adapter for Parameters interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Strings::Template adapter for Parameters interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <parameters/accessor.h>
-#include <parameters/convert.h>
-#include <strings/fields.h>
+#include "parameters/accessor.h"
+#include "parameters/convert.h"
+#include "strings/fields.h"
+
+#include "string_view.h"
 
 namespace Parameters
 {
@@ -24,24 +25,22 @@ namespace Parameters
   public:
     explicit FieldsSourceAdapter(const Accessor& params)
       : Params(params)
-    {
-    }
+    {}
 
-    String GetFieldValue(const String& fieldName) const override
+    String GetFieldValue(StringView fieldName) const override
     {
-      IntType intVal = 0;
-      StringType strVal;
-      if (Params.FindValue(fieldName, intVal))
+      if (auto integer = Params.FindInteger(fieldName))
       {
-        return ConvertToString(intVal);
+        return ConvertToString(*integer);
       }
-      else if (Params.FindValue(fieldName, strVal))
+      if (auto str = Params.FindString(fieldName))
       {
-        return strVal;
+        return *str;
       }
       return Policy::GetFieldValue(fieldName);
     }
+
   private:
     const Accessor& Params;
   };
-}
+}  // namespace Parameters

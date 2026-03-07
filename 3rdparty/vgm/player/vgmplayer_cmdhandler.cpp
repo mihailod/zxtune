@@ -8,6 +8,7 @@
 #include "../common_def.h"
 #include "vgmplayer.hpp"
 #include "../emu/EmuStructs.h"
+#include "../emu/SoundEmu.h"	// for SndEmu_GetDeviceFunc()
 #include "../emu/dac_control.h"
 #include "../emu/cores/sn764intf.h"	// for SN76496_W constants
 
@@ -19,7 +20,7 @@
 /*static*/ const VGMPlayer::COMMAND_INFO VGMPlayer::_CMD_INFO[0x100] =
 {
 	// {chip type, function},                         VGM command
-	{0xFF, 0x00, &VGMPlayer::Cmd_invalid},              // 00
+	{0xFF, 0x01, &VGMPlayer::Cmd_unknown},              // 00
 	{0xFF, 0x00, &VGMPlayer::Cmd_invalid},              // 01
 	{0xFF, 0x00, &VGMPlayer::Cmd_invalid},              // 02
 	{0xFF, 0x00, &VGMPlayer::Cmd_invalid},              // 03
@@ -83,7 +84,7 @@
 	{0xFF, 0x02, &VGMPlayer::Cmd_unknown},              // 3D
 	{0xFF, 0x02, &VGMPlayer::Cmd_unknown},              // 3E
 	{0x00, 0x02, &VGMPlayer::Cmd_GGStereo},             // 3F GameGear stereo mask (2nd chip)
-	{0xFF, 0x03, &VGMPlayer::Cmd_unknown},              // 40
+	{0x29, 0x03, &VGMPlayer::Cmd_Ofs8_Data8},           // 40 Mikey register write
 	{0xFF, 0x03, &VGMPlayer::Cmd_unknown},              // 41
 	{0xFF, 0x03, &VGMPlayer::Cmd_unknown},              // 42
 	{0xFF, 0x03, &VGMPlayer::Cmd_unknown},              // 43
@@ -203,7 +204,7 @@
 	{0x15, 0x03, &VGMPlayer::Cmd_Ofs8_Data8},           // B5 YMW258 (MultiPCM) register write
 	{0x16, 0x03, &VGMPlayer::Cmd_Ofs8_Data8},           // B6 uPD7759 register write
 	{0x17, 0x03, &VGMPlayer::Cmd_Ofs8_Data8},           // B7 OKIM6258 register write
-	{0x18, 0x03, &VGMPlayer::Cmd_Ofs8_Data8},           // B8 OKIM6295 register write
+	{0x18, 0x03, &VGMPlayer::Cmd_OKIM6295_Reg},         // B8 OKIM6295 register write
 	{0x1B, 0x03, &VGMPlayer::Cmd_Ofs8_Data8},           // B9 HuC6280 register write
 	{0x1D, 0x03, &VGMPlayer::Cmd_Ofs8_Data8},           // BA K053260 register write
 	{0x1E, 0x03, &VGMPlayer::Cmd_Ofs8_Data8},           // BB Pokey register write
@@ -532,7 +533,7 @@ void VGMPlayer::Cmd_invalid(void)
 	_psTrigger |= PLAYSTATE_END;
 	if (_eventCbFunc != NULL)
 		_eventCbFunc(this, _eventCbParam, PLREVT_END, NULL);
-	fprintf(stderr, "Invalid VGM command %02X found! (filePos 0x%06X)\n", fData[0x00], _filePos);
+	emu_logf(&_logger, PLRLOG_ERROR, "Invalid VGM command %02X found! (filePos 0x%06X)\n", fData[0x00], _filePos);
 	return;
 }
 
@@ -540,51 +541,71 @@ void VGMPlayer::Cmd_unknown(void)
 {
 	// The difference between "invalid" and "unknown" is, that there is a command length
 	// defined for "unknown" and thus it is possible to just skip it.
-	fprintf(stderr, "Unknown VGM command %02X found! (filePos 0x%06X)\n", fData[0x00], _filePos);
+	UINT8 cmdID = fData[0x00];
+	if (_shownCmdWarnings[cmdID] < 10)
+	{
+		_shownCmdWarnings[cmdID] ++;
+		emu_logf(&_logger, PLRLOG_WARN, "Unknown VGM command %02X found! (filePos 0x%06X)\n", cmdID, _filePos);
+	}
 	return;
 }
 
 void VGMPlayer::Cmd_EndOfData(void)
 {
-	if (! _fileHdr.loopOfs)
+	UINT8 silenceStop = 0;
+	UINT8 doLoop = (_fileHdr.loopOfs != 0);
+	
+	if (_playState & PLAYSTATE_SEEK)	// recalculate playSmpl to fix state when triggering callbacks
+		_playSmpl = Tick2Sample(_fileTick);	// Note: fileTick results in more accurate position
+	if (doLoop)
 	{
-		_playState |= PLAYSTATE_END;
-		_psTrigger |= PLAYSTATE_END;
-		if (_eventCbFunc != NULL)
-			_eventCbFunc(this, _eventCbParam, PLREVT_END, NULL);
-		
-		if (_playOpts.hardStopOld)
+		if (_lastLoopTick == _fileTick)
 		{
-			UINT8 doStop = 0x00;
-			doStop |= (_fileHdr.fileVer < 0x150) << 0;
-			doStop |= (_fileHdr.fileVer == 0x150 && _playOpts.hardStopOld == 2) << 1;
-			if (doStop)
-			{
-				size_t curDev;
-				for (curDev = 0; curDev < _devices.size(); curDev ++)
-				{
-					DEV_INFO* devInf = &_devices[curDev].base.defInf;
-					devInf->devDef->Reset(devInf->dataPtr);
-				}
-			}
+			doLoop = 0;	// prevent freezing due to infinite loop
+			emu_logf(&_logger, PLRLOG_WARN, "Ignored Zero-Sample-Loop!\n");
+		}
+		else
+		{
+			_lastLoopTick = _fileTick;
 		}
 	}
-	else
+	if (doLoop)
 	{
 		_curLoop ++;
 		if (_eventCbFunc != NULL)
 		{
-			UINT8 retVal;
-			
-			retVal = _eventCbFunc(this, _eventCbParam, PLREVT_LOOP, &_curLoop);
-			if (retVal == 0x01)
+			UINT8 retVal = _eventCbFunc(this, _eventCbParam, PLREVT_LOOP, &_curLoop);
+			if (retVal == 0x01)	// "stop" signal?
 			{
 				_playState |= PLAYSTATE_END;
 				_psTrigger |= PLAYSTATE_END;
+				if (_eventCbFunc != NULL)
+					_eventCbFunc(this, _eventCbParam, PLREVT_END, NULL);
 				return;
 			}
 		}
 		_filePos = _fileHdr.loopOfs;
+		return;
+	}
+	
+	_playState |= PLAYSTATE_END;
+	_psTrigger |= PLAYSTATE_END;
+	if (_eventCbFunc != NULL)
+		_eventCbFunc(this, _eventCbParam, PLREVT_END, NULL);
+	
+	if (_playOpts.hardStopOld)
+	{
+		silenceStop |= (_fileHdr.fileVer < 0x150) << 0;
+		silenceStop |= (_fileHdr.fileVer == 0x150 && _playOpts.hardStopOld == 2) << 1;
+	}
+	if (silenceStop)
+	{
+		size_t curDev;
+		for (curDev = 0; curDev < _devices.size(); curDev ++)
+		{
+			DEV_INFO* devInf = &_devices[curDev].base.defInf;
+			devInf->devDef->Reset(devInf->dataPtr);
+		}
 	}
 	
 	return;
@@ -679,6 +700,9 @@ void VGMPlayer::Cmd_DataBlock(void)
 	{
 	case 0x00:	// uncompressed data block
 	case 0x40:	// compressed data block
+		if (_curLoop > 0)
+			return;	// skip during the 2nd/3rd/... loop, as these blocks were already loaded
+		
 		if (dblkType == 0x7F)
 		{
 			ReadPCMComprTable(dblkLen, &fData[0x00], &_pcmComprTbl);
@@ -704,15 +728,21 @@ void VGMPlayer::Cmd_DataBlock(void)
 			pcmBnk->data.resize(oldLen + dataLen);
 			if (dblkType & 0x40)
 			{
-				DecompressDataBlk(dataLen, &pcmBnk->data[oldLen],
-									dblkLen - dbCI.hdrSize, &dataPtr[dbCI.hdrSize], &dbCI.cmprInfo);
+				UINT8 retVal = DecompressDataBlk(dataLen, &pcmBnk->data[oldLen],
+					dblkLen - dbCI.hdrSize, &dataPtr[dbCI.hdrSize], &dbCI.cmprInfo);
+				if (retVal == 0x10)
+					emu_logf(&_logger, PLRLOG_ERROR, "Error loading table-compressed data block! No table loaded!\n");
+				else if (retVal == 0x11)
+					emu_logf(&_logger, PLRLOG_ERROR, "Data block and loaded value table incompatible!\n");
+				else if (retVal == 0x80)
+					emu_logf(&_logger, PLRLOG_ERROR, "Unknown data block compression!\n");
 			}
 			else
 			{
 				memcpy(&pcmBnk->data[oldLen], dataPtr, dataLen);
 			}
 			
-			// TODO: refresh DAC Stream pointers
+			// TODO: refresh DAC Stream pointers (call daccontrol_refresh_data)
 		}
 		break;
 	case 0x80:	// ROM/RAM write
@@ -728,6 +758,7 @@ void VGMPlayer::Cmd_DataBlock(void)
 		if (chipType == 0x1C && dataLen && (cDev->flags & 0x01))
 		{
 			// chip == ASIC 219 (ID 0x1C + flags 0x01): byte-swap sample data
+			dataLen &= ~0x01;
 			std::vector<UINT8> swpData(dataLen);
 			for (UINT32 curPos = 0x00; curPos < dataLen; curPos += 0x02)
 			{
@@ -806,6 +837,8 @@ void VGMPlayer::Cmd_PcmRamWrite(void)
 void VGMPlayer::Cmd_YM2612PCM_Delay(void)
 {
 	CHIP_DEVICE* cDev = GetDevicePtr(0x02, 0);
+	_fileTick += (fData[0x00] & 0x0F);
+	
 	if (cDev == NULL || cDev->write8 == NULL)
 		return;
 	if (_ym2612pcm_bnkPos >= _pcmBank[0].data.size())
@@ -816,7 +849,6 @@ void VGMPlayer::Cmd_YM2612PCM_Delay(void)
 	_ym2612pcm_bnkPos ++;
 	// TODO: clip when exceeding pcmBank size
 	
-	_fileTick += (fData[0x00] & 0x0F);
 	return;
 }
 
@@ -849,6 +881,10 @@ void VGMPlayer::Cmd_DACCtrl_Setup(void)	// DAC Stream Control: Setup Chip
 		dacStrm.defInf.devDef->Reset(dacStrm.defInf.dataPtr);
 		dacStrm.streamID = fData[0x01];
 		dacStrm.bankID = 0xFF;
+		dacStrm.pbMode = 0x00;
+		dacStrm.freq = 0;
+		dacStrm.lastItem = (UINT32)-1;
+		dacStrm.maxItems = 0;
 		
 		_dacStrmMap[dacStrm.streamID] = _dacStreams.size();
 		_dacStreams.push_back(dacStrm);
@@ -864,7 +900,7 @@ void VGMPlayer::Cmd_DACCtrl_Setup(void)	// DAC Stream Control: Setup Chip
 	if (destChip == NULL)
 		return;
 	
-	daccontrol_setup_chip(dacStrm->defInf.dataPtr, &destChip->base.defInf, chipType, chipCmd);
+	daccontrol_setup_chip(dacStrm->defInf.dataPtr, &destChip->base.defInf, destChip->chipType, chipCmd);
 	return;
 }
 
@@ -880,7 +916,11 @@ void VGMPlayer::Cmd_DACCtrl_SetData(void)	// DAC Stream Control: Set Data Bank
 		return;
 	PCM_BANK* pcmBnk = &_pcmBank[dacStrm->bankID];
 	
-	daccontrol_set_data(dacStrm->defInf.dataPtr, &pcmBnk->data[0], (UINT32)pcmBnk->data.size(), fData[0x03], fData[0x04]);
+	dacStrm->maxItems = (UINT32)pcmBnk->bankOfs.size();
+	if (pcmBnk->data.empty())
+		daccontrol_set_data(dacStrm->defInf.dataPtr, NULL, 0, fData[0x03], fData[0x04]);
+	else
+		daccontrol_set_data(dacStrm->defInf.dataPtr, &pcmBnk->data[0], (UINT32)pcmBnk->data.size(), fData[0x03], fData[0x04]);
 	return;
 }
 
@@ -891,8 +931,8 @@ void VGMPlayer::Cmd_DACCtrl_SetFrequency(void)	// DAC Stream Control: Set Freque
 		return;
 	DACSTRM_DEV* dacStrm = &_dacStreams[dsID];
 	
-	UINT32 freq = ReadLE32(&fData[0x02]);
-	daccontrol_set_frequency(dacStrm->defInf.dataPtr, freq);
+	dacStrm->freq = ReadLE32(&fData[0x02]);
+	daccontrol_set_frequency(dacStrm->defInf.dataPtr, dacStrm->freq);
 	return;
 }
 
@@ -905,7 +945,9 @@ void VGMPlayer::Cmd_DACCtrl_PlayData_Loc(void)	// DAC Stream Control: Play Data 
 	
 	UINT32 startOfs = ReadLE32(&fData[0x02]);
 	UINT32 soundLen = ReadLE32(&fData[0x07]);
-	daccontrol_start(dacStrm->defInf.dataPtr, startOfs, fData[0x06], soundLen);
+	dacStrm->lastItem = (UINT32)-1;
+	dacStrm->pbMode = fData[0x06];
+	daccontrol_start(dacStrm->defInf.dataPtr, startOfs, dacStrm->pbMode, soundLen);
 	return;
 }
 
@@ -913,8 +955,12 @@ void VGMPlayer::Cmd_DACCtrl_Stop(void)	// DAC Stream Control: Stop immediately
 {
 	if (fData[0x01] == 0xFF)
 	{
-		for (size_t curStrm = 0; curStrm < _dacStreams.size(); curStrm ++)
-			daccontrol_stop(_dacStreams[curStrm].defInf.dataPtr);
+		for (size_t curStrm = 0; curStrm < _dacStreams.size(); curStrm++)
+		{
+			DACSTRM_DEV* dacStrm = &_dacStreams[curStrm];
+			dacStrm->lastItem = (UINT32)-1;
+			daccontrol_stop(dacStrm->defInf.dataPtr);
+		}
 		return;
 	}
 	
@@ -923,6 +969,7 @@ void VGMPlayer::Cmd_DACCtrl_Stop(void)	// DAC Stream Control: Stop immediately
 		return;
 	DACSTRM_DEV* dacStrm = &_dacStreams[dsID];
 	
+	dacStrm->lastItem = (UINT32)-1;
 	daccontrol_stop(dacStrm->defInf.dataPtr);
 	return;
 }
@@ -938,12 +985,16 @@ void VGMPlayer::Cmd_DACCtrl_PlayData_Blk(void)	// DAC Stream Control: Play Data 
 	PCM_BANK* pcmBnk = &_pcmBank[dacStrm->bankID];
 	
 	UINT16 sndID = ReadLE16(&fData[0x02]);
+	dacStrm->lastItem = sndID;
+	dacStrm->maxItems = (UINT32)pcmBnk->bankOfs.size();
+	if (sndID >= pcmBnk->bankOfs.size())
+		return;
 	UINT32 startOfs = pcmBnk->bankOfs[sndID];
 	UINT32 soundLen = pcmBnk->bankSize[sndID];
-	UINT8 flags = DCTRL_LMODE_BYTES |
-				((fData[0x04] & 0x10) << 0) |	// Reverse Mode
-				((fData[0x04] & 0x01) << 7);	// Looping
-	daccontrol_start(dacStrm->defInf.dataPtr, startOfs, flags, soundLen);
+	dacStrm->pbMode = DCTRL_LMODE_BYTES |
+					((fData[0x04] & 0x10) << 0) |	// Reverse Mode
+					((fData[0x04] & 0x01) << 7);	// Looping
+	daccontrol_start(dacStrm->defInf.dataPtr, startOfs, dacStrm->pbMode, soundLen);
 	return;
 }
 
@@ -1105,6 +1156,8 @@ void VGMPlayer::Cmd_RF5C_Mem(void)
 		return;
 	
 	UINT16 memOfs = ReadLE16(&fData[0x01]);
+	if (memOfs & 0xF000)
+		emu_logf(&_logger, PLRLOG_WARN, "RF5C mem write to out-of-window offset 0x%04X\n", memOfs);
 	cDev->writeM8(cDev->base.defInf.dataPtr, memOfs, fData[0x03]);
 	return;
 }
@@ -1274,15 +1327,50 @@ void VGMPlayer::Cmd_SAA_Reg(void)
 	return;
 }
 
-void VGMPlayer::Cmd_AY_Stereo(void)
+void VGMPlayer::Cmd_OKIM6295_Reg(void)
 {
-	UINT8 chipType = (fData[0x01] & 0x40) ? 0x06 : 0x12;	// YM2203 SSG or AY8910
+	UINT8 chipType = _CMD_INFO[fData[0x00]].chipType;
 	UINT8 chipID = (fData[0x01] & 0x80) >> 7;
 	CHIP_DEVICE* cDev = GetDevicePtr(chipType, chipID);
 	if (cDev == NULL || cDev->write8 == NULL)
 		return;
 	
-	// TODO: assign a register or do a special function call
-	//cDev->write8(cDev->base.defInf.dataPtr, 0xFF, fData[0x01] & 0x3F);
+	UINT8 ofs = fData[0x01] & 0x7F;
+	UINT8 data = fData[0x02];
+	if (ofs == 0x0B)
+	{
+		if (data & 0x80)
+		{
+			data &= 0x7F;	// remove "pin7" bit (bug in some MAME VGM logs)
+			//emu_logf(&_logger, PLRLOG_WARN, "OKIM6295 SetClock command (%02X %02X) includes Pin7 bit!\n",
+			//	fData[0x00], fData[0x01]);
+		}
+	}
+	
+	cDev->write8(cDev->base.defInf.dataPtr, ofs, data);
+	return;
+}
+
+void VGMPlayer::Cmd_AY_Stereo(void)
+{
+	UINT8 chipType = (fData[0x01] & 0x40) ? 0x06 : 0x12;	// YM2203 SSG or AY8910
+	UINT8 chipID = (fData[0x01] & 0x80) >> 7;
+	CHIP_DEVICE* cDev = GetDevicePtr(chipType, chipID);
+	VGM_BASEDEV* clDev;
+	DEVFUNC_OPTMASK writeStMask = NULL;
+	UINT8 retVal;
+	
+	if (cDev == NULL)
+		return;
+	if (chipType == 0x12)	// AY8910
+		clDev = &cDev->base;
+	else if (chipType == 0x06)	// YM2203 SSG
+		clDev = cDev->base.linkDev;
+	if (clDev == NULL)
+		return;
+	
+	retVal = SndEmu_GetDeviceFunc(clDev->defInf.devDef, RWF_REGISTER | RWF_WRITE, DEVRW_ALL, 0x5354, (void**)&writeStMask);
+	if (writeStMask != NULL)
+		writeStMask(cDev->base.defInf.dataPtr, fData[0x01] & 0x3F);
 	return;
 }

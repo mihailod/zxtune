@@ -1,38 +1,44 @@
 /**
-* 
-* @file
-*
-* @brief Update checking implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Update checking implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "check.h"
-#include "downloads.h"
-#include "parameters.h"
-#include "product.h"
-#include "apps/zxtune-qt/text/text.h"
+#include "apps/zxtune-qt/update/check.h"
+
 #include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/tools/errordialog.h"
 #include "apps/zxtune-qt/ui/utils.h"
-//common includes
-#include <error.h>
-#include <progress_callback.h>
-//library includes
-#include <debug/log.h>
-#include <io/api.h>
-#include <io/providers_parameters.h>
-#include <platform/version/fields.h>
-//std includes
-#include <ctime>
-#include <utility>
-//qt includes
+#include "apps/zxtune-qt/update/downloads.h"
+#include "apps/zxtune-qt/update/parameters.h"
+#include "apps/zxtune-qt/update/product.h"
+#include "apps/zxtune-qt/urls.h"
+
+#include "debug/log.h"
+#include "platform/version/fields.h"
+#include "time/duration.h"
+#include "time/instant.h"
+
+#include "contract.h"
+#include "error.h"
+#include "make_ptr.h"
+
+#include <QtCore/QPointer>
 #include <QtCore/QTimer>
+#include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkReply>
+#include <QtNetwork/QNetworkRequest>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QProgressDialog>
+
+#include <ctime>
+#include <utility>
 
 namespace
 {
@@ -41,72 +47,21 @@ namespace
 
 namespace
 {
-  class IOParameters : public Parameters::Accessor
+  class UICallback
   {
   public:
-    explicit IOParameters(String userAgent)
-      : UserAgent(std::move(userAgent))
-    {
-    }
+    using Ptr = std::unique_ptr<UICallback>;
+    virtual ~UICallback() = default;
 
-    IOParameters()
-    {
-    }
-
-    uint_t Version() const override
-    {
-      return 1;
-    }
-
-    bool FindValue(const Parameters::NameType& name, Parameters::IntType& val) const override
-    {
-      if (name == Parameters::ZXTune::IO::Providers::File::OVERWRITE_EXISTING)
-      {
-        val = 1;
-        return true;
-      }
-      else
-      {
-        return false;
-      }
-    }
-
-    bool FindValue(const Parameters::NameType& name, Parameters::StringType& val) const override
-    {
-      if (!UserAgent.empty() && name == Parameters::ZXTune::IO::Providers::Network::Http::USERAGENT)
-      {
-        val = UserAgent;
-        return true;
-      }
-      else
-      {
-        return false;
-      }
-    }
-
-    bool FindValue(const Parameters::NameType& /*name*/, Parameters::DataType& /*val*/) const override
-    {
-      return false;
-    }
-
-    void Process(Parameters::Visitor& visitor) const override
-    {
-      visitor.SetValue(Parameters::ZXTune::IO::Providers::File::OVERWRITE_EXISTING, 1);
-      if (!UserAgent.empty())
-      {
-        visitor.SetValue(Parameters::ZXTune::IO::Providers::Network::Http::USERAGENT, UserAgent);
-      }
-    }
-  private:
-    const String UserAgent;
+    // @return false if cancelled
+    virtual bool UpdateProgress(uint_t value) = 0;
+    virtual void ShowError(const Error& err) = 0;
   };
 
-  class Canceled {};
-
-  class DialogProgressCallback : public Log::ProgressCallback
+  class DialogUICallback : public UICallback
   {
   public:
-    explicit DialogProgressCallback(QWidget& parent, const QString& text)
+    DialogUICallback(QWidget& parent, const QString& text)
       : Progress(&parent, Qt::Dialog)
     {
       Progress.setMinimumDuration(1);
@@ -115,56 +70,92 @@ namespace
       Progress.setValue(0);
     }
 
-    void OnProgress(uint_t current) override
+    bool UpdateProgress(uint_t current) override
     {
       if (Progress.wasCanceled())
       {
-        Dbg("Cancel download");
-        throw Canceled();
+        return false;
       }
       Progress.setValue(current);
+      return true;
     }
 
-    void OnProgress(uint_t current, const String& /*message*/) override
+    void ShowError(const Error& err) override
     {
-      OnProgress(current);
+      ShowErrorMessage({}, err);
     }
+
   private:
     QProgressDialog Progress;
+  };
+
+  class SilentUICallback : public UICallback
+  {
+  public:
+    bool UpdateProgress(uint_t /*current*/) override
+    {
+      return true;
+    }
+
+    void ShowError(const Error& /*err*/) override {}
   };
 
   String GetUserAgent()
   {
     const std::unique_ptr<Strings::FieldsSource> fields = Platform::Version::CreateVersionFieldsSource();
-    return Strings::Template::Instantiate(Text::HTTP_USERAGENT, *fields);
+    return Strings::Template::Instantiate("[Program]/[Version] ([Platform]-[Arch])", *fields);
   }
 
-  Binary::Data::Ptr Download(const QUrl& url, Log::ProgressCallback& cb)
+  QNetworkRequest MakeRequest(const QUrl& url)
   {
-    const String path = FromQString(url.toString());
-    const IOParameters params(GetUserAgent());
-    return IO::OpenData(path, params, cb);
+    QNetworkRequest result(url);
+    result.setHeader(QNetworkRequest::UserAgentHeader, ToQString(GetUserAgent()));
+    result.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    return result;
   }
 
-  Binary::OutputStream::Ptr CreateStream(const QString& filename)
+  void Download(QNetworkAccessManager& mgr, const QUrl& url, UICallback::Ptr cb,
+                std::function<void(QByteArray)> onResult)
   {
-    const String path = FromQString(filename);
-    const IOParameters params;
-    return IO::CreateStream(path, params, Log::ProgressCallback::Stub());
+    Dbg("Downloading {}", FromQString(url.toString()));
+    auto* reply = mgr.get(MakeRequest(url));
+    Require(
+        QObject::connect(reply, &QNetworkReply::downloadProgress, [reply, ui = cb.get()](qint64 done, qint64 total) {
+          Dbg("Downloaded {}/{} err={}", done, total, uint_t(reply->error()));
+          if (!reply->error() && !ui->UpdateProgress(total > 0 ? uint_t(done * 100 / total) : 0))
+          {
+            Dbg("Aborted");
+            reply->abort();
+          }
+        }));
+    Require(QObject::connect(reply, &QNetworkReply::errorOccurred,
+                             [reply, ui = std::move(cb)](QNetworkReply::NetworkError err) {
+                               const auto& errStr = FromQString(reply->errorString());
+                               Dbg("Network error {}: {}", uint_t(err), errStr);
+                               if (QNetworkReply::OperationCanceledError != err)
+                               {
+                                 ui->ShowError(Error(THIS_LINE, errStr));
+                               }
+                             }));
+    Require(QObject::connect(reply, &QNetworkReply::finished, [reply, cb = std::move(onResult)] {
+      Dbg("Finished");
+      if (!reply->error())
+      {
+        cb(reply->readAll());
+      }
+      reply->deleteLater();
+    }));
   }
 
   QDate VersionToDate(const QString& str, const QDate& fallback)
   {
     const QDate asDate = QDate::fromString(str, "yyyyMMdd");
-    return asDate.isValid()
-      ? asDate
-      : fallback
-    ;
+    return asDate.isValid() ? asDate : fallback;
   }
 
   unsigned short VersionToRevision(const QString& str)
   {
-    static const QLatin1String REV_FORMAT("(\?:r(\?:ev)\?)\?(\\d{4,5}).*");
+    static const QLatin1String REV_FORMAT(R"((?:r(?:ev)?)?(\d{4,5}).*)");
     QRegExp expr(REV_FORMAT);
     if (expr.exactMatch(str))
     {
@@ -182,17 +173,14 @@ namespace
   class Version
   {
   public:
-    Version()
-      : AsDate()
-      , AsRev()
-    {
-    }
+    Version() = default;
 
     explicit Version(const QString& ver, const QDate& date)
       : AsDate(VersionToDate(ver, date))
       , AsRev(VersionToRevision(ver))
     {
-      Dbg("Version(%1%, %2%) = (date=%3%, rev=%4%)", FromQString(ver), FromQString(date.toString()), FromQString(AsDate.toString()), AsRev);
+      Dbg("Version({}, {}) = (date={}, rev={})", FromQString(ver), FromQString(date.toString()),
+          FromQString(AsDate.toString()), AsRev);
     }
 
     bool IsMoreRecentThan(const Version& rh) const
@@ -209,15 +197,8 @@ namespace
       {
         const bool thisValid = AsRev || AsDate.isValid();
         const bool rhValid = rh.AsRev || rh.AsDate.isValid();
-        if (thisValid && !rhValid)
-        {
-          //prefer much more valid
-          return true;
-        }
-        else
-        {
-          return false;
-        }
+        // prefer much more valid
+        return thisValid && !rhValid;
       }
     }
 
@@ -232,9 +213,10 @@ namespace
         return AsDate == rh.AsDate;
       }
     }
+
   private:
     QDate AsDate;
-    unsigned short AsRev;
+    unsigned short AsRev = 0;
   };
 
   class UpdateState : public Downloads::Visitor
@@ -244,19 +226,13 @@ namespace
       : CurVersion(Product::ThisRelease().Version(), Product::ThisRelease().Date())
       , CurTypes(Product::SupportedUpdateTypes())
       , UpdateRank(~std::size_t(0))
-    {
-      Dbg("Supported update types: %1% items", CurTypes.size());
-      for (auto type : CurTypes)
-      {
-        Dbg(" %1%", type);
-      }
-    }
+    {}
 
     void OnDownload(Product::Update::Ptr update) override
     {
-      const Product::Update::TypeTag type = Product::GetUpdateType(update->Platform(), update->Architecture(), update->Packaging());
-      Dbg("Update %1%, type %2%", FromQString(update->Title()), type);
-      const std::vector<Product::Update::TypeTag>::const_iterator it = std::find(CurTypes.begin(), CurTypes.end(), type);
+      Dbg("Update {}:", FromQString(update->Title()));
+      const auto type = Product::GetUpdateType(update->Platform(), update->Architecture(), update->Packaging());
+      const auto it = std::find(CurTypes.begin(), CurTypes.end(), type);
       if (CurTypes.end() == it)
       {
         Dbg(" unsupported");
@@ -266,14 +242,13 @@ namespace
       if (version.IsMoreRecentThan(CurVersion))
       {
         const std::size_t rank = std::distance(CurTypes.begin(), it);
-        if (!Update
-         || version.IsMoreRecentThan(UpdateVersion)
-         || (version.EqualsTo(UpdateVersion) && rank < UpdateRank))
+        if (!Update || version.IsMoreRecentThan(UpdateVersion)
+            || (version.EqualsTo(UpdateVersion) && rank < UpdateRank))
         {
           Update = update;
           UpdateRank = rank;
           UpdateVersion = version;
-          Dbg(" using: rank=%1%", rank);
+          Dbg(" using: rank={}", rank);
         }
         else
         {
@@ -290,6 +265,7 @@ namespace
     {
       return Update;
     }
+
   private:
     const Version CurVersion;
     const std::vector<Product::Update::TypeTag> CurTypes;
@@ -303,74 +279,93 @@ namespace
   public:
     explicit FileTransaction(const QString& name)
       : Info(name)
-    {
-    }
+    {}
+
+    FileTransaction(const FileTransaction&) = delete;
 
     ~FileTransaction()
     {
       Rollback();
     }
 
-    Binary::OutputStream::Ptr Begin()
+    std::unique_ptr<QIODevice> Begin()
     {
       Rollback();
-      return Object = CreateStream(Info.absoluteFilePath());
+      auto obj = std::make_unique<QFile>(Info.absoluteFilePath());
+      Require(obj->open(QIODevice::WriteOnly));
+      Object = obj.get();
+      return obj;
     }
 
     void Commit()
     {
-      Object = Binary::OutputStream::Ptr();
+      Object = {};
     }
 
     void Rollback()
     {
       if (Object)
       {
-        Object = Binary::OutputStream::Ptr();
-        const bool res = Info.absoluteDir().remove(Info.fileName());
-        Dbg("Remove failed saving: %1%", res);
+        const auto result = Object->remove();
+        Dbg("Remove failed saving: {}", result);
+        Object = {};
       }
     }
+
   private:
     const QFileInfo Info;
-    Binary::OutputStream::Ptr Object;
+    QPointer<QFile> Object;
   };
 
-  const unsigned CHECK_UPDATE_DELAY = 60;
+  const auto CHECK_UPDATE_DELAY = Time::Seconds(60);
+
+  // TODO: move to Time
+  using AtSecond = Time::Instant<Time::Second>;
+
+  auto Now()
+  {
+    return AtSecond(std::time(nullptr));
+  }
 
   class UpdateParameters
   {
   public:
     explicit UpdateParameters(Parameters::Container::Ptr params)
       : Params(std::move(params))
+    {}
+
+    QUrl GetFeedUrl() const
     {
+      using namespace Parameters;
+      const auto url = GetString(*Params, ZXTuneQT::Update::FEED, Urls::DownloadsFeed());
+      return ToQString(url);
     }
 
-    String GetFeedUrl() const
+    std::optional<Time::Seconds> GetCheckPeriod() const
     {
-      Parameters::StringType url = Text::DOWNLOADS_XML_URL;
-      Params->FindValue(Parameters::ZXTuneQT::Update::FEED, url);
-      return url;
+      using namespace Parameters::ZXTuneQT::Update;
+      if (const auto val =
+              Parameters::GetInteger<Time::Seconds::ValueType>(*Params, CHECK_PERIOD, CHECK_PERIOD_DEFAULT))
+      {
+        return Time::Seconds(val);
+      }
+      else
+      {
+        return std::nullopt;
+      }
     }
 
-    unsigned GetCheckPeriod() const
+    AtSecond GetLastCheckTime() const
     {
-      Parameters::IntType period = Parameters::ZXTuneQT::Update::CHECK_PERIOD_DEFAULT;
-      Params->FindValue(Parameters::ZXTuneQT::Update::CHECK_PERIOD, period);
-      return static_cast<unsigned>(period);
+      using namespace Parameters;
+      return AtSecond{GetInteger<AtSecond::ValueType>(*Params, ZXTuneQT::Update::LAST_CHECK)};
     }
 
-    std::time_t GetLastCheckTime() const
+    void SetLastCheckTime(AtSecond time)
     {
-      Parameters::IntType lastCheck = 0;
-      Params->FindValue(Parameters::ZXTuneQT::Update::LAST_CHECK, lastCheck);
-      return static_cast<std::time_t>(lastCheck);
+      Params->SetValue(Parameters::ZXTuneQT::Update::LAST_CHECK, time.Get());
     }
 
-    void SetLastCheckTime(std::time_t time)
-    {
-      Params->SetValue(Parameters::ZXTuneQT::Update::LAST_CHECK, time);
-    }
   private:
     const Parameters::Container::Ptr Params;
   };
@@ -381,88 +376,54 @@ namespace
     UpdateCheckOperation(QWidget& parent, UpdateParameters params)
       : Parent(parent)
       , Params(std::move(params))
+      , Network(this)
     {
       setParent(&parent);
-      QTimer::singleShot(CHECK_UPDATE_DELAY * 1000, this, SLOT(ExecuteBackground()));
+      ScheduleBackgroundCheck(CHECK_UPDATE_DELAY);
     }
 
     void Execute() override
     {
-      try
-      {
-        if (const Product::Update::Ptr update = GetAvailableUpdate())
-        {
-          if (QMessageBox::Save == ShowUpdateDialog(*update))
-          {
-            ApplyUpdate(*update);
-          }
-        }
-        else
-        {
-          QMessageBox::information(&Parent, QString(), Update::CheckOperation::tr("No new updates found"));
-        }
-      }
-      catch (const Canceled&)
-      {
-      }
-      catch (const Error& e)
-      {
-        emit ErrorOccurred(e);
-      }
+      auto cb = MakePtr<DialogUICallback>(Parent, Update::CheckOperation::tr("Getting list of available updates"));
+      GetAvailableUpdate(std::move(cb), &UpdateCheckOperation::ProcessUpdate);
     }
 
-    void ExecuteBackground() override
-    {
-      try
-      {
-        //If check was performed before
-        if (!CheckPeriodExpired())
-        {
-          return;
-        }
-        if (const Product::Update::Ptr update = GetAvailableUpdateSilent())
-        {
-          if (QMessageBox::Save == ShowUpdateDialog(*update))
-          {
-            ApplyUpdate(*update);
-          }
-        }
-      }
-      catch (const Canceled&)
-      {
-      }
-      catch (const Error&)
-      {
-        //Do not bother with implicit check errors
-      }
-    }
   private:
-    Product::Update::Ptr GetAvailableUpdate() const
+    using OnUpdateReady = void (UpdateCheckOperation::*)(Product::Update::Ptr);
+
+    void GetAvailableUpdate(UICallback::Ptr cb, OnUpdateReady onResult)
     {
-      DialogProgressCallback cb(Parent, Update::CheckOperation::tr("Getting list of available updates"));
-      return GetAvailableUpdate(cb);
+      Download(Network, Params.GetFeedUrl(), std::move(cb), [this, cb = std::move(onResult)](QByteArray feedData) {
+        UpdateState state;
+        const auto rss = Downloads::CreateFeedVisitor("ZXTune", state);
+        RSS::Parse(feedData, *rss);
+        StoreLastCheckTime();
+        (this->*cb)(state.GetUpdate());
+      });
     }
 
-    Product::Update::Ptr GetAvailableUpdateSilent() const
+    void ProcessUpdate(Product::Update::Ptr update)
     {
-      return GetAvailableUpdate(Log::ProgressCallback::Stub());
+      if (update)
+      {
+        ProcessUpdateSilent(std::move(update));
+      }
+      else
+      {
+        QMessageBox::information(&Parent, QString(), Update::CheckOperation::tr("No new updates found"));
+      }
     }
 
-    Product::Update::Ptr GetAvailableUpdate(Log::ProgressCallback& cb) const
+    void ProcessUpdateSilent(Product::Update::Ptr update)
     {
-      const QUrl feedUrl(ToQString(Params.GetFeedUrl()));
-      const Binary::Data::Ptr feedData = Download(feedUrl, cb);
-      UpdateState state;
-      const std::unique_ptr<RSS::Visitor> rss = Downloads::CreateFeedVisitor(Text::DOWNLOADS_PROJECT_NAME, state);
-      RSS::Parse(QByteArray(static_cast<const char*>(feedData->Start()), feedData->Size()), *rss);
-      StoreLastCheckTime();
-      return state.GetUpdate();
-    }
-
-    Binary::Data::Ptr DownloadWithProgress(const QUrl& url, const QString& text) const
-    {
-      DialogProgressCallback cb(Parent, text);
-      return Download(url, cb);
+      if (!update)
+      {
+        return;
+      }
+      if (QMessageBox::Save == ShowUpdateDialog(*update))
+      {
+        ApplyUpdate(*update);
+      }
     }
 
     QMessageBox::StandardButton ShowUpdateDialog(const Product::Update& update) const
@@ -472,16 +433,18 @@ namespace
       msg.append(update.Title());
       if (const int ageInDays = update.Date().daysTo(QDate::currentDate()))
       {
-        msg.append(Update::CheckOperation::tr("%1 (%n day(s) ago)", nullptr, ageInDays).arg(update.Date().toString(Qt::DefaultLocaleLongDate)));
+        msg.append(Update::CheckOperation::tr("%1 (%n day(s) ago)", "", ageInDays).arg(update.Date().toString()));
       }
-      msg.append(QString("<a href=\"%1\">%2</a>").arg(update.Description().toString()).arg(Update::CheckOperation::tr("Download manually")));
+      msg.append(QString("<a href=\"%1\">%2</a>")
+                     .arg(update.Description().toString())
+                     .arg(Update::CheckOperation::tr("Download manually")));
       return QMessageBox::question(&Parent, title, msg.join("<br/>"), QMessageBox::Save | QMessageBox::Cancel);
     }
 
     void ApplyUpdate(const Product::Update& update) const
     {
       const QUrl packageUrl = update.Package();
-      //do not use UI::SaveFileDialog
+      // do not use UI::SaveFileDialog
       QFileDialog dialog(&Parent, QString(), packageUrl.toString(), QLatin1String("*"));
       dialog.setOption(QFileDialog::DontUseNativeDialog, true);
       dialog.setOption(QFileDialog::HideNameFilterDetails, true);
@@ -493,54 +456,72 @@ namespace
 
     void DownloadAndSave(const QUrl& url, const QString& filename) const
     {
-      FileTransaction transaction(filename);
-      const Binary::OutputStream::Ptr target = transaction.Begin();
-      const Binary::Data::Ptr content = DownloadWithProgress(url, Update::CheckOperation::tr("Downloading file"));
-      target->ApplyData(*content);
-      target->Flush();
-      transaction.Commit();
+      auto cb = MakePtr<DialogUICallback>(Parent, Update::CheckOperation::tr("Downloading file"));
+      Download(Network, url, std::move(cb), [filename](QByteArray content) {
+        FileTransaction transaction(filename);
+        if (const auto target = transaction.Begin())
+        {
+          target->write(content);
+        }
+        transaction.Commit();
+      });
     }
 
     void StoreLastCheckTime() const
     {
-      Params.SetLastCheckTime(std::time(nullptr));
+      Params.SetLastCheckTime(AtSecond(std::time(nullptr)));
     }
 
-    bool CheckPeriodExpired() const
+    void ScheduleBackgroundCheck(Time::Milliseconds delay)
     {
-      if (const unsigned period = Params.GetCheckPeriod())
+      Dbg("Schedule verify after {}ms", delay.Get());
+      QTimer::singleShot(delay.Get(), this, &UpdateCheckOperation::ExecuteBackground);
+    }
+
+    std::optional<Time::Seconds> GetCheckDelay() const
+    {
+      if (const auto period = Params.GetCheckPeriod())
       {
-        const std::time_t lastCheck = Params.GetLastCheckTime();
-        const std::time_t now = std::time(nullptr);
-        return now > lastCheck + period;
+        const auto nextCheck = Params.GetLastCheckTime() + *period;
+        const auto now = Now();
+        return now < nextCheck ? nextCheck - now : Time::Seconds(0);
       }
       else
       {
-        return false;
+        return std::nullopt;
       }
     }
+
+    void ExecuteBackground()
+    {
+      // Update check is performed only if enabled, but operation executes periodically in order to cover settings
+      // change
+      auto after = Time::Seconds(3600);
+      if (!GetCheckDelay().value_or(after))
+      {
+        Dbg("Check updates now");
+        GetAvailableUpdate(MakePtr<SilentUICallback>(), &UpdateCheckOperation::ProcessUpdateSilent);
+      }
+      if (const auto delay = GetCheckDelay().value_or(Time::Seconds(0)))
+      {
+        // Ignore zero delays - here means failed update check
+        after = delay;
+      }
+      ScheduleBackgroundCheck(after);
+    }
+
   private:
     QWidget& Parent;
     mutable UpdateParameters Params;
+    mutable QNetworkAccessManager Network;
   };
-}
+}  // namespace
 
 namespace Update
 {
   CheckOperation* CheckOperation::Create(QWidget& parent)
   {
-    try
-    {
-      UpdateParameters params(GlobalOptions::Instance().Get());
-      if (IO::ResolveUri(params.GetFeedUrl()))
-      {
-        std::unique_ptr<CheckOperation> res(new UpdateCheckOperation(parent, params));
-        return res.release();
-      }
-    }
-    catch (const Error&)
-    {
-    }
-    return nullptr;
+    UpdateParameters params(GlobalOptions::Instance().Get());
+    return new UpdateCheckOperation(parent, std::move(params));
   }
-};
+};  // namespace Update

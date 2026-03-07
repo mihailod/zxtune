@@ -1,17 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  Format implementation details access
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Format implementation details access
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/format.h>
+#include "binary/format.h"
 
 namespace Binary
 {
@@ -20,4 +19,4 @@ namespace Binary
   public:
     virtual std::size_t GetMinSize() const = 0;
   };
-}
+}  // namespace Binary

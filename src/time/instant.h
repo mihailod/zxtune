@@ -1,17 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  Time instant type interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Time instant type interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <time/base.h>
+#include "time/base.h"
 
 namespace Time
 {
@@ -21,6 +20,7 @@ namespace Time
   {
     using Parent = Base<Unit, InstantTag>;
     using Parent::Value;
+
   public:
     using Parent::Parent;
     using Parent::Get;
@@ -31,26 +31,47 @@ namespace Time
 
     Instant(Parent rh)
       : Parent(std::move(rh))
-    {
-    }
+    {}
 
     template<class OtherUnit>
-    const Instant& operator += (Base<OtherUnit, DurationTag> rh)
+    const auto& operator+=(Base<OtherUnit, DurationTag> rh)
     {
-      static_assert(PER_SECOND >= rh.PER_SECOND, "Invalid resolution");
+      static_assert(PER_SECOND >= OtherUnit::PER_SECOND, "Invalid resolution");
       Value += Base<Unit, DurationTag>(rh).Get();
       return *this;
     }
 
     template<class OtherUnit>
-    Instant operator + (Base<OtherUnit, DurationTag> rh) const
+    constexpr auto operator+(Base<OtherUnit, DurationTag> rh) const
     {
-      static_assert(PER_SECOND >= rh.PER_SECOND, "Invalid resolution");
-      return Instant(Value + Base<Unit, DurationTag>(rh).Get());
+      using Return = std::conditional_t<PER_SECOND >= OtherUnit::PER_SECOND, Unit, OtherUnit>;
+      return Instant<Return>(this->template CastTo<Return>().Get() + rh.template CastTo<Return>().Get());
+    }
+
+    template<class OtherUnit>
+    const auto& operator-=(Base<OtherUnit, DurationTag> rh)
+    {
+      static_assert(PER_SECOND >= OtherUnit::PER_SECOND, "Invalid resolution");
+      Value -= Base<Unit, DurationTag>(rh).Get();
+      return *this;
+    }
+
+    template<class OtherUnit>
+    constexpr auto operator-(Base<OtherUnit, DurationTag> rh) const
+    {
+      using Return = std::conditional_t<PER_SECOND >= OtherUnit::PER_SECOND, Unit, OtherUnit>;
+      return Instant<Return>(this->template CastTo<Return>().Get() - rh.template CastTo<Return>().Get());
+    }
+
+    template<class OtherUnit>
+    constexpr auto operator-(Instant<OtherUnit> rh) const
+    {
+      using Return = std::conditional_t<PER_SECOND >= OtherUnit::PER_SECOND, Unit, OtherUnit>;
+      return Base<Return, DurationTag>(this->template CastTo<Return>().Get() - rh.template CastTo<Return>().Get());
     }
   };
 
   using AtMillisecond = Instant<Millisecond>;
   using AtMicrosecond = Instant<Microsecond>;
   using AtNanosecond = Instant<Nanosecond>;
-}
+}  // namespace Time

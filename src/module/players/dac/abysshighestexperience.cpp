@@ -1,49 +1,43 @@
 /**
-* 
-* @file
-*
-* @brief  AHX chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AHX chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/dac/abysshighestexperience.h"
-//common includes
-#include <contract.h>
-#include <make_ptr.h>
-//library includes
-#include <debug/log.h>
-#include <formats/chiptune/digital/abysshighestexperience.h>
-#include <module/track_information.h>
-#include <module/track_state.h>
-#include <module/players/analyzer.h>
-#include <module/players/properties_meta.h>
-#include <parameters/tracking_helper.h>
-#include <sound/chunk_builder.h>
-#include <sound/render_params.h>
-#include <sound/sound_parameters.h>
-//3rdparty
-#include <3rdparty/hvl/hvl_replay.h>
-//text includes
-#include <module/text/platforms.h>
 
-namespace Module
-{
-namespace AHX
+#include "formats/chiptune/digital/abysshighestexperience.h"
+#include "module/players/platforms.h"
+#include "module/players/properties_meta.h"
+
+#include "binary/container_factories.h"
+#include "debug/log.h"
+#include "module/track_information.h"
+#include "module/track_state.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
+#include "3rdparty/hvl/hvl_replay.h"
+
+namespace Module::AHX
 {
   const Debug::Stream Dbg("Core::AHXSupp");
 
-  typedef std::shared_ptr<hvl_tune> HvlPtr;
-  
+  using HvlPtr = std::shared_ptr<hvl_tune>;
+
   enum StereoSeparation
   {
     MONO = 0,
     STEREO = 4
   };
-  
-  HvlPtr LoadModule(Binary::View data)
+
+  HvlPtr LoadModule(Binary::View data, uint_t samplerate = 44100)
   {
     static bool initialized = false;
     if (!initialized)
@@ -51,19 +45,32 @@ namespace AHX
       hvl_InitReplayer();
       initialized = true;
     }
-    const HvlPtr result = HvlPtr(hvl_ParseTune(static_cast<const uint8*>(data.Start()), data.Size(), Parameters::ZXTune::Sound::FREQUENCY_DEFAULT, MONO), &hvl_FreeTune);
-    Require(result.get() != nullptr);
+    auto result =
+        HvlPtr(hvl_ParseTune(static_cast<const uint8*>(data.Start()), data.Size(), samplerate, MONO), &hvl_FreeTune);
+    Require(result != nullptr);
     return result;
   }
-  
+
+  const auto FRAME_DURATION = Time::Milliseconds::FromFrequency(50);
+
+  // TODO: test this
   class TrackInformation : public Module::TrackInformation
   {
   public:
     explicit TrackInformation(Binary::View data)
       : Hvl(LoadModule(data))
-      , CachedFramesCount()
-      , CachedLoopFrame()
+    {}
+
+    Time::Milliseconds Duration() const override
     {
+      Initialize();
+      return (FRAME_DURATION * (Hvl->ht_PlayingTime / Hvl->ht_SpeedMultiplier));
+    }
+
+    Time::Milliseconds LoopDuration() const override
+    {
+      Initialize();
+      return (FRAME_DURATION * ((Hvl->ht_PlayingTime - LoopTime) / Hvl->ht_SpeedMultiplier));
     }
 
     uint_t PositionsCount() const override
@@ -76,63 +83,51 @@ namespace AHX
       return Hvl->ht_PosJump;
     }
 
-    uint_t FramesCount() const override
-    {
-      if (!CachedFramesCount)
-      {
-        FillCache();
-      }
-      return CachedFramesCount;
-    }
-
-    uint_t LoopFrame() const override
-    {
-      if (!CachedLoopFrame)
-      {
-        FillCache();
-      }
-      return CachedLoopFrame;
-    }
-    
     uint_t ChannelsCount() const override
     {
       return Hvl->ht_Channels;
     }
 
-    uint_t Tempo() const override
+    uint_t GetLoopTime() const
     {
-      return Hvl->ht_Tempo;
+      Initialize();
+      return LoopTime;
     }
+
   private:
-    void FillCache() const
+    void Initialize() const
     {
       while (!Hvl->ht_SongEndReached)
       {
         hvl_NextFrame(Hvl.get());
-        ++CachedFramesCount;
         if (Hvl->ht_PosNr == Hvl->ht_Restart && 0 == Hvl->ht_NoteNr && Hvl->ht_Tempo == Hvl->ht_StepWaitFrames)
         {
-          CachedLoopFrame = CachedFramesCount;
+          LoopTime = Hvl->ht_PlayingTime;
         }
       }
     }
+
   private:
     const HvlPtr Hvl;
-    mutable uint_t CachedFramesCount;
-    mutable uint_t CachedLoopFrame;
+    mutable uint_t LoopTime = 0;
   };
-  
+
   class TrackState : public Module::TrackState
   {
   public:
-    explicit TrackState(HvlPtr hvl)
+    TrackState(HvlPtr hvl)
       : Hvl(std::move(hvl))
+    {}
+
+    Time::AtMillisecond At() const override
     {
+      // TODO: investigate for Hvl->ht_SongEndReached
+      return Time::AtMillisecond() + Total();
     }
 
-    uint_t Frame() const override
+    Time::Milliseconds Total() const override
     {
-      return Hvl->ht_PlayingTime / Hvl->ht_SpeedMultiplier;
+      return (FRAME_DURATION * (Hvl->ht_PlayingTime / Hvl->ht_SpeedMultiplier)).CastTo<Time::Millisecond>();
     }
 
     uint_t LoopCount() const override
@@ -147,7 +142,7 @@ namespace AHX
 
     uint_t Pattern() const override
     {
-      return Hvl->ht_PosNr;//TODO
+      return Hvl->ht_PosNr;  // TODO
     }
 
     uint_t Line() const override
@@ -174,31 +169,7 @@ namespace AHX
       }
       return result;
     }
-  private:
-    const HvlPtr Hvl;
-  };
-  
-  class Analyzer : public Module::Analyzer
-  {
-  public:
-    explicit Analyzer(HvlPtr hvl)
-      : Hvl(std::move(hvl))
-    {
-    }
 
-    SpectrumState GetState() const override
-    {
-      SpectrumState result;
-      for (uint_t idx = 0, lim = Hvl->ht_Channels; idx != lim; ++idx)
-      {
-        const hvl_voice& voice = Hvl->ht_Voices[idx];
-        if (const int_t volume = voice.vc_VoiceVolume)
-        {
-          result.Set(voice.vc_TrackPeriod, LevelType(volume, 64));
-        }
-      }
-      return result;
-    }
   private:
     const HvlPtr Hvl;
   };
@@ -206,43 +177,34 @@ namespace AHX
   class HVL
   {
   public:
-    typedef std::shared_ptr<HVL> Ptr;
-    
-    explicit HVL(Binary::View data)
-      : Hvl(LoadModule(data))
-      , SamplesPerFrame()
+    using Ptr = std::shared_ptr<HVL>;
+
+    HVL(Binary::View data, uint_t samplerate)
+      : Hvl(LoadModule(data, samplerate))
+      , SamplesPerFrame(FRAME_DURATION.Get() * samplerate / FRAME_DURATION.PER_SECOND)
     {
       Reset();
     }
-    
+
     void Reset()
     {
       hvl_InitSubsong(Hvl.get(), 0);
-      SamplesPerFrame = Hvl->ht_Frequency / 50;
     }
-    
-    void SetFrequency(uint_t freq)
-    {
-      if (freq != Hvl->ht_Frequency)
-      {
-        Require(Hvl->ht_PlayingTime == 0);
-        Hvl->ht_Frequency = freq;
-        Reset();
-      }
-    }
-    
-    void RenderFrame(Sound::ChunkBuilder& target)
+
+    Sound::Chunk RenderFrame()
     {
       static_assert(Sound::Sample::CHANNELS == 2, "Incompatible sound channels count");
       static_assert(Sound::Sample::BITS == 16, "Incompatible sound sample bits count");
       static_assert(Sound::Sample::MID == 0, "Incompatible sound sample type");
-      target.Reserve(SamplesPerFrame);
-      void* const buf = target.Allocate(SamplesPerFrame);
-      hvl_DecodeFrame(Hvl.get(), static_cast<int8*>(buf), static_cast<int8*>(buf) + sizeof(Sound::Sample) / 2, sizeof(Sound::Sample));
+      Sound::Chunk result(SamplesPerFrame);
+      auto* const buf = safe_ptr_cast<int8*>(result.data());
+      hvl_DecodeFrame(Hvl.get(), buf, buf + sizeof(Sound::Sample) / 2, sizeof(Sound::Sample));
+      return result;
     }
-    
-    void Seek(uint_t frame)
+
+    void Seek(Time::AtMillisecond request)
     {
+      const auto frame = Hvl->ht_SpeedMultiplier * request.Get() / FRAME_DURATION.Get();
       uint_t current = Hvl->ht_PlayingTime;
       if (frame < current)
       {
@@ -254,21 +216,17 @@ namespace AHX
         hvl_NextFrame(Hvl.get());
       }
     }
-    
+
     uint_t LoopCount() const
     {
       return Hvl->ht_SongEndReached;
     }
-    
+
     TrackState::Ptr MakeTrackState() const
     {
       return MakePtr<TrackState>(Hvl);
     }
 
-    Analyzer::Ptr MakeAnalyzer() const
-    {
-      return MakePtr<Analyzer>(Hvl);
-    } 
   private:
     const HvlPtr Hvl;
     uint_t SamplesPerFrame;
@@ -277,81 +235,48 @@ namespace AHX
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(HVL::Ptr tune, Sound::Receiver::Ptr target, Parameters::Accessor::Ptr params)
+    explicit Renderer(HVL::Ptr tune)
       : Tune(std::move(tune))
-      , Target(std::move(target))
-      , SoundParams(Sound::RenderParameters::Create(std::move(params)))
-      , Looped()
-    {
-      ApplyParameters();
-    }
+    {}
 
     State::Ptr GetState() const override
     {
       return Tune->MakeTrackState();
     }
 
-    Analyzer::Ptr GetAnalyzer() const override
+    Sound::Chunk Render() override
     {
-      return Tune->MakeAnalyzer();
-    }
-
-    bool RenderFrame() override
-    {
-      try
-      {
-        ApplyParameters();
-
-        Sound::ChunkBuilder builder;
-        Tune->RenderFrame(builder);
-        Target->ApplyData(builder.CaptureResult());
-        const auto loops = Tune->LoopCount();
-        return loops == 0 || Looped(loops);
-      }
-      catch (const std::exception&)
-      {
-        return false;
-      }
+      return Tune->RenderFrame();
     }
 
     void Reset() override
     {
-      SoundParams.Reset();
       Tune->Reset();
     }
 
-    void SetPosition(uint_t frame) override
+    void SetPosition(Time::AtMillisecond request) override
     {
-      Tune->Seek(frame);
+      Tune->Seek(request);
     }
-  private:
-    void ApplyParameters()
-    {
-      if (SoundParams.IsChanged())
-      {
-        Looped = SoundParams->Looped();
-        Tune->SetFrequency(SoundParams->SoundFreq());
-      }
-    }
+
   private:
     const HVL::Ptr Tune;
-    const Sound::Receiver::Ptr Target;
-    Parameters::TrackingHelper<Sound::RenderParameters> SoundParams;
-    Sound::LoopParameters Looped;
   };
-  
+
   class Holder : public Module::Holder
   {
   public:
-    Holder(HVL::Ptr tune, Module::Information::Ptr info, Parameters::Accessor::Ptr props)
+    Holder(Binary::Data::Ptr tune, Parameters::Accessor::Ptr props)
       : Tune(std::move(tune))
-      , Info(std::move(info))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     Module::Information::Ptr GetModuleInformation() const override
     {
+      if (!Info)
+      {
+        Info = MakePtr<TrackInformation>(*Tune);
+      }
       return Info;
     }
 
@@ -360,40 +285,42 @@ namespace AHX
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
     {
-      return MakePtr<Renderer>(Tune, std::move(target), std::move(params));
+      return MakePtr<Renderer>(MakePtr<HVL>(*Tune, samplerate));
     }
+
   private:
-    const HVL::Ptr Tune;
-    const Information::Ptr Info;
+    const Binary::Data::Ptr Tune;
     const Parameters::Accessor::Ptr Properties;
+    mutable Information::Ptr Info;
   };
-  
+
   class DataBuilder : public Formats::Chiptune::AbyssHighestExperience::Builder
   {
   public:
     explicit DataBuilder(PropertiesHelper& props)
       : Meta(props)
-    {
-    }
+    {}
 
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
       return Meta;
     }
+
   private:
     MetaProperties Meta;
   };
-  
+
   class Factory : public Module::Factory
   {
   public:
     explicit Factory(Formats::Chiptune::AbyssHighestExperience::Decoder::Ptr decoder)
       : Decoder(std::move(decoder))
-    {
-    }
-    Module::Holder::Ptr CreateModule(const Parameters::Accessor& /*params*/, const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    {}
+
+    Module::Holder::Ptr CreateModule(const Parameters::Accessor& /*params*/, const Binary::Container& rawData,
+                                     Parameters::Container::Ptr properties) const override
     {
       try
       {
@@ -404,25 +331,23 @@ namespace AHX
           props.SetSource(*container);
           props.SetPlatform(Platforms::AMIGA);
 
-          auto tune = MakePtr<HVL>(*container);
-          auto info = MakePtr<TrackInformation>(*container);
-          return MakePtr<Holder>(std::move(tune), std::move(info), properties);
+          auto tune = Binary::CreateContainer(Binary::View(*container));
+          return MakePtr<Holder>(std::move(tune), std::move(properties));
         }
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create AHX: %s", e.what());
+        Dbg("Failed to create AHX: {}", e.what());
       }
-      return Module::Holder::Ptr();
+      return {};
     }
-    
+
   private:
     const Formats::Chiptune::AbyssHighestExperience::Decoder::Ptr Decoder;
   };
-  
+
   Factory::Ptr CreateFactory(Formats::Chiptune::AbyssHighestExperience::Decoder::Ptr decoder)
   {
     return MakePtr<Factory>(std::move(decoder));
   }
-}
-}
+}  // namespace Module::AHX

@@ -1,14 +1,17 @@
 /**
-*
-* @file
-*
-* @brief  Backends attributes
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Backends attributes
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
+
+#include "string_view.h"
+#include "types.h"
 
 namespace Sound
 {
@@ -31,4 +34,24 @@ namespace Sound
     //! Hardware volume control
     CAP_FEAT_HWVOLUME = 0x100
   };
-}
+
+  class BackendId : public StringView
+  {
+    constexpr BackendId(const char* str, std::size_t size)
+      : StringView(str, size)
+    {}
+
+  public:
+    friend constexpr BackendId operator""_id(const char*, std::size_t) noexcept;
+
+    static BackendId FromString(StringView s)
+    {
+      return {s.data(), s.size()};
+    }
+  };
+
+  constexpr BackendId operator"" _id(const char* str, std::size_t size) noexcept
+  {
+    return {str, size};
+  }
+}  // namespace Sound

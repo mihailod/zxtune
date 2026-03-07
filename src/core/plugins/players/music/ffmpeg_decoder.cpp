@@ -1,23 +1,25 @@
 /**
-*
-* @file
-*
-* @brief  FFmpeg adapter implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  FFmpeg adapter implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "core/plugins/players/music/ffmpeg_decoder.h"
-//common includes
-#include <contract.h>
-#include <pointers.h>
-#include <make_ptr.h>
-//library includes
-#include <math/numeric.h>
-//3rdparty
-extern "C" {
+
+#include "math/numeric.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
+#include <array>
+
+extern "C"
+{
 #include "3rdparty/ffmpeg/libavcodec/avcodec.h"
 }
 
@@ -25,9 +27,7 @@ extern AVCodec ff_atrac3_decoder;
 extern AVCodec ff_atrac3p_decoder;
 extern AVCodec ff_atrac9_decoder;
 
-namespace Module
-{
-namespace FFmpeg
+namespace Module::FFmpeg
 {
   class DecoderImpl : public Decoder
   {
@@ -37,8 +37,7 @@ namespace FFmpeg
     explicit DecoderImpl(const AVCodec& codec)
       : Context(::avcodec_alloc_context3(&codec))
       , Frame(::av_frame_alloc())
-    {
-    }
+    {}
 
     void SetBlockSize(uint_t blockSize)
     {
@@ -89,6 +88,7 @@ namespace FFmpeg
         }
       }
     }
+
   private:
     static void CheckError(int code)
     {
@@ -132,24 +132,24 @@ namespace FFmpeg
 
     void DecodeMono(Sound::Sample* target) const
     {
-      switch(Frame->format)
+      switch (Frame->format)
       {
       case AV_SAMPLE_FMT_S16P:
       case AV_SAMPLE_FMT_S16:
-        {
-          const auto begin = safe_ptr_cast<const int16_t*>(Frame->data[0]);
-          const auto end = begin + Frame->nb_samples;
-          std::transform(begin, end, target, DecodeMonoSample<int16_t>);
-        }
-        break;
+      {
+        const auto* const begin = GetSamples<int16_t>(0);
+        const auto* const end = begin + Frame->nb_samples;
+        std::transform(begin, end, target, DecodeMonoSample<int16_t>);
+      }
+      break;
       case AV_SAMPLE_FMT_FLT:
       case AV_SAMPLE_FMT_FLTP:
-        {
-          const auto begin = safe_ptr_cast<const float*>(Frame->data[0]);
-          const auto end = begin + Frame->nb_samples;
-          std::transform(begin, end, target, DecodeMonoSample<int16_t>);
-        }
-        break;
+      {
+        const auto* const begin = GetSamples<float>(0);
+        const auto* const end = begin + Frame->nb_samples;
+        std::transform(begin, end, target, DecodeMonoSample<float>);
+      }
+      break;
       default:
         Require(false);
         break;
@@ -158,42 +158,50 @@ namespace FFmpeg
 
     void DecodeStereo(Sound::Sample* target) const
     {
-      switch(Frame->format)
+      switch (Frame->format)
       {
       case AV_SAMPLE_FMT_S16P:
-        {
-          const auto begin1 = safe_ptr_cast<const int16_t*>(Frame->data[0]);
-          const auto begin2 = safe_ptr_cast<const int16_t*>(Frame->data[1]);
-          const auto end = begin1 + Frame->nb_samples;
-          std::transform(begin1, end, begin2, target, DecodePlanarSample<int16_t>);
-        }
-        break;
+      {
+        const auto* const begin1 = GetSamples<int16_t>(0);
+        const auto* const begin2 = GetSamples<int16_t>(1);
+        const auto* const end = begin1 + Frame->nb_samples;
+        std::transform(begin1, end, begin2, target, DecodePlanarSample<int16_t>);
+      }
+      break;
       case AV_SAMPLE_FMT_S16:
-        {
-          const auto begin = safe_ptr_cast<const std::array<int16_t, 2>*>(Frame->data[0]);
-          const auto end = begin + Frame->nb_samples;
-          std::transform(begin, end, target, DecodeStereoSample<int16_t>);
-        }
-        break;
+      {
+        const auto* const begin = GetSamples<std::array<int16_t, 2>>(0);
+        const auto* const end = begin + Frame->nb_samples;
+        std::transform(begin, end, target, DecodeStereoSample<int16_t>);
+      }
+      break;
       case AV_SAMPLE_FMT_FLTP:
-        {
-          const auto begin1 = safe_ptr_cast<const float*>(Frame->data[0]);
-          const auto begin2 = safe_ptr_cast<const float*>(Frame->data[1]);
-          const auto end = begin1 + Frame->nb_samples;
-          std::transform(begin1, end, begin2, target, DecodePlanarSample<float>);
-        }
-        break;
+      {
+        const auto* const begin1 = GetSamples<float>(0);
+        const auto* const begin2 = GetSamples<float>(1);
+        const auto* const end = begin1 + Frame->nb_samples;
+        std::transform(begin1, end, begin2, target, DecodePlanarSample<float>);
+      }
+      break;
       case AV_SAMPLE_FMT_FLT:
-        {
-          const auto begin = safe_ptr_cast<const std::array<float, 2>*>(Frame->data[0]);
-          const auto end = begin + Frame->nb_samples;
-          std::transform(begin, end, target, DecodeStereoSample<float>);
-        }
-        break;
+      {
+        const auto* const begin = GetSamples<std::array<float, 2>>(0);
+        const auto* const end = begin + Frame->nb_samples;
+        std::transform(begin, end, target, DecodeStereoSample<float>);
+      }
+      break;
       default:
         Require(false);
         break;
       }
+    }
+
+    template<class T>
+    const T* GetSamples(int plane) const
+    {
+      // Assume data is properly aligned!
+      const void* const raw = Frame->data[plane];
+      return static_cast<const T*>(raw);
     }
 
     inline static Sound::Sample::Type DecodeSample(int16_t s)
@@ -225,6 +233,7 @@ namespace FFmpeg
     {
       return DecodePlanarSample(s[0], s[1]);
     }
+
   private:
     AVCodecContext* Context;
     AVFrame* Frame;
@@ -238,7 +247,7 @@ namespace FFmpeg
     decoder->SetBlockSize(blockSize);
     decoder->SetExtraData(config);
     decoder->Init();
-    return Decoder::Ptr(std::move(decoder));
+    return decoder;
   }
 
   Decoder::Ptr CreateAtrac3PlusDecoder(uint_t channels, uint_t blockSize)
@@ -247,7 +256,7 @@ namespace FFmpeg
     decoder->SetChannels(channels);
     decoder->SetBlockSize(blockSize);
     decoder->Init();
-    return Decoder::Ptr(std::move(decoder));
+    return decoder;
   }
 
   Decoder::Ptr CreateAtrac9Decoder(uint_t blockSize, Binary::View config)
@@ -256,7 +265,6 @@ namespace FFmpeg
     decoder->SetBlockSize(blockSize);
     decoder->SetExtraData(config);
     decoder->Init();
-    return Decoder::Ptr(std::move(decoder));
+    return decoder;
   }
-}
-}
+}  // namespace Module::FFmpeg

@@ -1,22 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  ProTracker2 chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ProTracker2 chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
 #include "module/players/aym/aym_factory.h"
 
-namespace Module
+namespace Module::ProTracker2
 {
-  namespace ProTracker2
-  {
-    AYM::Factory::Ptr CreateFactory();
-  }
-}
+  AYM::Factory::Ptr CreateFactory();
+}  // namespace Module::ProTracker2

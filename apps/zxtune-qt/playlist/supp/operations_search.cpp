@@ -1,29 +1,34 @@
 /**
-* 
-* @file
-*
-* @brief Search operation implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Search operation implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "operations_search.h"
-#include "storage.h"
-#include "ui/utils.h"
-//common includes
-#include <contract.h>
-#include <make_ptr.h>
-//qt includes
+#include "apps/zxtune-qt/playlist/supp/operations_search.h"
+
+#include "apps/zxtune-qt/playlist/supp/storage.h"
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "tools/progress_callback_helpers.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <QtCore/QRegExp>
+
+#include <utility>
 
 namespace
 {
   class Predicate
   {
   public:
-    typedef std::shared_ptr<const Predicate> Ptr;
+    using Ptr = std::shared_ptr<const Predicate>;
     virtual ~Predicate() = default;
 
     virtual bool Match(const Playlist::Item::Data& data) const = 0;
@@ -36,9 +41,7 @@ namespace
       : Callback(cb)
       , Pred(std::move(pred))
       , Result(MakeRWPtr<Playlist::Model::IndexSet>())
-      , Done(0)
-    {
-    }
+    {}
 
     void OnItem(Playlist::Model::IndexType index, Playlist::Item::Data::Ptr data) override
     {
@@ -53,11 +56,12 @@ namespace
     {
       return Result;
     }
+
   private:
     Log::ProgressCallback& Callback;
     const Predicate::Ptr Pred;
     const Playlist::Model::IndexSet::RWPtr Result;
-    uint_t Done;
+    uint_t Done = 0;
   };
 
   class SearchOperation : public Playlist::Item::SelectionOperation
@@ -79,8 +83,8 @@ namespace
     void Execute(const Playlist::Item::Storage& stor, Log::ProgressCallback& cb) override
     {
       const std::size_t totalItems = SelectedItems ? SelectedItems->size() : stor.CountItems();
-      const Log::ProgressCallback::Ptr progress = Log::CreatePercentProgressCallback(totalItems, cb);
-      SearchVisitor visitor(Pred, *progress);
+      Log::PercentProgressCallback progress(totalItems, cb);
+      SearchVisitor visitor(Pred, progress);
       if (SelectedItems)
       {
         stor.ForSpecifiedItems(*SelectedItems, visitor);
@@ -91,18 +95,19 @@ namespace
       }
       emit ResultAcquired(visitor.GetResult());
     }
+
   private:
     const Playlist::Model::IndexSet::Ptr SelectedItems;
-    const Predicate::Ptr Pred;  
+    const Predicate::Ptr Pred;
   };
 
   class StringPredicate
   {
   public:
-    typedef std::shared_ptr<const StringPredicate> Ptr;
+    using Ptr = std::shared_ptr<const StringPredicate>;
     virtual ~StringPredicate() = default;
 
-    virtual bool Match(const String& str) const = 0;
+    virtual bool Match(StringView str) const = 0;
   };
 
   class ScopePredicateDispatcher : public Predicate
@@ -113,16 +118,14 @@ namespace
       , MatchTitle(0 != (scope & Playlist::Item::Search::TITLE))
       , MatchAuthor(0 != (scope & Playlist::Item::Search::AUTHOR))
       , MatchPath(0 != (scope & Playlist::Item::Search::PATH))
-    {
-    }
+    {}
 
     bool Match(const Playlist::Item::Data& data) const override
     {
-      return (MatchTitle && Pred->Match(data.GetTitle()))
-          || (MatchAuthor && Pred->Match(data.GetAuthor()))
-          || (MatchPath && Pred->Match(data.GetFullPath()))
-      ;
+      return (MatchTitle && Pred->Match(data.GetTitle())) || (MatchAuthor && Pred->Match(data.GetAuthor()))
+             || (MatchPath && Pred->Match(data.GetFullPath()));
     }
+
   private:
     const StringPredicate::Ptr Pred;
     const bool MatchTitle;
@@ -133,7 +136,7 @@ namespace
   class EmptyStringPredicate : public StringPredicate
   {
   public:
-    bool Match(const String& str) const override
+    bool Match(StringView str) const override
     {
       return str.empty();
     }
@@ -142,16 +145,16 @@ namespace
   class SimpleStringPredicate : public StringPredicate
   {
   public:
-    SimpleStringPredicate(const QString& pat, bool caseSensitive)
-      : Pattern(pat)
+    SimpleStringPredicate(QString pat, bool caseSensitive)
+      : Pattern(std::move(pat))
       , Mode(caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive)
-    {
-    }
+    {}
 
-    bool Match(const String& str) const override
+    bool Match(StringView str) const override
     {
       return ToQString(str).contains(Pattern, Mode);
     }
+
   private:
     const QString Pattern;
     const Qt::CaseSensitivity Mode;
@@ -162,13 +165,13 @@ namespace
   public:
     RegexStringPredicate(const QString& val, bool caseSensitive)
       : Pattern(val, caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive)
-    {
-    }
+    {}
 
-    bool Match(const String& str) const override
+    bool Match(StringView str) const override
     {
       return ToQString(str).contains(Pattern);
     }
+
   private:
     const QRegExp Pattern;
   };
@@ -193,22 +196,19 @@ namespace
       return MakePtr<ScopePredicateDispatcher>(str, data.Scope);
     }
   }
-}
+}  // namespace
 
-namespace Playlist
+namespace Playlist::Item
 {
-  namespace Item
+  SelectionOperation::Ptr CreateSearchOperation(const Search::Data& data)
   {
-    SelectionOperation::Ptr CreateSearchOperation(const Search::Data& data)
-    {
-      const Predicate::Ptr pred = CreatePredicate(data);
-      return MakePtr<SearchOperation>(pred);
-    }
-
-    SelectionOperation::Ptr CreateSearchOperation(Playlist::Model::IndexSet::Ptr items, const Search::Data& data)
-    {
-      const Predicate::Ptr pred = CreatePredicate(data);
-      return MakePtr<SearchOperation>(items, pred);
-    }
+    const Predicate::Ptr pred = CreatePredicate(data);
+    return MakePtr<SearchOperation>(pred);
   }
-}
+
+  SelectionOperation::Ptr CreateSearchOperation(Playlist::Model::IndexSet::Ptr items, const Search::Data& data)
+  {
+    auto pred = CreatePredicate(data);
+    return MakePtr<SearchOperation>(std::move(items), std::move(pred));
+  }
+}  // namespace Playlist::Item

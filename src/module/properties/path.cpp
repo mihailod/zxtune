@@ -1,62 +1,61 @@
 /**
-* 
-* @file
-*
-* @brief  Path properties support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Path properties support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "path.h"
-//common includes
-#include <error_tools.h>
-#include <make_ptr.h>
-//library includes
-#include <io/api.h>
-#include <module/attributes.h>
-#include <parameters/visitor.h>
+#include "module/properties/path.h"
+
+#include "io/api.h"
+#include "module/attributes.h"
+#include "parameters/visitor.h"
+
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
 
 namespace Module
 {
   class UnresolvedPathPropertiesAccessor : public Parameters::Accessor
   {
   public:
-    explicit UnresolvedPathPropertiesAccessor(String uri)
-      : Uri(std::move(uri))
-    {
-    }
+    explicit UnresolvedPathPropertiesAccessor(StringView uri)
+      : Uri(uri)
+    {}
 
     uint_t Version() const override
     {
       return 1;
     }
 
-    bool FindValue(const Parameters::NameType& /*name*/, Parameters::IntType& /*val*/) const override
+    std::optional<Parameters::IntType> FindInteger(Parameters::Identifier /*name*/) const override
     {
-      return false;
+      return std::nullopt;
     }
 
-    bool FindValue(const Parameters::NameType& name, Parameters::StringType& val) const override
+    std::optional<Parameters::StringType> FindString(Parameters::Identifier name) const override
     {
       if (name == ATTR_FULLPATH)
       {
-        val = Uri;
-        return true;
+        return Uri;
       }
-      return false;
+      return std::nullopt;
     }
 
-    bool FindValue(const Parameters::NameType& /*name*/, Parameters::DataType& /*val*/) const override
+    Binary::Data::Ptr FindData(Parameters::Identifier /*name*/) const override
     {
-      return false;
+      return {};
     }
 
     void Process(Parameters::Visitor& visitor) const override
     {
       visitor.SetValue(ATTR_FULLPATH, Uri);
     }
+
   private:
     const String Uri;
   };
@@ -66,52 +65,46 @@ namespace Module
   public:
     explicit PathPropertiesAccessor(IO::Identifier::Ptr id)
       : Id(std::move(id))
-    {
-    }
+    {}
 
     uint_t Version() const override
     {
       return 1;
     }
 
-    bool FindValue(const Parameters::NameType& /*name*/, Parameters::IntType& /*val*/) const override
+    std::optional<Parameters::IntType> FindInteger(Parameters::Identifier /*name*/) const override
     {
-      return false;
+      return std::nullopt;
     }
 
-    bool FindValue(const Parameters::NameType& name, Parameters::StringType& val) const override
+    std::optional<Parameters::StringType> FindString(Parameters::Identifier name) const override
     {
       if (name == ATTR_SUBPATH)
       {
-        val = Id->Subpath();
-        return true;
+        return Id->Subpath();
       }
       else if (name == ATTR_FILENAME)
       {
-        val = Id->Filename();
-        return true;
+        return Id->Filename();
       }
       else if (name == ATTR_EXTENSION)
       {
-        val = Id->Extension();
-        return true;
+        return Id->Extension();
       }
       else if (name == ATTR_PATH)
       {
-        val = Id->Path();
-        return true;
+        return Id->Path();
       }
       else if (name == ATTR_FULLPATH)
       {
-        val = Id->Full();
-        return true;
+        return Id->Full();
       }
-      return false;
+      return std::nullopt;
     }
 
-    bool FindValue(const Parameters::NameType& /*name*/, Parameters::DataType& /*val*/) const override
+    Binary::Data::Ptr FindData(Parameters::Identifier /*name*/) const override
     {
-      return false;
+      return {};
     }
 
     void Process(Parameters::Visitor& visitor) const override
@@ -122,19 +115,20 @@ namespace Module
       visitor.SetValue(ATTR_PATH, Id->Path());
       visitor.SetValue(ATTR_FULLPATH, Id->Full());
     }
+
   private:
     const IO::Identifier::Ptr Id;
   };
-}
+}  // namespace Module
 
 namespace Module
 {
-  Parameters::Accessor::Ptr CreatePathProperties(const String& fullpath)
+  Parameters::Accessor::Ptr CreatePathProperties(StringView fullpath)
   {
     try
     {
-      const IO::Identifier::Ptr id = IO::ResolveUri(fullpath);
-      return CreatePathProperties(id);
+      auto id = IO::ResolveUri(fullpath);
+      return CreatePathProperties(std::move(id));
     }
     catch (const Error&)
     {
@@ -144,6 +138,6 @@ namespace Module
 
   Parameters::Accessor::Ptr CreatePathProperties(IO::Identifier::Ptr id)
   {
-    return MakePtr<PathPropertiesAccessor>(id);
+    return MakePtr<PathPropertiesAccessor>(std::move(id));
   }
-}
+}  // namespace Module

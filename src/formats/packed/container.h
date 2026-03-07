@@ -1,25 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief  Packed data container helper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Packed data container helper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//library includes
-#include <formats/packed.h>
+#include "formats/packed.h"
 
-namespace Formats
+#include "types.h"
+
+namespace Formats::Packed
 {
-  namespace Packed
-  {
-    Container::Ptr CreateContainer(Binary::Container::Ptr data, std::size_t origSize);
-    Container::Ptr CreateContainer(std::unique_ptr<Dump> data, std::size_t origSize);
-  }
-}
+  Container::Ptr CreateContainer(Binary::Container::Ptr data, std::size_t origSize);
+}  // namespace Formats::Packed

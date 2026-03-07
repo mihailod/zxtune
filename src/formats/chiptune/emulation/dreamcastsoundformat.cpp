@@ -1,44 +1,40 @@
 /**
-* 
-* @file
-*
-* @brief  DSF parser implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  DSF parser implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/chiptune/emulation/dreamcastsoundformat.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <binary/format_factories.h>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+#include "binary/format_factories.h"
+
+#include "make_ptr.h"
+
+namespace Formats::Chiptune
 {
   namespace DreamcastSoundFormat
   {
-    const std::string FORMAT(
-      "'P'S'F"
-      "12"
-    );
-    
+    const auto DESCRIPTION = "Dreamcast Sound Format"sv;
+
+    const auto FORMAT =
+        "'P'S'F"
+        "12"
+        ""sv;
+
     class Decoder : public Formats::Chiptune::Decoder
     {
     public:
       Decoder()
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
-      {
-      }
+      {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
-        return Text::DREAMCASTSOUNDFORMAT_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -46,23 +42,23 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Format->Match(rawData);
       }
 
       Formats::Chiptune::Container::Ptr Decode(const Binary::Container& /*rawData*/) const override
       {
-        return Formats::Chiptune::Container::Ptr();//TODO
+        return {};  // TODO
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
-  }
+  }  // namespace DreamcastSoundFormat
 
   Decoder::Ptr CreateDSFDecoder()
   {
     return MakePtr<DreamcastSoundFormat::Decoder>();
   }
-}
-}
+}  // namespace Formats::Chiptune

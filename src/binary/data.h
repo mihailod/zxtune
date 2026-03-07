@@ -1,16 +1,15 @@
 /**
-*
-* @file
-*
-* @brief  Simple binary data abstraction
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Simple binary data abstraction
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//std includes
 #include <memory>
 
 namespace Binary
@@ -20,7 +19,7 @@ namespace Binary
   {
   public:
     //! @brief Pointer type
-    typedef std::shared_ptr<const Data> Ptr;
+    using Ptr = std::shared_ptr<const Data>;
 
     virtual ~Data() = default;
 
@@ -32,4 +31,4 @@ namespace Binary
     //! @invariant Always >= 0
     virtual std::size_t Size() const = 0;
   };
-}
+}  // namespace Binary

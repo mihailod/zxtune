@@ -1,30 +1,29 @@
 /**
-* 
-* @file
-*
-* @brief Playlist controller interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playlist controller interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "data_provider.h"
-#include "playlist/io/container.h"
-#include "playlist/supp/model.h"
-#include "playlist/supp/scanner.h"
-//common includes
-#include <iterator.h>
-//qt includes
+#include "apps/zxtune-qt/playlist/io/container.h"
+#include "apps/zxtune-qt/playlist/supp/data_provider.h"
+#include "apps/zxtune-qt/playlist/supp/model.h"
+#include "apps/zxtune-qt/playlist/supp/scanner.h"
+
+#include "tools/iterators.h"
+
 #include <QtCore/QObject>
 
 namespace Playlist
 {
   namespace Item
   {
-    //dynamic part
+    // dynamic part
     enum State
     {
       STOPPED,
@@ -52,38 +51,37 @@ namespace Playlist
       Q_OBJECT
     protected:
       explicit Iterator(QObject& parent);
-    public:
-      typedef Iterator* Ptr;
 
-      //access
+    public:
+      using Ptr = Iterator*;
+
+      // access
       virtual unsigned GetIndex() const = 0;
       virtual State GetState() const = 0;
-      //change
+      // change
       virtual void SetState(State state) = 0;
-      //navigate
+      // navigate
       virtual bool Next(unsigned playorderMode) = 0;
       virtual bool Prev(unsigned playorderMode) = 0;
 
-      //select item without activation 
+      // select item without activation
       virtual void Select(unsigned idx) = 0;
-    public slots:
-      //navigate
+
+      // navigate
       virtual void Reset() = 0;
       virtual void Reset(unsigned idx) = 0;
-    private slots:
-      virtual void UpdateIndices(Playlist::Model::OldToNewIndexMap::Ptr remapping) = 0;
     signals:
       void Activated(Playlist::Item::Data::Ptr);
       void ItemActivated(Playlist::Item::Data::Ptr);
       void ItemActivated(unsigned idx);
       void Deactivated();
     };
-  }
+  }  // namespace Item
 
   class TextNotification
   {
   public:
-    typedef std::shared_ptr<const TextNotification> Ptr;
+    using Ptr = std::shared_ptr<const TextNotification>;
     virtual ~TextNotification() = default;
 
     virtual QString Category() const = 0;
@@ -95,8 +93,8 @@ namespace Playlist
   {
     Q_OBJECT
   public:
-    typedef std::shared_ptr<Controller> Ptr;
-    typedef ObjectIterator<Ptr> Iterator;
+    using Ptr = std::shared_ptr<Controller>;
+    using Iterator = ObjectIterator<Ptr>;
 
     static Ptr Create(const QString& name, Item::DataProvider::Ptr provider);
 
@@ -106,9 +104,8 @@ namespace Playlist
     virtual Model::Ptr GetModel() const = 0;
     virtual Item::Iterator::Ptr GetIterator() const = 0;
     virtual void Shutdown() = 0;
-  public slots:
     virtual void ShowNotification(Playlist::TextNotification::Ptr notification) = 0;
   signals:
     void Renamed(const QString& name);
   };
-}
+}  // namespace Playlist

@@ -1,26 +1,23 @@
 /**
-*
-* @file
-*
-* @brief  Common SharedLibrary logic interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Common SharedLibrary logic interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <error.h>
-//library includes
-#include <platform/shared_library.h>
+#include "platform/shared_library.h"
 
-namespace Platform
+#include "error.h"
+#include "string_view.h"
+
+namespace Platform::Details
 {
-  namespace Details
-  {
-    std::string GetSharedLibraryFilename(const std::string& name);
-    std::vector<std::string> GetSharedLibraryFilenames(const SharedLibrary::Name& name);
-    Error LoadSharedLibrary(const std::string& fileName, SharedLibrary::Ptr& res);
-  }
-}
+  String GetSharedLibraryFilename(StringView name);
+  std::vector<String> GetSharedLibraryFilenames(const SharedLibrary::Name& name);
+  Error LoadSharedLibrary(const String& fileName, SharedLibrary::Ptr& res);
+}  // namespace Platform::Details

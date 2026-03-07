@@ -1,23 +1,23 @@
 /**
-*
-* @file
-*
-* @brief  ESVCruncher test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ESVCruncher test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../utils.h"
+#include "formats/test/utils.h"
 
 int main()
 {
   std::vector<std::string> tests;
-  tests.push_back("packed1.bin");
-  tests.push_back("packed2.bin");
-  tests.push_back("packed3.bin");
-  tests.push_back("packed4.bin");
-  tests.push_back("packed5.bin");
+  tests.emplace_back("packed1.bin");
+  tests.emplace_back("packed2.bin");
+  tests.emplace_back("packed3.bin");
+  tests.emplace_back("packed4.bin");
+  tests.emplace_back("packed5.bin");
 
   try
   {

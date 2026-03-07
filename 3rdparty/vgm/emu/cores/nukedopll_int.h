@@ -1,3 +1,5 @@
+// license:GPL-2.0+
+// copyright-holders:Nuke.YKT
 /*
  * Copyright (C) 2019 Nuke.YKT
  *
@@ -17,15 +19,16 @@
  *      siliconpr0n.org(digshadow, John McMaster):
  *          VRC VII decap and die shot.
  *
- *  version: 1.0
+ *  version: 1.0.1
  */
 
 // Nuked OPLL internal structures/functions
-#ifndef __NUKEDOPLL_INT_H__
-#define __NUKEDOPLL_INT_H__
+#ifndef NUKEDOPLL_INT_H
+#define NUKEDOPLL_INT_H
 
 #include "../../stdtype.h"
 #include "../snddef.h"
+#include "emutypes.h"
 
 #define RSM_FRAC 10
 #define OPLL_WRITEBUF_SIZE 2048
@@ -34,7 +37,11 @@
 enum {
     opll_type_ym2413 = 0x00,    /* Yamaha YM2413  */
     opll_type_ds1001,           /* Konami VRC VII */
-    opll_type_ym2413b           /* Yamaha YM2413B */
+    opll_type_ym2413b,          /* Yamaha YM2413B */
+    opll_type_ymf281,           /* Yamaha YMF281  */
+    opll_type_ymf281b,          /* Yamaha YMF281B */
+    opll_type_ym2420,           /* Yamaha YM2420  */
+    opll_type_ym2423,           /* Yamaha YM2423  */
 };
 
 enum {
@@ -222,4 +229,4 @@ void NOPLL_Write(opll_t *chip, uint32_t port, uint8_t data);
 
 void NOPLL_WriteBuffered(opll_t*chip, uint32_t port, uint8_t data);
 
-#endif	// __NUKEDOPLL_INT_H__
+#endif	// NUKEDOPLL_INT_H

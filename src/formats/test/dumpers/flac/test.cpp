@@ -1,45 +1,60 @@
 /**
-*
-* @file
-*
-* @brief  FLAC dumper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  FLAC dumper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../../utils.h"
-#include <formats/chiptune/music/flac.h>
-#include <strings/format.h>
+#include "formats/chiptune/music/flac.h"
+#include "formats/test/utils.h"
+
+#include "strings/format.h"
+
+#include "string_view.h"
 
 namespace
 {
   using namespace Formats::Chiptune;
 
-  class FlacBuilder : public Flac::Builder, public MetaBuilder
+  class FlacBuilder
+    : public Flac::Builder
+    , public MetaBuilder
   {
   public:
-    void SetProgram(const String& program) override
+    void SetProgram(StringView program) override
     {
       std::cout << "Program: " << program << std::endl;
     }
-    
-    void SetTitle(const String& title) override
+
+    void SetTitle(StringView title) override
     {
       std::cout << "Title: " << title << std::endl;
     }
-    
-    void SetAuthor(const String& author) override
+
+    void SetAuthor(StringView author) override
     {
       std::cout << "Author: " << author << std::endl;
     }
-    
+
     void SetStrings(const Strings::Array& strings) override
     {
       for (const auto& str : strings)
       {
-        std::cout << "Strings: " <<  str << std::endl;
+        std::cout << "Strings: " << str << std::endl;
       }
+    }
+
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
+    }
+
+    void SetPicture(Binary::View content) override
+    {
+      std::cout << "Picture: " << content.Size() << " bytes" << std::endl;
     }
 
     MetaBuilder& GetMetaBuilder() override
@@ -56,7 +71,7 @@ namespace
     {
       std::cout << "FrameSize: " << minimal << "..." << maximal << std::endl;
     }
-    
+
     void SetStreamParameters(uint_t sampleRate, uint_t channels, uint_t bitsPerSample) override
     {
       std::cout << "Frequency: " << sampleRate << std::endl
@@ -73,7 +88,7 @@ namespace
 
     void AddFrame(std::size_t offset) override
     {
-      std::cout << Strings::Format("Frame: @%1%(0x%1$08x)\n", offset);
+      std::cout << Strings::Format("Frame: @{0}(0x{0:08x})\n", offset);
       ++FramesCount;
     }
 
@@ -86,11 +101,12 @@ namespace
     {
       return FramesCount;
     }
+
   private:
     uint64_t UnpackedSize = 0;
     uint_t FramesCount = 0;
   };
-}
+}  // namespace
 
 int main(int argc, char* argv[])
 {
@@ -100,9 +116,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Dump> rawData(new Dump());
-    Test::OpenFile(argv[1], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[1]);
     FlacBuilder builder;
     if (const auto result = Formats::Chiptune::Flac::Parse(*data, builder))
     {

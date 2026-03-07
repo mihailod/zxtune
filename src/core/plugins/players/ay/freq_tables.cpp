@@ -1,37 +1,36 @@
 /**
-* 
-* @file
-*
-* @brief  Frequency tables for AYM-based plugins
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Frequency tables for AYM-based plugins
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "core/plugins/players/ay/freq_tables_internal.h"
-//common includes
-#include <error_tools.h>
-//library includes
-#include <l10n/api.h>
-//text includes
-#include <core/text/core.h>
 
-#define FILE_TAG E8071E22
+#include "l10n/api.h"
+
+#include "error_tools.h"
+#include "string_view.h"
+
+#include <algorithm>
 
 namespace Module
 {
   const L10n::TranslateFunctor translate = L10n::TranslateFunctor("core_players");
 
   // prefix for reverted frequency tables
-  const Char REVERT_TABLE_MARK = '~';
+  const auto REVERT_TABLE_MARK = '~';
 
   struct FreqTableEntry
   {
-    const Char* const Name;
+    const StringView Name;
     const FrequencyTable Table;
   };
 
+  // clang-format off
   const FreqTableEntry TABLES[] =
   {
     //SoundTracker
@@ -258,20 +257,21 @@ namespace Module
       } }
     }
   };
-  
-  void GetFreqTable(const String& id, FrequencyTable& result)
+  // clang-format on
+
+  void GetFreqTable(StringView id, FrequencyTable& result)
   {
-    //check if required to revert table
+    // check if required to revert table
     const bool doRevert = !id.empty() && *id.begin() == REVERT_TABLE_MARK;
-    const String idNormal = doRevert ? id.substr(1) : id;
-    //find if table is supported
+    const auto idNormal = doRevert ? id.substr(1) : id;
+    // find if table is supported
     const auto* entry = std::find_if(TABLES, std::end(TABLES),
-      [&idNormal](const FreqTableEntry& entry) {return entry.Name == idNormal;});
+                                     [&idNormal](const FreqTableEntry& entry) { return entry.Name == idNormal; });
     if (entry == std::end(TABLES))
     {
-      throw MakeFormattedError(THIS_LINE, translate("Invalid frequency table '%1%'."), id);
+      throw MakeFormattedError(THIS_LINE, translate("Invalid frequency table '{}'."), id);
     }
-    //copy result forward (normal) or backward (reverted)
+    // copy result forward (normal) or backward (reverted)
     if (doRevert)
     {
       std::copy(entry->Table.rbegin(), entry->Table.rend(), result.begin());
@@ -281,6 +281,4 @@ namespace Module
       std::copy(entry->Table.begin(), entry->Table.end(), result.begin());
     }
   }
-}
-
-#undef FILE_TAG
+}  // namespace Module

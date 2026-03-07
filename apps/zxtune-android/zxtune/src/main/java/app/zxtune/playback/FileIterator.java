@@ -18,7 +18,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import app.zxtune.Log;
 import app.zxtune.R;
-import app.zxtune.StubProgressCallback;
 import app.zxtune.core.Identifier;
 import app.zxtune.core.Module;
 import app.zxtune.core.Scanner;
@@ -29,6 +28,7 @@ import app.zxtune.fs.VfsExtensions;
 import app.zxtune.fs.VfsFile;
 import app.zxtune.fs.VfsObject;
 import app.zxtune.playback.stubs.PlayableItemStub;
+import app.zxtune.utils.StubProgressCallback;
 
 // TODO: support cleanup of iterator itself
 public class FileIterator implements Iterator {
@@ -155,7 +155,8 @@ public class FileIterator implements Iterator {
       @Nullable
       @Override
       public VfsFile getNextFile() {
-        final int doneFiles = counter[0]++;
+        final int doneFiles = counter[0];
+        counter[0]++;
         final int itemsCount = counter[1];
         if ((itemsCount == 0 && doneFiles > 0) || !files.hasNext()) {
           finish();
@@ -241,11 +242,6 @@ public class FileIterator implements Iterator {
       }
     }
     parentDir.enumerate(new VfsDir.Visitor() {
-      @Override
-      public void onItemsCount(int count) {
-        result.ensureCapacity(count);
-      }
-
       @Override
       public void onDir(VfsDir dir) {
       }

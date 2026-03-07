@@ -20,7 +20,11 @@
 #include <limits.h>
 #endif
 
-#if !defined(HAVE_POPEN) && defined(WIN32)
+#ifndef DECRUNCH_MAX
+#define DECRUNCH_MAX 5 /* don't recurse more than this */
+#endif
+
+#if !defined(HAVE_POPEN) && defined(WIN32) && DECRUNCH_MAX > 0
 #include "../win32/ptpopen.h"
 #endif
 
@@ -30,8 +34,9 @@
 #include "hio.h"
 #include "extras.h"
 
-
+#ifndef NO_COMPOSITE_LOADER
 extern struct format_loader *format_loader[];
+#endif
 
 void load_prologue(struct context_data *);
 void load_epilogue(struct context_data *);
@@ -68,10 +73,6 @@ static void set_md5sum(HIO_HANDLE *f, unsigned char *digest)
 	}
 	MD5Final(digest, &ctx);
 }
-
-#ifndef DECRUNCH_MAX
-#define DECRUNCH_MAX 5 /* don't recurse more than this */
-#endif
 
 #if DECRUNCH_MAX > 0
 int decrunch_arc	(FILE *, FILE *);
@@ -395,6 +396,7 @@ static int decrunch(struct list_head *head, FILE **f, char **s, int ttl)
 }
 #endif
 
+#ifndef NO_COMPOSITE_LOADER
 /*
  * Windows doesn't allow you to unlink an open file, so we changed the
  * temp file cleanup system to remove temporary files after we close it
@@ -634,6 +636,7 @@ int xmp_load_module(xmp_context opaque, char *path)
 	unlink_tempfiles(&tmpfiles_list);
 	return -XMP_ERROR_DEPACK;
 }
+#endif // NO_COMPOSITE_LOADER
 
 static int module_load(HIO_HANDLE* h, struct context_data *ctx, const struct format_loader* format)
 {
@@ -686,6 +689,7 @@ int xmp_load_typed_module_from_memory(xmp_context opaque, void *mem, long size, 
   return ret;
 }
 
+#ifndef NO_COMPOSITE_LOADER
 static int composite_test(HIO_HANDLE *f, char *t, const int start)
 {
   struct format_loader **loader;
@@ -721,6 +725,7 @@ int xmp_load_module_from_memory(xmp_context opaque, void *mem, long size)
 {
   return xmp_load_typed_module_from_memory(opaque, mem, size, &composite_loader);
 }
+#endif
 
 void xmp_release_module(xmp_context opaque)
 {

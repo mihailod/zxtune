@@ -1,19 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief  Plugins registrator interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Plugins registrator interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-#include "player_plugin.h"
-#include "registrator.h"
+#include "core/plugins/player_plugin.h"
+#include "core/plugins/registrator.h"
 
 namespace ZXTune
 {
-  typedef PluginsRegistrator<PlayerPlugin> PlayerPluginsRegistrator;
-}
+  class PlayerPluginsRegistrator : public PluginsRegistrator<PlayerPlugin>
+  {};
+}  // namespace ZXTune

@@ -1,18 +1,17 @@
 /**
-* 
-* @file
-*
-* @brief Analysis result interface and factories
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Analysis result interface and factories
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/format.h>
-#include <binary/container.h>
+#include "binary/container.h"
+#include "binary/format.h"
 
 namespace Analysis
 {
@@ -21,7 +20,7 @@ namespace Analysis
   class Result
   {
   public:
-    typedef std::shared_ptr<const Result> Ptr;
+    using Ptr = std::unique_ptr<const Result>;
     virtual ~Result() = default;
 
     //! @brief Returns data size that is processed in current data position
@@ -35,8 +34,7 @@ namespace Analysis
     virtual std::size_t GetLookaheadOffset() const = 0;
   };
 
-
   Result::Ptr CreateMatchedResult(std::size_t matchedSize);
   Result::Ptr CreateUnmatchedResult(Binary::Format::Ptr format, Binary::Container::Ptr data);
   Result::Ptr CreateUnmatchedResult(std::size_t unmatchedSize);
-}
+}  // namespace Analysis

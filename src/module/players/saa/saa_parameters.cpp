@@ -1,33 +1,30 @@
 /**
-* 
-* @file
-*
-* @brief  SAA parameters helpers implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SAA parameters helpers implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/saa/saa_parameters.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <core/core_parameters.h>
-#include <sound/render_params.h>
 
-namespace Module
-{
-namespace SAA
+#include "core/core_parameters.h"
+
+#include "make_ptr.h"
+
+#include <utility>
+
+namespace Module::SAA
 {
   class ChipParameters : public Devices::SAA::ChipParameters
   {
   public:
-    explicit ChipParameters(Parameters::Accessor::Ptr params)
-      : Params(params)
-      , SoundParams(Sound::RenderParameters::Create(std::move(params)))
-    {
-    }
+    ChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params)
+      : Samplerate(samplerate)
+      , Params(std::move(params))
+    {}
 
     uint_t Version() const override
     {
@@ -36,30 +33,28 @@ namespace SAA
 
     uint64_t ClockFreq() const override
     {
-      Parameters::IntType val = Parameters::ZXTune::Core::SAA::CLOCKRATE_DEFAULT;
-      Params->FindValue(Parameters::ZXTune::Core::SAA::CLOCKRATE, val);
-      return val;
+      using namespace Parameters::ZXTune::Core::SAA;
+      return Parameters::GetInteger<uint64_t>(*Params, CLOCKRATE, CLOCKRATE_DEFAULT);
     }
 
     uint_t SoundFreq() const override
     {
-      return SoundParams->SoundFreq();
+      return Samplerate;
     }
 
     Devices::SAA::InterpolationType Interpolation() const override
     {
-      Parameters::IntType intVal = Parameters::ZXTune::Core::SAA::INTERPOLATION_DEFAULT;
-      Params->FindValue(Parameters::ZXTune::Core::SAA::INTERPOLATION, intVal);
-      return static_cast<Devices::SAA::InterpolationType>(intVal);
+      using namespace Parameters::ZXTune::Core::SAA;
+      return Parameters::GetInteger<Devices::SAA::InterpolationType>(*Params, INTERPOLATION, INTERPOLATION_DEFAULT);
     }
+
   private:
+    const uint_t Samplerate;
     const Parameters::Accessor::Ptr Params;
-    const Sound::RenderParameters::Ptr SoundParams;
   };
 
-  Devices::SAA::ChipParameters::Ptr CreateChipParameters(Parameters::Accessor::Ptr params)
+  Devices::SAA::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params)
   {
-    return MakePtr<ChipParameters>(std::move(params));
+    return MakePtr<ChipParameters>(samplerate, std::move(params));
   }
-}
-}
+}  // namespace Module::SAA

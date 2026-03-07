@@ -1,23 +1,25 @@
 /**
-*
-* @file
-*
-* @brief  SoundTracker tracks dumper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SoundTracker tracks dumper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../../utils.h"
-#include <formats/chiptune/aym/soundtracker.h>
+#include "formats/chiptune/aym/soundtracker.h"
+#include "formats/test/utils.h"
+
+#include "string_view.h"
 
 namespace
 {
   using namespace Formats::Chiptune::SoundTracker;
 
-  Char ToHex(uint_t val)
+  auto ToHex(uint_t val)
   {
-    return val >= 10 ? (val - 10 + 'A') : val + '0';
+    return val >= 10 ? 'A' + (val - 10) : '0' + val;
   }
 
   inline std::string GetNote(uint_t note)
@@ -29,47 +31,53 @@ namespace
     return std::string(TONES + halftone * 2, TONES + halftone * 2 + 2) + char('1' + octave);
   }
 
-  class STDumpBuilder : public Builder, public Formats::Chiptune::MetaBuilder, public Formats::Chiptune::PatternBuilder
+  class STDumpBuilder
+    : public Builder
+    , public Formats::Chiptune::MetaBuilder
+    , public Formats::Chiptune::PatternBuilder
   {
   public:
-    //Builder
+    // Builder
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
       return *this;
     }
 
-    //MetaBuilder
-    void SetProgram(const String& program) override
+    // MetaBuilder
+    void SetProgram(StringView program) override
     {
       std::cout << "Program: " << program << std::endl;
     }
 
-    void SetTitle(const String& program) override
+    void SetTitle(StringView program) override
     {
       std::cout << "Title: " << program << std::endl;
     }
 
-    void SetAuthor(const String& author) override
+    void SetAuthor(StringView author) override
     {
       std::cout << "Author: " << author << std::endl;
     }
-    
-    void SetStrings(const Strings::Array& /*strings*/) override
+
+    void SetStrings(const Strings::Array& /*strings*/) override {}
+
+    void SetComment(StringView comment) override
     {
+      std::cout << "Comment: " << comment << std::endl;
     }
-    
-    //Builder
+
+    // Builder
     void SetInitialTempo(uint_t tempo) override
     {
       std::cout << "Tempo: " << tempo << std::endl;
     }
 
-    void SetSample(uint_t index, Sample sample) override
+    void SetSample(uint_t index, Sample /*sample*/) override
     {
       std::cout << "Sample" << index << std::endl;
     }
 
-    void SetOrnament(uint_t index, Ornament ornament) override
+    void SetOrnament(uint_t index, Ornament /*ornament*/) override
     {
       std::cout << "Ornament" << index << std::endl;
     }
@@ -86,13 +94,13 @@ namespace
 
     Formats::Chiptune::PatternBuilder& StartPattern(uint_t index) override
     {
-      //nn C-1 soETT
+      // nn C-1 soETT
       Line = String(33, ' ');
       std::cout << std::endl << "Pattern" << index << ':';
       return *this;
     }
-    
-    //PatternBuilder
+
+    // PatternBuilder
     void Finish(uint_t size) override
     {
       std::cout << Line << std::endl;
@@ -105,12 +113,10 @@ namespace
       Line[0] = '0' + index / 10;
       Line[1] = '0' + index % 10;
     }
-    
-    void SetTempo(uint_t /*tempo*/) override
-    {
-    }
 
-    //Builder
+    void SetTempo(uint_t /*tempo*/) override {}
+
+    // Builder
     void StartChannel(uint_t index) override
     {
       ChanPtr = &Line[3 + index * 10];
@@ -147,9 +153,10 @@ namespace
     {
       ChanPtr[6] = '0';
     }
+
   private:
     String Line;
-    Char* ChanPtr;
+    char* ChanPtr;
   };
 
   Formats::Chiptune::SoundTracker::Decoder::Ptr CreateDecoder(const std::string& type)
@@ -171,7 +178,7 @@ namespace
       throw std::runtime_error("Unknown type " + type);
     }
   }
-}
+}  // namespace
 
 int main(int argc, char* argv[])
 {
@@ -181,12 +188,10 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Dump> rawData(new Dump());
-    Test::OpenFile(argv[2], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[2]);
     const std::string type(argv[1]);
     STDumpBuilder builder;
-    const Formats::Chiptune::SoundTracker::Decoder::Ptr decoder = CreateDecoder(type);
+    const auto decoder = CreateDecoder(type);
     decoder->Parse(*data, builder);
   }
   catch (const std::exception& e)

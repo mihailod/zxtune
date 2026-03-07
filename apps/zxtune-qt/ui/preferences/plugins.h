@@ -1,16 +1,15 @@
 /**
-* 
-* @file
-*
-* @brief Plugins settings pane interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Plugins settings pane interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//qt includes
 #include <QtWidgets/QWidget>
 
 namespace UI
@@ -20,7 +19,8 @@ namespace UI
     Q_OBJECT
   protected:
     explicit PluginsSettingsWidget(QWidget& parent);
+
   public:
     static PluginsSettingsWidget* Create(QWidget& parent);
   };
-}
+}  // namespace UI

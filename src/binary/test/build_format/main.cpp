@@ -1,24 +1,26 @@
-#include <pointers.h>
-#include <types.h>
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <strings/format.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
+#include "binary/dump.h"
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "strings/format.h"
+
+#include "pointers.h"
+#include "types.h"
+
+#include <algorithm>
 #include <bitset>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 
 namespace
 {
   struct Range
   {
-    uint_t Min;
-    uint_t Max;
-    
-    Range() : Min(255), Max(0) 
-    {
-    }
-    
+    uint_t Min = 255;
+    uint_t Max = 0;
+
+    Range() = default;
+
     void Apply(uint_t val)
     {
       Min = std::min(val, Min);
@@ -29,7 +31,7 @@ namespace
     {
       return Min <= Max && (Max - Min < 255);
     }
-    
+
     std::size_t CountCatches() const
     {
       return Max - Min + 1;
@@ -39,16 +41,16 @@ namespace
     {
       if (Min < Max)
       {
-        return Strings::Format("%1$02x-%2$02x ", Min, Max);
+        return Strings::Format("{0:02x}-{1:02x} ", Min, Max);
       }
       else if (Min == Max)
       {
-        return Strings::Format("%1$02x", Min);
+        return Strings::Format("{:02x}", Min);
       }
       else
       {
         assert(!"Invalid case");
-        return std::string();
+        return {};
       }
     }
   };
@@ -58,28 +60,26 @@ namespace
     assert(val <= 15);
     return val >= 10 ? (val - 10 + 'a') : (val + '0');
   }
-  
+
   struct BinaryMask
   {
-    uint_t Zeroes;
-    uint_t Ones;
-    
-    BinaryMask() : Zeroes(), Ones()
-    {
-    }
-    
+    uint_t Zeroes = 0;
+    uint_t Ones = 0;
+
+    BinaryMask() = default;
+
     void Apply(uint_t val)
     {
       Zeroes |= ~val & 0xff;
       Ones |= val;
     }
-    
+
     bool IsThis() const
     {
       const uint8_t fixed = Zeroes ^ Ones;
       return 0 != fixed;
     }
-    
+
     std::size_t CountCatches() const
     {
       const uint_t mask = ~(Zeroes & Ones) & 0xff;
@@ -91,7 +91,7 @@ namespace
       }
       return res;
     }
-    
+
     std::string ToString() const
     {
       if (IsNibbles())
@@ -108,12 +108,11 @@ namespace
         const bool hasAny = hasZero && hasOne;
         assert(hasZero || hasOne);
         const std::size_t sympos = 9 - idx;
-        result[sympos] = hasAny
-          ? 'x'
-          : (hasOne ? '1' : '0');
+        result[sympos] = hasAny ? 'x' : (hasOne ? '1' : '0');
       }
       return result;
     }
+
   private:
     bool IsNibbles() const
     {
@@ -122,7 +121,7 @@ namespace
       const uint_t loNibble = fixed & 15;
       return (hiNibble == 15 || hiNibble == 0) && (loNibble == 15 || loNibble == 0);
     }
-    
+
     std::string ToNibblesString() const
     {
       assert(IsNibbles());
@@ -140,10 +139,7 @@ namespace
   {
     std::bitset<256> Values;
 
-    Bitmask()
-      : Values()
-    {
-    }
+    Bitmask() = default;
 
     void Apply(uint_t val)
     {
@@ -167,14 +163,9 @@ namespace
   class CumulativeFormat
   {
   public:
-    CumulativeFormat()
-      : Ranges()
-      , Binaries()
-      , Bitmasks()
-    {
-    }
+    CumulativeFormat() = default;
 
-    bool Add(const Dump& data)
+    bool Add(const Binary::Dump& data)
     {
       const std::size_t newSize = data.size();
       Resize(newSize);
@@ -182,16 +173,16 @@ namespace
       CutTail();
       return !Ranges.empty();
     }
-    
+
     std::string ToString() const
     {
-      Dbg("Result has %1% entries", Ranges.size());
-      if (std::all_of(Ranges.begin(), Ranges.end(), [](const Range& rng) {return rng.IsThis();}))
+      Dbg("Result has {} entries", Ranges.size());
+      if (std::all_of(Ranges.begin(), Ranges.end(), [](const Range& rng) { return rng.IsThis(); }))
       {
         Dbg("Using ranges format");
         return HomogeniousToString(Ranges);
       }
-      if (std::all_of(Binaries.begin(), Binaries.end(), [](const BinaryMask& msk) {return msk.IsThis();}))
+      if (std::all_of(Binaries.begin(), Binaries.end(), [](const BinaryMask& msk) { return msk.IsThis(); }))
       {
         Dbg("", "Using binary format");
         return HomogeniousToString(Binaries);
@@ -204,19 +195,20 @@ namespace
     {
       return HomogeniousToString(Bitmasks);
     }
+
   private:
     void Resize(std::size_t len)
     {
       if (Ranges.empty() || len < Ranges.size())
       {
-        Dbg("Set size to %1%", len);
+        Dbg("Set size to {}", len);
         Ranges.resize(len);
         Binaries.resize(len);
         Bitmasks.resize(len);
       }
     }
-    
-    void Apply(const Dump& data)
+
+    void Apply(const Binary::Dump& data)
     {
       const std::size_t toApply = std::min(data.size(), Ranges.size());
       for (std::size_t idx = 0; idx < toApply; ++idx)
@@ -227,7 +219,7 @@ namespace
         Bitmasks[idx].Apply(val);
       }
     }
-    
+
     void CutTail()
     {
       std::size_t size = Ranges.size();
@@ -241,18 +233,18 @@ namespace
       }
       Resize(size);
     }
-    
+
     template<class T>
     std::string HomogeniousToString(const std::vector<T>& vals) const
     {
       std::string result;
-      for (typename std::vector<T>::const_iterator it = vals.begin(), lim = vals.end(); it != lim; ++it)
+      for (auto it = vals.begin(), lim = vals.end(); it != lim; ++it)
       {
         result += it->ToString();
       }
       return result;
     }
-    
+
     std::string HeterogeniousToString() const
     {
       std::string result;
@@ -261,7 +253,7 @@ namespace
       {
         const Range& rng = Ranges[idx];
         const BinaryMask& bin = Binaries[idx];
-        Dbg("Range=(%1%..%2%) Bin=(%3$02x/%4$02x)", rng.Min, rng.Max, bin.Zeroes, bin.Ones);
+        Dbg("Range=({}..{}) Bin=({:02x}/{:02x})", rng.Min, rng.Max, bin.Zeroes, bin.Ones);
         if (!rng.IsThis() && !bin.IsThis())
         {
           Dbg(" any");
@@ -273,7 +265,7 @@ namespace
           {
             if (lastAny > 3)
             {
-              result += Strings::Format("+%1%+ ", lastAny);
+              result += Strings::Format("+{}+ ", lastAny);
             }
             else
             {
@@ -287,21 +279,20 @@ namespace
           }
           const std::size_t rngWeight = rng.CountCatches();
           const std::size_t binWeight = bin.CountCatches();
-          Dbg(" range=%1% bytes bin=%2% bytes", rngWeight, binWeight);
-          result += rngWeight <= binWeight
-            ? rng.ToString()
-            : bin.ToString();
+          Dbg(" range={} bytes bin={} bytes", rngWeight, binWeight);
+          result += rngWeight <= binWeight ? rng.ToString() : bin.ToString();
         }
       }
       return result;
     }
+
   private:
     std::vector<Range> Ranges;
     std::vector<BinaryMask> Binaries;
     std::vector<Bitmask> Bitmasks;
   };
-  
-  Dump Read(const std::string& name)
+
+  Binary::Dump Read(const std::string& name)
   {
     std::ifstream stream(name.c_str(), std::ios::binary);
     if (!stream)
@@ -311,11 +302,11 @@ namespace
     stream.seekg(0, std::ios_base::end);
     const std::size_t size = stream.tellg();
     stream.seekg(0);
-    Dump tmp(size);
+    Binary::Dump tmp(size);
     stream.read(safe_ptr_cast<char*>(tmp.data()), tmp.size());
     return tmp;
   }
-}
+}  // namespace
 
 int main(int argc, char* argv[])
 {
@@ -331,7 +322,7 @@ int main(int argc, char* argv[])
     for (int idx = 1 + bitMask; idx < argc; ++idx)
     {
       const std::string filename = argv[idx];
-      const Dump& data = Read(filename);
+      const auto& data = Read(filename);
       if (!result.Add(data))
       {
         throw std::runtime_error("Data is too different");
@@ -339,7 +330,8 @@ int main(int argc, char* argv[])
     }
     if (bitMask)
     {
-      std::string hi, lo;
+      std::string hi;
+      std::string lo;
       for (int idx = 255; idx >= 0; --idx)
       {
         hi += ToHex(idx >> 4);
@@ -356,10 +348,10 @@ int main(int argc, char* argv[])
       for (int idx = 1; idx < argc; ++idx)
       {
         const std::string filename = argv[idx];
-        const Dump& data = Read(filename);
+        const auto& data = Read(filename);
         if (!check->Match(data))
         {
-          throw std::runtime_error(Strings::Format("Not matched for %1%", filename));
+          throw std::runtime_error(Strings::Format("Not matched for {}", filename));
         }
       }
     }

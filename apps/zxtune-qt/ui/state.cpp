@@ -1,25 +1,26 @@
 /**
-* 
-* @file
-*
-* @brief UI state helper implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief UI state helper implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "state.h"
-#include "parameters.h"
-#include "supp/options.h"
-#include "ui/utils.h"
-//common includes
-#include <pointers.h>
-#include <make_ptr.h>
-//library includes
-#include <debug/log.h>
-#include <parameters/convert.h>
-//qt includes
+#include "apps/zxtune-qt/ui/state.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/parameters.h"
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "debug/log.h"
+#include "parameters/convert.h"
+
+#include "make_ptr.h"
+#include "pointers.h"
+#include "string_view.h"
+
 #include <QtCore/QByteArray>
 #include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QComboBox>
@@ -29,6 +30,8 @@
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QTabWidget>
 
+#include <utility>
+
 namespace
 {
   const Debug::Stream Dbg("UI::State");
@@ -36,7 +39,7 @@ namespace
   class WidgetState
   {
   public:
-    typedef std::shared_ptr<const WidgetState> Ptr;
+    using Ptr = std::shared_ptr<const WidgetState>;
     virtual ~WidgetState() = default;
 
     virtual void Load() const = 0;
@@ -48,50 +51,50 @@ namespace
   class NamespaceContainer : public Parameters::Container
   {
   public:
-    NamespaceContainer(Parameters::Container::Ptr delegate, const Parameters::NameType& prefix)
+    NamespaceContainer(Parameters::Container::Ptr delegate, String prefix)
       : Delegate(std::move(delegate))
-      , Prefix(prefix)
-    {
-    }
+      , PrefixValue(std::move(prefix))
+      , Prefix(PrefixValue)
+    {}
 
     uint_t Version() const override
     {
       return Delegate->Version();
     }
 
-    void SetValue(const Parameters::NameType& name, Parameters::IntType val) override
+    void SetValue(Parameters::Identifier name, Parameters::IntType val) override
     {
-      Delegate->SetValue(Prefix + name, val);
+      Delegate->SetValue(Prefix.Append(name), val);
     }
 
-    void SetValue(const Parameters::NameType& name, const Parameters::StringType& val) override
+    void SetValue(Parameters::Identifier name, StringView val) override
     {
-      Delegate->SetValue(Prefix + name, val);
+      Delegate->SetValue(Prefix.Append(name), val);
     }
 
-    void SetValue(const Parameters::NameType& name, const Parameters::DataType& val) override
+    void SetValue(Parameters::Identifier name, Binary::View val) override
     {
-      Delegate->SetValue(Prefix + name, val);
+      Delegate->SetValue(Prefix.Append(name), val);
     }
 
-    void RemoveValue(const Parameters::NameType& name) override
+    void RemoveValue(Parameters::Identifier name) override
     {
-      Delegate->RemoveValue(Prefix + name);
+      Delegate->RemoveValue(Prefix.Append(name));
     }
 
-    bool FindValue(const Parameters::NameType& name, Parameters::IntType& val) const override
+    std::optional<Parameters::IntType> FindInteger(Parameters::Identifier name) const override
     {
-      return Delegate->FindValue(Prefix + name, val);
+      return Delegate->FindInteger(Prefix.Append(name));
     }
 
-    bool FindValue(const Parameters::NameType& name, Parameters::StringType& val) const override
+    std::optional<Parameters::StringType> FindString(Parameters::Identifier name) const override
     {
-      return Delegate->FindValue(Prefix + name, val);
+      return Delegate->FindString(Prefix.Append(name));
     }
 
-    bool FindValue(const Parameters::NameType& name, Parameters::DataType& val) const override
+    Binary::Data::Ptr FindData(Parameters::Identifier name) const override
     {
-      return Delegate->FindValue(Prefix + name, val);
+      return Delegate->FindData(Prefix.Append(name));
     }
 
     void Process(Parameters::Visitor& visitor) const override
@@ -99,56 +102,58 @@ namespace
       NamespacedVisitor namedVisitor(Prefix, visitor);
       Delegate->Process(namedVisitor);
     }
+
   private:
     class NamespacedVisitor : public Parameters::Visitor
     {
     public:
-      NamespacedVisitor(const Parameters::NameType& prefix, Parameters::Visitor& delegate)
-        : Prefix(prefix)
+      NamespacedVisitor(Parameters::Identifier prefix, Parameters::Visitor& delegate)
+        : Prefix(std::move(prefix))
         , Delegate(delegate)
-      {
-      }
+      {}
 
-      void SetValue(const Parameters::NameType& name, Parameters::IntType val) override
+      void SetValue(Parameters::Identifier name, Parameters::IntType val) override
       {
         FilterValue(name, val);
       }
 
-      void SetValue(const Parameters::NameType& name, const Parameters::StringType& val) override
+      void SetValue(Parameters::Identifier name, StringView val) override
       {
         FilterValue(name, val);
       }
 
-      void SetValue(const Parameters::NameType& name, const Parameters::DataType& val) override
+      void SetValue(Parameters::Identifier name, Binary::View val) override
       {
         FilterValue(name, val);
       }
+
     private:
       template<class T>
-      void FilterValue(const Parameters::NameType& name, const T& val)
+      void FilterValue(Parameters::Identifier name, const T& val)
       {
-        if (name.IsSubpathOf(Prefix))
+        const auto subName = name.RelativeTo(Prefix);
+        if (!subName.IsEmpty())
         {
-          const Parameters::NameType subName = name - Prefix;
           Delegate.SetValue(subName, val);
         }
       }
+
     private:
-      const Parameters::NameType& Prefix;
+      const Parameters::Identifier Prefix;
       Parameters::Visitor& Delegate;
     };
+
   private:
     const Parameters::Container::Ptr Delegate;
-    const Parameters::NameType Prefix;
+    const String PrefixValue;
+    const Parameters::Identifier Prefix;
   };
 
-  void SaveBlob(Parameters::Modifier& options, const Parameters::NameType& name, const QByteArray& blob)
+  void SaveBlob(Parameters::Modifier& options, StringView name, const QByteArray& blob)
   {
     if (const int size = blob.size())
     {
-      const uint8_t* const rawData = safe_ptr_cast<const uint8_t*>(blob.data());
-      const Parameters::DataType data(rawData, rawData + size);
-      options.SetValue(name, data);
+      options.SetValue(name, Binary::View{blob.data(), static_cast<std::size_t>(size)});
     }
     else
     {
@@ -156,22 +161,26 @@ namespace
     }
   }
 
-  QByteArray LoadBlob(const Parameters::Accessor& options, const Parameters::NameType& name)
+  QByteArray LoadBlob(const Parameters::Accessor& options, StringView name)
   {
-    Dump val;
-    if (options.FindValue(name, val) && !val.empty())
+    if (const auto data = options.FindData(name))
     {
-      return QByteArray(safe_ptr_cast<const char*>(&val[0]), val.size());
+      return {static_cast<const char*>(data->Start()), static_cast<int>(data->Size())};
     }
-    return QByteArray();
+    return {};
   }
 
   Parameters::Container::Ptr CreateSubcontainer(Parameters::Container::Ptr parent, QObject& obj)
   {
     const QString name = obj.objectName();
-    return name.size() == 0
-      ? parent
-      : MakePtr<NamespaceContainer>(parent, name.toStdString());
+    if (name.size() == 0)
+    {
+      return parent;
+    }
+    else
+    {
+      return MakePtr<NamespaceContainer>(std::move(parent), name.toStdString());
+    }
   }
 
   class MainWindowState : public WidgetState
@@ -179,10 +188,9 @@ namespace
   public:
     MainWindowState(QMainWindow* wnd, Parameters::Container::Ptr ctr)
       : Wnd(*wnd)
-      //store in 'main' namespace
+      // store in 'main' namespace
       , Container(std::move(ctr))
-    {
-    }
+    {}
 
     void Load() const override
     {
@@ -195,6 +203,7 @@ namespace
       SaveBlob(*Container, Parameters::ZXTuneQT::UI::PARAM_GEOMETRY, Wnd.saveGeometry());
       SaveBlob(*Container, Parameters::ZXTuneQT::UI::PARAM_LAYOUT, Wnd.saveState(PARAMETERS_VERSION));
     }
+
   private:
     QMainWindow& Wnd;
     const Parameters::Container::Ptr Container;
@@ -205,10 +214,9 @@ namespace
   public:
     DialogState(QDialog* wnd, Parameters::Container::Ptr ctr)
       : Wnd(*wnd)
-      //store in 'main' namespace
+      // store in 'main' namespace
       , Container(std::move(ctr))
-    {
-    }
+    {}
 
     void Load() const override
     {
@@ -219,6 +227,7 @@ namespace
     {
       SaveBlob(*Container, Parameters::ZXTuneQT::UI::PARAM_GEOMETRY, Wnd.saveGeometry());
     }
+
   private:
     QDialog& Wnd;
     const Parameters::Container::Ptr Container;
@@ -229,10 +238,9 @@ namespace
   public:
     FileDialogState(QFileDialog* wnd, Parameters::Container::Ptr ctr)
       : Wnd(*wnd)
-      //store in 'main' namespace
+      // store in 'main' namespace
       , Container(std::move(ctr))
-    {
-    }
+    {}
 
     void Load() const override
     {
@@ -243,6 +251,7 @@ namespace
     {
       SaveBlob(*Container, Parameters::ZXTuneQT::UI::PARAM_LAYOUT, Wnd.saveState());
     }
+
   private:
     QFileDialog& Wnd;
     const Parameters::Container::Ptr Container;
@@ -253,14 +262,12 @@ namespace
   public:
     TabWidgetState(QTabWidget* tabs, Parameters::Container::Ptr ctr)
       : Wid(*tabs)
-      , Container(CreateSubcontainer(ctr, Wid))
-    {
-    }
+      , Container(CreateSubcontainer(std::move(ctr), Wid))
+    {}
 
     void Load() const override
     {
-      Parameters::IntType idx = 0;
-      Container->FindValue(Parameters::ZXTuneQT::UI::PARAM_INDEX, idx);
+      const auto idx = Parameters::GetInteger(*Container, Parameters::ZXTuneQT::UI::PARAM_INDEX);
       Wid.setCurrentIndex(idx);
     }
 
@@ -268,6 +275,7 @@ namespace
     {
       Container->SetValue(Parameters::ZXTuneQT::UI::PARAM_INDEX, Wid.currentIndex());
     }
+
   private:
     QTabWidget& Wid;
     const Parameters::Container::Ptr Container;
@@ -278,20 +286,18 @@ namespace
   public:
     ComboBoxState(QComboBox* tabs, Parameters::Container::Ptr ctr)
       : Wid(*tabs)
-      , Container(CreateSubcontainer(ctr, Wid))
-    {
-    }
+      , Container(CreateSubcontainer(std::move(ctr), Wid))
+    {}
 
     void Load() const override
     {
-      Parameters::IntType size = 0;
-      if (Container->FindValue(Parameters::ZXTuneQT::UI::PARAM_SIZE, size) && size)
+      using namespace Parameters;
+      if (const auto size = GetInteger(*Container, ZXTuneQT::UI::PARAM_SIZE))
       {
         Wid.clear();
-        for (Parameters::IntType idx = 0; idx != size; ++idx)
+        for (IntType idx = 0; idx != size; ++idx)
         {
-          Parameters::StringType str;
-          if (Container->FindValue(Parameters::ConvertToString(idx), str) && !str.empty())
+          if (const auto str = GetString(*Container, ConvertToString(idx)); !str.empty())
           {
             Wid.addItem(ToQString(str));
           }
@@ -309,12 +315,11 @@ namespace
         const Parameters::StringType str = FromQString(Wid.itemText(idx));
         Container->SetValue(Parameters::ConvertToString(idx), str);
       }
-      //remove rest
-      for (; ; ++idx)
+      // remove rest
+      for (;; ++idx)
       {
-        const Parameters::NameType name = Parameters::ConvertToString(idx);
-        Parameters::StringType str;
-        if (Container->FindValue(name, str))
+        const auto name = Parameters::ConvertToString(idx);
+        if (Container->FindString(name))
         {
           Container->RemoveValue(name);
         }
@@ -324,6 +329,7 @@ namespace
         }
       }
     }
+
   private:
     QComboBox& Wid;
     const Parameters::Container::Ptr Container;
@@ -337,14 +343,14 @@ namespace
       , IsShown(View.isSortIndicatorShown())
       , Order(View.sortIndicatorOrder())
       , Column(View.sortIndicatorSection())
-    {
-    }
+    {}
 
     ~SortState()
     {
       View.setSortIndicatorShown(IsShown);
       View.setSortIndicator(Column, Order);
     }
+
   private:
     QHeaderView& View;
     const bool IsShown;
@@ -357,18 +363,17 @@ namespace
   public:
     HeaderViewState(QHeaderView* view, Parameters::Container::Ptr ctr)
       : View(*view)
-      , Container(CreateSubcontainer(ctr, View))
-    {
-    }
+      , Container(CreateSubcontainer(std::move(ctr), View))
+    {}
 
     void Load() const override
     {
-      //do not load sorting-related data
+      // do not load sorting-related data
       const AutoBlockSignal blockstate(View);
       const SortState sortstate(View);
       if (!View.restoreState(LoadBlob(*Container, Parameters::ZXTuneQT::UI::PARAM_LAYOUT)))
       {
-        Dbg("Failed to restore state of QHeaderView(%1%)", FromQString(View.objectName()));
+        Dbg("Failed to restore state of QHeaderView({})", FromQString(View.objectName()));
       }
     }
 
@@ -376,6 +381,7 @@ namespace
     {
       SaveBlob(*Container, Parameters::ZXTuneQT::UI::PARAM_LAYOUT, View.saveState());
     }
+
   private:
     QHeaderView& View;
     const Parameters::Container::Ptr Container;
@@ -388,15 +394,13 @@ namespace
       : Wid(*wid)
       , Container(std::move(ctr))
       , Name(FromQString(Wid.objectName()))
-    {
-    }
+    {}
 
     void Load() const override
     {
-      Parameters::IntType val = 0;
-      if (Container->FindValue(Name, val))
+      if (const auto val = Container->FindInteger(Name))
       {
-        Wid.setChecked(val != 0);
+        Wid.setChecked(*val != 0);
       }
     }
 
@@ -404,10 +408,11 @@ namespace
     {
       Container->SetValue(Name, Wid.isChecked());
     }
+
   private:
     QAbstractButton& Wid;
     const Parameters::Container::Ptr Container;
-    const Parameters::NameType Name;
+    const String Name;
   };
 
   class AnyWidgetState : public WidgetState
@@ -415,20 +420,18 @@ namespace
   public:
     AnyWidgetState(QWidget* wid, Parameters::Container::Ptr ctr)
       : Wid(*wid)
-      , Container(CreateSubcontainer(ctr, Wid))
-    {
-    }
+      , Container(CreateSubcontainer(std::move(ctr), Wid))
+    {}
 
     void Load() const override
     {
-      Parameters::IntType val;
       if (!Wid.restoreGeometry(LoadBlob(*Container, Parameters::ZXTuneQT::UI::PARAM_GEOMETRY)))
       {
-        Dbg("Failed to restore geometry of QWidget(%1%)", FromQString(Wid.objectName()));
+        Dbg("Failed to restore geometry of QWidget({})", FromQString(Wid.objectName()));
       }
-      else if (Container->FindValue(Parameters::ZXTuneQT::UI::PARAM_VISIBLE, val))
+      else if (const auto val = Container->FindInteger(Parameters::ZXTuneQT::UI::PARAM_VISIBLE))
       {
-        Wid.setVisible(val != 0);
+        Wid.setVisible(*val != 0);
       }
     }
 
@@ -437,6 +440,7 @@ namespace
       SaveBlob(*Container, Parameters::ZXTuneQT::UI::PARAM_GEOMETRY, Wid.saveGeometry());
       Container->SetValue(Parameters::ZXTuneQT::UI::PARAM_VISIBLE, Wid.isVisible());
     }
+
   private:
     QWidget& Wid;
     const Parameters::Container::Ptr Container;
@@ -447,36 +451,35 @@ namespace
   public:
     explicit PersistentState(Parameters::Container::Ptr ctr)
       : Options(std::move(ctr))
-    {
-    }
+    {}
 
     void AddWidget(QWidget& wid) override
     {
-      if (QMainWindow* mainWnd = dynamic_cast<QMainWindow*>(&wid))
+      if (auto* mainWnd = dynamic_cast<QMainWindow*>(&wid))
       {
         Substates.push_back(MakePtr<MainWindowState>(mainWnd, Options));
       }
-      else if (QFileDialog* fileDialog = dynamic_cast<QFileDialog*>(&wid))
+      else if (auto* fileDialog = dynamic_cast<QFileDialog*>(&wid))
       {
         Substates.push_back(MakePtr<FileDialogState>(fileDialog, Options));
       }
-      else if (QDialog* dialog = dynamic_cast<QDialog*>(&wid))
+      else if (auto* dialog = dynamic_cast<QDialog*>(&wid))
       {
         Substates.push_back(MakePtr<DialogState>(dialog, Options));
       }
-      else if (QTabWidget* tabs = dynamic_cast<QTabWidget*>(&wid))
+      else if (auto* tabs = dynamic_cast<QTabWidget*>(&wid))
       {
         Substates.push_back(MakePtr<TabWidgetState>(tabs, Options));
       }
-      else if (QComboBox* combo = dynamic_cast<QComboBox*>(&wid))
+      else if (auto* combo = dynamic_cast<QComboBox*>(&wid))
       {
         Substates.push_back(MakePtr<ComboBoxState>(combo, Options));
       }
-      else if (QHeaderView* headerView = dynamic_cast<QHeaderView*>(&wid))
+      else if (auto* headerView = dynamic_cast<QHeaderView*>(&wid))
       {
         Substates.push_back(MakePtr<HeaderViewState>(headerView, Options));
       }
-      else if (QAbstractButton* button = dynamic_cast<QAbstractButton*>(&wid))
+      else if (auto* button = dynamic_cast<QAbstractButton*>(&wid))
       {
         Substates.push_back(MakePtr<ButtonState>(button, Options));
       }
@@ -501,27 +504,31 @@ namespace
         state->Save();
       }
     }
+
   private:
     const Parameters::Container::Ptr Options;
     std::list<WidgetState::Ptr> Substates;
   };
-}
+}  // namespace
 
 namespace UI
 {
-  State::Ptr State::Create(const String& category)
+  State::Ptr State::Create(StringView category)
   {
-    const Parameters::Container::Ptr container = MakePtr<NamespaceContainer>(
-      GlobalOptions::Instance().Get(), Parameters::ZXTuneQT::UI::PREFIX + ToStdString(category));
+    using namespace Parameters;
+    auto container = MakePtr<NamespaceContainer>(GlobalOptions::Instance().Get(),
+                                                 static_cast<Identifier>(ZXTuneQT::UI::PREFIX).Append(category));
     return MakePtr<PersistentState>(container);
   }
 
   State::Ptr State::Create(QWidget& root)
   {
-    const Parameters::Container::Ptr container = MakePtr<NamespaceContainer>(
-      GlobalOptions::Instance().Get(), Parameters::ZXTuneQT::UI::PREFIX + root.objectName().toStdString());
+    using namespace Parameters;
+    auto container = MakePtr<NamespaceContainer>(
+        GlobalOptions::Instance().Get(),
+        static_cast<Identifier>(ZXTuneQT::UI::PREFIX).Append(root.objectName().toStdString()));
     State::Ptr res = MakePtr<PersistentState>(container);
     res->AddWidget(root);
     return res;
   }
-}
+}  // namespace UI

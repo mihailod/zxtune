@@ -1,18 +1,17 @@
 /**
-*
-* @file
-*
-* @brief  Data location interace and factories
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Data location interace and factories
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <analysis/path.h>
-#include <binary/container.h>
+#include "analysis/path.h"
+#include "binary/container.h"
 
 namespace ZXTune
 {
@@ -20,11 +19,11 @@ namespace ZXTune
   class DataLocation
   {
   public:
-    typedef std::shared_ptr<const DataLocation> Ptr;
+    using Ptr = std::shared_ptr<const DataLocation>;
     virtual ~DataLocation() = default;
 
     virtual Binary::Container::Ptr GetData() const = 0;
     virtual Analysis::Path::Ptr GetPath() const = 0;
     virtual Analysis::Path::Ptr GetPluginsChain() const = 0;
   };
-}
+}  // namespace ZXTune

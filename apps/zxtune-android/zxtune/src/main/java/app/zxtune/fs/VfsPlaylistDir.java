@@ -8,10 +8,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 
 import app.zxtune.Log;
+import app.zxtune.Util;
 import app.zxtune.core.Identifier;
 import app.zxtune.playlist.AylIterator;
 import app.zxtune.playlist.ReferencesIterator.Entry;
-import app.zxtune.playlist.XspfIterator;
+import app.zxtune.playlist.xspf.XspfIterator;
 
 final class VfsPlaylistDir implements VfsDir {
 
@@ -25,15 +26,16 @@ final class VfsPlaylistDir implements VfsDir {
 
   @Nullable
   static VfsDir resolveAsPlaylist(VfsFile file) {
-    final String filename = file.getUri().getLastPathSegment();
+    final Uri uri = file.getUri();
+    final String filename = uri.getLastPathSegment();
     if (filename == null) {
       return null;
     }
     try {
       if (filename.endsWith(TYPE_AYL)) {
-        return new VfsPlaylistDir(file, AylIterator.parse(Vfs.read(file)));
-      } else if (filename.endsWith(TYPE_XSPF)) {
-        return new VfsPlaylistDir(file, XspfIterator.parse(Vfs.read(file)));
+        return new VfsPlaylistDir(file, AylIterator.parse(Vfs.openStream(file)));
+      } else if (filename.endsWith(TYPE_XSPF) || VfsRootPlaylists.SCHEME.equals(uri.getScheme())) {
+        return new VfsPlaylistDir(file, XspfIterator.parse(Vfs.openStream(file)));
       }
     } catch (Exception e) {
       Log.w(TAG, e, "Failed to parse playlist");
@@ -46,7 +48,7 @@ final class VfsPlaylistDir implements VfsDir {
     if (filename == null) {
       return false;
     } else {
-      return filename.endsWith(TYPE_AYL) || filename.endsWith(TYPE_XSPF);
+      return filename.endsWith(TYPE_AYL) || filename.endsWith(TYPE_XSPF) || VfsRootPlaylists.SCHEME.equals(uri.getScheme());
     }
   }
 
@@ -88,7 +90,6 @@ final class VfsPlaylistDir implements VfsDir {
 
   @Override
   public void enumerate(Visitor visitor) {
-    visitor.onItemsCount(entries.size());
     for (int idx = 0, lim = entries.size(); idx < lim; ++idx) {
       visitor.onFile(new PlaylistEntryFile(this, entries.get(idx), idx));
     }
@@ -115,7 +116,7 @@ final class VfsPlaylistDir implements VfsDir {
 
     @Override
     public String getName() {
-      return entry.title.length() != 0 ? entry.title : id.getDisplayFilename();
+      return Util.formatTrackTitle(entry.title, id);
     }
 
     @Override

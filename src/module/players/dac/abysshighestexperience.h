@@ -1,24 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief  AHX chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AHX chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <module/players/factory.h>
-//library includes
-#include <formats/chiptune/digital/abysshighestexperience.h>
+#include "formats/chiptune/digital/abysshighestexperience.h"
+#include "module/players/factory.h"
 
-namespace Module
+namespace Module::AHX
 {
-  namespace AHX
-  {
-    Factory::Ptr CreateFactory(Formats::Chiptune::AbyssHighestExperience::Decoder::Ptr decoder);
-  }
-}
+  Factory::Ptr CreateFactory(Formats::Chiptune::AbyssHighestExperience::Decoder::Ptr decoder);
+}  // namespace Module::AHX

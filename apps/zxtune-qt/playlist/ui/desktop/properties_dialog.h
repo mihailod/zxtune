@@ -1,41 +1,36 @@
 /**
-* 
-* @file
-*
-* @brief Playlist item properties dialog interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playlist item properties dialog interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "playlist/supp/model.h"
-#include "playlist/supp/operations_search.h"
-//qt includes
+#include "apps/zxtune-qt/playlist/supp/model.h"
+#include "apps/zxtune-qt/playlist/supp/operations_search.h"
+
 #include <QtWidgets/QDialog>
 
 class QAbstractButton;
-namespace Playlist
+namespace Playlist::UI
 {
-  namespace UI
+  class PropertiesDialog : public QDialog
   {
-    class PropertiesDialog : public QDialog
-    {
-      Q_OBJECT
-    protected:
-      explicit PropertiesDialog(QWidget& parent);
-    public:
-      typedef std::shared_ptr<PropertiesDialog> Ptr;
+    Q_OBJECT
+  protected:
+    explicit PropertiesDialog(QWidget& parent);
 
-      static Ptr Create(QWidget& parent, Item::Data::Ptr item);
-    private slots:
-      virtual void ButtonClicked(QAbstractButton* button) = 0;
-    signals:
-      void ResetToDefaults();
-    };
+  public:
+    using Ptr = std::shared_ptr<PropertiesDialog>;
 
-    void ExecutePropertiesDialog(QWidget& parent, Model::Ptr model, Playlist::Model::IndexSet::Ptr scope);
-  }
-}
+    static Ptr Create(QWidget& parent, const Item::Data& item);
+  signals:
+    void ResetToDefaults();
+  };
+
+  void ExecutePropertiesDialog(QWidget& parent, Model::Ptr model, const Playlist::Model::IndexSet& scope);
+}  // namespace Playlist::UI

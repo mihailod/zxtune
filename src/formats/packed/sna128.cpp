@@ -1,56 +1,49 @@
 /**
-* 
-* @file
-*
-* @brief  SNA128 snapshots support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SNA128 snapshots support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/packed/container.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-//library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-//std includes
+
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <array>
 #include <numeric>
-//text includes
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace Sna128
   {
-    typedef std::array<uint8_t, 16384> PageData;
+    using PageData = std::array<uint8_t, 16384>;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct Header
+    struct Header
     {
       uint8_t RegI;
-      uint16_t RegHL_;
-      uint16_t RegDE_;
-      uint16_t RegBC_;
-      uint16_t RegAF_;
-      uint16_t RegHL;
-      uint16_t RegDE;
-      uint16_t RegBC;
-      uint16_t RegIY;
-      uint16_t RegIX;
+      le_uint16_t RegHL_;
+      le_uint16_t RegDE_;
+      le_uint16_t RegBC_;
+      le_uint16_t RegAF_;
+      le_uint16_t RegHL;
+      le_uint16_t RegDE;
+      le_uint16_t RegBC;
+      le_uint16_t RegIY;
+      le_uint16_t RegIX;
       //+0x13 %000000xx
       uint8_t IFF;
       uint8_t RegR;
-      uint16_t RegAF;
-      uint16_t RegSP;
+      le_uint16_t RegAF;
+      le_uint16_t RegSP;
       //+0x19 0/1/2
       uint8_t ImMode;
       //+0x1a 0..7
@@ -58,21 +51,18 @@ namespace Packed
       PageData Page5;
       PageData Page2;
       PageData ActivePage;
-      uint16_t RegPC;
+      le_uint16_t RegPC;
       uint8_t Port7FFD;
       //+0xc01e 0/1
       uint8_t TRDosROM;
       PageData Pages[5];
-      //optional page starts here
-    } PACK_POST;
+      // optional page starts here
+    };
 
-    //5,2,0,1,3,4,6,7
-    typedef std::array<PageData, 8> ResultData;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    // 5,2,0,1,3,4,6,7
+    using ResultData = std::array<PageData, 8>;
 
-    static_assert(sizeof(Header) == 131103, "Invalid layout");
+    static_assert(sizeof(Header) * alignof(Header) == 131103, "Invalid layout");
 
     const std::size_t MIN_SIZE = sizeof(Header);
 
@@ -95,7 +85,7 @@ namespace Packed
       {
         return false;
       }
-      //in case of duped one more page
+      // in case of duped one more page
       if (pageDuped)
       {
         const PageData& cmpPage = curPage == 2 ? header.Page2 : header.Page5;
@@ -111,9 +101,9 @@ namespace Packed
     {
       static const uint_t PAGE_NUM_TO_INDEX[] = {2, 3, 1, 4, 5, 0, 6, 7};
 
-      std::unique_ptr<Dump> result(new Dump(sizeof(ResultData)));
+      Binary::DataBuilder result(sizeof(ResultData));
       const Header& src = *data.As<Header>();
-      ResultData& dst = *safe_ptr_cast<ResultData*>(result->data());
+      auto& dst = result.Add<ResultData>();
       const uint_t curPage = src.Port7FFD & 7;
       dst[PAGE_NUM_TO_INDEX[5]] = src.Page5;
       dst[PAGE_NUM_TO_INDEX[2]] = src.Page2;
@@ -132,30 +122,30 @@ namespace Packed
         ++idx;
       }
       const std::size_t origSize = pageDuped ? sizeof(src) + sizeof(PageData) : sizeof(src);
-      return CreateContainer(std::move(result), origSize);
+      return CreateContainer(result.CaptureResult(), origSize);
     }
 
-    const std::string FORMAT(
-      "?{19}"
-      "00|01|02|03|04|ff" //iff. US saves 0x00/0x04/0xff instead of normal 0x00..0x03 flags
-      "?{3}"
-      "? 40-ff" //sp
-      "00-02" //im mode
-      "00-07" //border
-    );
-  }//namespace Sna128
+    const auto DESCRIPTION = "SNA 128k"sv;
+    const auto FORMAT =
+        "?{19}"
+        "00|01|02|03|04|ff"  // iff. US saves 0x00/0x04/0xff instead of normal 0x00..0x03 flags
+        "?{3}"
+        "? 40-ff"  // sp
+        "00-02"    // im mode
+        "00-07"    // border
+        ""sv;
+  }  // namespace Sna128
 
   class Sna128Decoder : public Decoder
   {
   public:
     Sna128Decoder()
       : Format(Binary::CreateFormat(Sna128::FORMAT, Sna128::MIN_SIZE))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Text::SNA128_DECODER_DESCRIPTION;
+      return Sna128::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -168,14 +158,15 @@ namespace Packed
       const Binary::View data(rawData);
       if (!Format->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       if (!Sna128::Check(data))
       {
-        return Container::Ptr();
+        return {};
       }
       return Sna128::Decode(data);
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -184,5 +175,4 @@ namespace Packed
   {
     return MakePtr<Sna128Decoder>();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

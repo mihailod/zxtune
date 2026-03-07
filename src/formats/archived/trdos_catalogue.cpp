@@ -1,43 +1,47 @@
 /**
-* 
-* @file
-*
-* @brief  TR-DOS catalogue implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TR-DOS catalogue implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/archived/trdos_catalogue.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <binary/container_base.h>
-#include <binary/container_factories.h>
-#include <strings/format.h>
-//std includes
+
+#include "binary/container_base.h"
+#include "binary/container_factories.h"
+#include "binary/data_builder.h"
+#include "strings/format.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <algorithm>
+#include <cassert>
 #include <cstring>
 #include <numeric>
+#include <utility>
 
 namespace TRDos
 {
   bool AreFilesMergeable(const File& lh, const File& rh)
   {
     const std::size_t firstSize = lh.GetSize();
-    //merge if files are sequental
+    // merge if files are sequental
     if (lh.GetOffset() + firstSize != rh.GetOffset())
     {
       return false;
     }
-    //and previous file size is multiplication of 255 sectors
+    // and previous file size is multiplication of 255 sectors
     if (0 == (firstSize % 0xff00))
     {
       return true;
     }
-    //xxx.x and
-    //xxx    '.x should be merged
-    static const Char SATTELITE_SEQ[] = {'\'', '.', '\0'};
+    // xxx.x and
+    // xxx    '.x should be merged
+    const auto SATTELITE_SEQ = "'."sv;
     const String::size_type apPos(rh.GetName().find(SATTELITE_SEQ));
     const bool isSatelite = apPos != String::npos;
     if (!isSatelite)
@@ -45,17 +49,17 @@ namespace TRDos
       return false;
     }
     const std::size_t secondSize = rh.GetSize();
-    //ProDigiTracker
+    // ProDigiTracker
     if (firstSize == 0xc300 && secondSize == 0xc000)
     {
       return true;
     }
-    //DigitalStudio
+    // DigitalStudio
     if (firstSize == 0xf200 && secondSize == 0xc000)
     {
       return true;
     }
-    //ExtremeTracker1
+    // ExtremeTracker1
     if (firstSize == 0xfc00 && secondSize == 0xbc00)
     {
       return true;
@@ -63,12 +67,12 @@ namespace TRDos
     return false;
   }
 
-  typedef std::vector<File::Ptr> FilesList;
+  using FilesList = std::vector<File::Ptr>;
 
   class MultiFile : public File
   {
   public:
-    typedef std::shared_ptr<MultiFile> Ptr;
+    using Ptr = std::shared_ptr<MultiFile>;
 
     virtual bool Merge(File::Ptr other) = 0;
 
@@ -78,11 +82,10 @@ namespace TRDos
   class FixedNameFile : public File
   {
   public:
-    FixedNameFile(String newName, File::Ptr delegate)
-      : FixedName(std::move(newName))
+    FixedNameFile(StringView newName, File::Ptr delegate)
+      : FixedName(newName)
       , Delegate(std::move(delegate))
-    {
-    }
+    {}
 
     String GetName() const override
     {
@@ -103,6 +106,7 @@ namespace TRDos
     {
       return Delegate->GetOffset();
     }
+
   private:
     const String FixedName;
     const File::Ptr Delegate;
@@ -111,45 +115,43 @@ namespace TRDos
   class NamesGenerator
   {
   public:
-    explicit NamesGenerator(String name)
-      : Name(std::move(name))
-      , Idx(1)
-    {
-    }
+    explicit NamesGenerator(StringView name)
+      : Name(name)
+    {}
 
     String operator()() const
     {
       return GenerateName();
     }
 
-    void operator ++()
+    void operator++()
     {
       ++Idx;
     }
+
   private:
     String GenerateName() const
     {
-      static const Char DISAMBIG_NAME_FORMAT[] = {'%', '1', '%', '~', '%', '2', '%', '%', '3', '%', '\0'};
       assert(Idx);
-      const String::size_type dotPos = Name.find_last_of('.');
-      const String base = Name.substr(0, dotPos);
-      const String ext = dotPos == String::npos ? String() : Name.substr(dotPos);
-      return Strings::Format(DISAMBIG_NAME_FORMAT, base, Idx, ext);
+      const auto dotPos = Name.find_last_of('.');
+      const auto base = Name.substr(0, dotPos);
+      const auto ext = dotPos == Name.npos ? StringView() : Name.substr(dotPos);
+      return Strings::Format("{}~{}{}", base, Idx, ext);
     }
+
   private:
-    const String Name;
-    unsigned Idx;
+    const StringView Name;
+    unsigned Idx = 1;
   };
 
   class CommonCatalogue : public Binary::BaseContainer<Formats::Archived::Container>
   {
   public:
     template<class T>
-    CommonCatalogue(Binary::Container::Ptr data, T from, T to)
-      : BaseContainer(std::move(data))
+    CommonCatalogue(const Binary::Container::Ptr& data, T from, T to)
+      : BaseContainer(data)
       , Files(from, to)
-    {
-    }
+    {}
 
     void ExploreFiles(const Formats::Archived::Container::Walker& walker) const override
     {
@@ -159,7 +161,7 @@ namespace TRDos
       }
     }
 
-    Formats::Archived::File::Ptr FindFile(const String& name) const override
+    Formats::Archived::File::Ptr FindFile(StringView name) const override
     {
       for (const auto& file : Files)
       {
@@ -175,11 +177,12 @@ namespace TRDos
     {
       return static_cast<uint_t>(Files.size());
     }
+
   private:
     const FilesList Files;
   };
 
-  typedef std::vector<MultiFile::Ptr> MultiFilesList;
+  using MultiFilesList = std::vector<MultiFile::Ptr>;
 
   class BaseCatalogueBuilder : public CatalogueBuilder
   {
@@ -209,54 +212,49 @@ namespace TRDos
       }
       else
       {
-        return Formats::Archived::Container::Ptr();
+        return {};
       }
     }
+
   protected:
     virtual MultiFile::Ptr CreateMultiFile(File::Ptr inFile) = 0;
+
   private:
     bool Merge(File::Ptr newOne) const
     {
-      return !Files.empty() && Files.back()->Merge(newOne);
+      return !Files.empty() && Files.back()->Merge(std::move(newOne));
     }
 
     void AddNewOne(File::Ptr newOne)
     {
-      const File::Ptr fixed = CreateUniqueNameFile(newOne);
-      const MultiFile::Ptr res = CreateMultiFile(fixed);
+      auto fixed = CreateUniqueNameFile(std::move(newOne));
+      auto res = CreateMultiFile(std::move(fixed));
       res->SetContainer(Data);
-      Files.push_back(res);
+      Files.emplace_back(std::move(res));
     }
 
     File::Ptr CreateUniqueNameFile(File::Ptr newOne)
     {
-      const String originalName(newOne->GetName());
-      if (!originalName.empty() &&
-          !HasFile(originalName))
+      const auto& originalName(newOne->GetName());
+      if (!originalName.empty() && !HasFile(originalName))
       {
         return newOne;
       }
-      for (NamesGenerator gen(originalName); ; ++gen)
+      for (NamesGenerator gen(originalName);; ++gen)
       {
-        const String newName = gen();
+        const auto newName = gen();
         if (!HasFile(newName))
         {
-          return MakePtr<FixedNameFile>(newName, newOne);
+          return MakePtr<FixedNameFile>(newName, std::move(newOne));
         }
       }
     }
 
-    bool HasFile(const String& name) const
+    bool HasFile(StringView name) const
     {
-      for (const auto& file : Files)
-      {
-        if (file->GetName() == name)
-        {
-          return true;
-        }
-      }
-      return false;
+      return std::any_of(Files.begin(), Files.end(), [name](auto file) { return file->GetName() == name; });
     }
+
   private:
     Binary::Container::Ptr Data;
     MultiFilesList Files;
@@ -266,13 +264,12 @@ namespace TRDos
   class GenericFile : public File
   {
   public:
-    GenericFile(Binary::Container::Ptr data, String name, std::size_t off, std::size_t size)
+    GenericFile(Binary::Container::Ptr data, StringView name, std::size_t off, std::size_t size)
       : Data(std::move(data))
-      , Name(std::move(name))
+      , Name(name)
       , Offset(off)
       , Size(size)
-    {
-    }
+    {}
 
     String GetName() const override
     {
@@ -293,6 +290,7 @@ namespace TRDos
     {
       return Offset;
     }
+
   private:
     const Binary::Container::Ptr Data;
     const String Name;
@@ -305,7 +303,7 @@ namespace TRDos
   public:
     explicit GenericMultiFile(File::Ptr delegate)
     {
-      Subfiles.push_back(delegate);
+      Subfiles.emplace_back(std::move(delegate));
     }
 
     String GetName() const override
@@ -316,9 +314,9 @@ namespace TRDos
     std::size_t GetSize() const override
     {
       return 1 == Subfiles.size()
-        ? Subfiles.front()->GetSize()
-        : std::accumulate(Subfiles.begin(), Subfiles.end(), std::size_t(0), 
-          [](std::size_t sum, const File::Ptr& file) {return sum + file->GetSize();});
+                 ? Subfiles.front()->GetSize()
+                 : std::accumulate(Subfiles.begin(), Subfiles.end(), std::size_t(0),
+                                   [](std::size_t sum, const File::Ptr& file) { return sum + file->GetSize(); });
     }
 
     Binary::Container::Ptr GetData() const override
@@ -327,21 +325,17 @@ namespace TRDos
       {
         return Subfiles.front()->GetData();
       }
-      std::unique_ptr<Dump> res(new Dump(GetSize()));
-      auto* dst = res->data();
+      Binary::DataBuilder res(GetSize());
       for (const auto& file : Subfiles)
       {
-        const Binary::Container::Ptr data = file->GetData();
+        const auto data = file->GetData();
         if (!data)
         {
-          return data;
+          return {};
         }
-        const std::size_t size = data->Size();
-        assert(size == file->GetSize());
-        std::memcpy(dst, data->Start(), size);
-        dst += size;
+        res.Add(*data);
       }
-      return Binary::CreateContainer(std::move(res));
+      return res.CaptureResult();
     }
 
     std::size_t GetOffset() const override
@@ -353,39 +347,37 @@ namespace TRDos
     {
       if (AreFilesMergeable(*Subfiles.back(), *rh))
       {
-        Subfiles.push_back(rh);
+        Subfiles.emplace_back(std::move(rh));
         return true;
       }
       return false;
     }
 
-    void SetContainer(Binary::Container::Ptr /*data*/) override
-    {
-    }
+    void SetContainer(Binary::Container::Ptr /*data*/) override {}
+
   private:
     FilesList Subfiles;
   };
 
-  //TODO: remove implementation inheritance
+  // TODO: remove implementation inheritance
   class GenericCatalogueBuilder : public BaseCatalogueBuilder
   {
   public:
     MultiFile::Ptr CreateMultiFile(File::Ptr inFile) override
     {
-      return MakePtr<GenericMultiFile>(inFile);
+      return MakePtr<GenericMultiFile>(std::move(inFile));
     }
   };
 
-  //flat files support
+  // flat files support
   class FlatFile : public File
   {
   public:
-    FlatFile(String name, std::size_t off, std::size_t size)
-      : Name(std::move(name))
+    FlatFile(StringView name, std::size_t off, std::size_t size)
+      : Name(name)
       , Offset(off)
       , Size(size)
-    {
-    }
+    {}
 
     String GetName() const override
     {
@@ -400,13 +392,14 @@ namespace TRDos
     Binary::Container::Ptr GetData() const override
     {
       assert(!"Should not be called");
-      return Binary::Container::Ptr();
+      return {};
     }
 
     std::size_t GetOffset() const override
     {
       return Offset;
     }
+
   private:
     const String Name;
     const std::size_t Offset;
@@ -417,10 +410,9 @@ namespace TRDos
   {
   public:
     FlatMultiFile(File::Ptr delegate)
-      : Delegate(delegate)
-      , Size(delegate->GetSize())
-    {
-    }
+      : Delegate(std::move(delegate))
+      , Size(Delegate->GetSize())
+    {}
 
     String GetName() const override
     {
@@ -454,30 +446,31 @@ namespace TRDos
 
     void SetContainer(Binary::Container::Ptr data) override
     {
-      Data = data;
+      Data = std::move(data);
     }
+
   private:
     const File::Ptr Delegate;
     std::size_t Size;
     Binary::Container::Ptr Data;
   };
 
-  //TODO: remove implementation inheritance
+  // TODO: remove implementation inheritance
   class FlatCatalogueBuilder : public BaseCatalogueBuilder
   {
   public:
     MultiFile::Ptr CreateMultiFile(File::Ptr inFile) override
     {
-      return MakePtr<FlatMultiFile>(inFile);
+      return MakePtr<FlatMultiFile>(std::move(inFile));
     }
   };
 
-  File::Ptr File::Create(Binary::Container::Ptr data, const String& name, std::size_t off, std::size_t size)
+  File::Ptr File::Create(Binary::Container::Ptr data, StringView name, std::size_t off, std::size_t size)
   {
-    return MakePtr<GenericFile>(data, name, off, size);
+    return MakePtr<GenericFile>(std::move(data), name, off, size);
   }
 
-  File::Ptr File::CreateReference(const String& name, std::size_t off, std::size_t size)
+  File::Ptr File::CreateReference(StringView name, std::size_t off, std::size_t size)
   {
     return MakePtr<FlatFile>(name, off, size);
   }
@@ -491,4 +484,4 @@ namespace TRDos
   {
     return MakePtr<FlatCatalogueBuilder>();
   }
-}
+}  // namespace TRDos

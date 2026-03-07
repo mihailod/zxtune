@@ -1,37 +1,35 @@
 /**
-* 
-* @file
-*
-* @brief  PSF2 VFS parser interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  PSF2 VFS parser interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <formats/chiptune.h>
+#include "formats/chiptune.h"
 
-namespace Formats
+#include "string_view.h"
+
+namespace Formats::Chiptune
 {
-  namespace Chiptune
+  namespace Playstation2SoundFormat
   {
-    namespace Playstation2SoundFormat
+    const uint_t VERSION_ID = 2;
+
+    class Builder
     {
-      const uint_t VERSION_ID = 2;
+    public:
+      virtual ~Builder() = default;
 
-      class Builder
-      {
-      public:
-        virtual ~Builder() = default;
-        
-        virtual void OnFile(String path, Binary::Container::Ptr content) = 0;
-      };
+      virtual void OnFile(StringView path, Binary::Container::Ptr content) = 0;
+    };
 
-      void ParseVFS(const Binary::Container& data, Builder& target);
-    }
+    void ParseVFS(const Binary::Container& data, Builder& target);
+  }  // namespace Playstation2SoundFormat
 
-    Decoder::Ptr CreatePSF2Decoder();
-  }
-}
+  Decoder::Ptr CreatePSF2Decoder();
+}  // namespace Formats::Chiptune

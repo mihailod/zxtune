@@ -1,55 +1,45 @@
 /**
-*
-* @file
-*
-* @brief  HRiP test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  HRiP test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../utils.h"
+#include "formats/test/utils.h"
 
 namespace
 {
-  void TestHripSmall()
+  void TestHripSmall(const Binary::Container& hrip)
   {
-    Dump rar;
-    Test::OpenFile("test.hrp", rar);
+    const auto etalon = Test::OpenFile("etalon16.bin");
 
-    Dump etalon;
-    Test::OpenFile("etalon16.bin", etalon);
-
-    const Formats::Packed::Decoder::Ptr packed = Formats::Packed::CreateHrust23Decoder();
-    std::map<std::string, Dump> tests;
-    const uint8_t* const data = rar.data();
-    tests["test16k"] = Dump(data + 8, data + 0x21c0);
-    Test::TestPacked(*packed, etalon, tests);
+    const auto packed = Formats::Packed::CreateHrust23Decoder();
+    std::map<std::string, Binary::Container::Ptr> tests;
+    tests["test16k"] = hrip.GetSubcontainer(8, 0x21c0 - 8);
+    Test::TestPacked(*packed, *etalon, tests);
   }
 
-  void TestHripBig()
+  void TestHripBig(const Binary::Container& hrip)
   {
-    Dump rar;
-    Test::OpenFile("test.hrp", rar);
+    const auto etalon = Test::OpenFile("etalon48.bin");
 
-    Dump etalon;
-    Test::OpenFile("etalon48.bin", etalon);
-
-    const Formats::Packed::Decoder::Ptr packed = Formats::Packed::CreateHrust23Decoder();
-    std::map<std::string, Dump> tests;
-    const uint8_t* const data = rar.data();
-    tests["test48k"] = Dump(data + 0x21c0, data + 0x4821);
-    Test::TestPacked(*packed, etalon, tests);
+    const auto packed = Formats::Packed::CreateHrust23Decoder();
+    std::map<std::string, Binary::Container::Ptr> tests;
+    tests["test48k"] = hrip.GetSubcontainer(0x21c0, 0x4821 - 0x21c0);
+    Test::TestPacked(*packed, *etalon, tests);
   }
-}
-
+}  // namespace
 
 int main()
 {
   try
   {
-    TestHripSmall();
-    TestHripBig();
+    const auto hrip = Test::OpenFile("test.hrp");
+    TestHripSmall(*hrip);
+    TestHripBig(*hrip);
   }
   catch (const std::exception& e)
   {

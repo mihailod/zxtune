@@ -1,18 +1,19 @@
 /**
-*
-* @file
-*
-* @brief  Information interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Information interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//std includes
+#include "time/duration.h"
+
+#include "types.h"
+
 #include <memory>
 
 namespace Module
@@ -22,15 +23,14 @@ namespace Module
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<const Information> Ptr;
+    using Ptr = std::shared_ptr<const Information>;
 
     virtual ~Information() = default;
 
-    //! Total frames count
-    virtual uint_t FramesCount() const = 0;
-    //! Loop position frame
-    virtual uint_t LoopFrame() const = 0;
-    //! Channels count
-    virtual uint_t ChannelsCount() const = 0;
+    //! Total module duration
+    virtual Time::Milliseconds Duration() const = 0;
+
+    //! Loop duration
+    virtual Time::Milliseconds LoopDuration() const = 0;
   };
-}
+}  // namespace Module

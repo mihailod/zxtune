@@ -112,7 +112,9 @@ UINT32 DataLoader_Read(DATA_LOADER *loader, UINT32 numBytes)
 	if(!readBytes) return 0;
 	loader->_bytesLoaded += readBytes;
 
-	if (loader->_callbacks->deof(loader->_context))
+	/* Note: The check (loaded >= total) is necessary, as the EoF flag is set only when
+	         reading *beyond* the end of the file. Stopping at the last byte doesn't set it. */
+	if (loader->_bytesLoaded >= loader->_bytesTotal || loader->_callbacks->deof(loader->_context))
 	{
 		DataLoader_CancelLoading(loader);
 		loader->_status = DLSTAT_LOADED;
@@ -125,7 +127,13 @@ void DataLoader_Deinit(DATA_LOADER *dLoader)
 {
 	if(dLoader == NULL) return;
 	DataLoader_Reset(dLoader);
-	if(dLoader->_context) free(dLoader->_context);
+	if(dLoader->_context != NULL)
+	{
+		if (dLoader->_callbacks->ddeinit)
+			dLoader->_callbacks->ddeinit(dLoader->_context);
+		else
+			free(dLoader->_context);
+	}
 	free(dLoader);
 }
 

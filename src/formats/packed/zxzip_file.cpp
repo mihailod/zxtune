@@ -1,103 +1,89 @@
 /**
-* 
-* @file
-*
-* @brief  ZXZip compressor support
-*
-* @author vitamin.caig@gmail.com
-*
-* @note   Based on XLook sources by HalfElf
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ZXZip compressor support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ * @note   Based on XLook sources by HalfElf
+ *
+ **/
 
-//local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-//common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-//library includes
-#include <binary/crc.h>
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-#include <math/numeric.h>
-//std includes
-#include <iterator>
+
+#include "binary/crc.h"
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+#include "math/numeric.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <array>
 #include <cstring>
-//text includes
-#include <formats/text/packed.h>
+#include <iterator>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace ZXZip
   {
     const std::size_t MIN_SIZE = 0x16 + 32;
-    //const std::size_t MAX_DECODED_SIZE = 0xff00;
-    //checkers
-    const std::string HEADER_PATTERN =
-      //Filename
-      "20-7a 20-7a 20-7a 20-7a 20-7a 20-7a 20-7a 20-7a"
-      //Type
-      "20-7a ??"
-      //SourceSize
-      "??"
-      //SourceSectors
-      "01-ff"
-      //PackedSize
-      "??"
-      //SourceCRC
-      "????"
-      //Method
-      "00-03"
-      //Flags
-      "%0000000x"
-    ;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawHeader
+    const auto DESCRIPTION = "ZXZip"sv;
+    const auto HEADER_PATTERN =
+        // Filename
+        "20-7a 20-7a 20-7a 20-7a 20-7a 20-7a 20-7a 20-7a"
+        // Type
+        "20-7a ??"
+        // SourceSize
+        "??"
+        // SourceSectors
+        "01-ff"
+        // PackedSize
+        "??"
+        // SourceCRC
+        "????"
+        // Method
+        "00-03"
+        // Flags
+        "%0000000x"
+        ""sv;
+
+    struct RawHeader
     {
       //+0x0
       char Name[8];
       //+0x8
       char Type;
       //+0x9
-      uint16_t StartOrSize;
+      le_uint16_t StartOrSize;
       //+0xb
-      uint16_t SourceSize;
+      le_uint16_t SourceSize;
       //+0xd
       uint8_t SourceSectors;
       //+0xe
-      uint16_t PackedSize;
+      le_uint16_t PackedSize;
       //+0x10
-      uint32_t SourceCRC;
+      le_uint32_t SourceCRC;
       //+0x14
       uint8_t Method;
       //+0x15
       uint8_t Flags;
       //+0x16
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
 
-    static_assert(sizeof(RawHeader) == 0x16, "Invalid layout");
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 0x16, "Invalid layout");
 
     std::size_t GetSourceFileSize(const RawHeader& header)
     {
-      const uint_t calcSize = header.Type == 'B' || header.Type == 'b'
-        ? 4 + fromLE(header.StartOrSize)
-        : fromLE(header.SourceSize);
+      const uint_t calcSize = header.Type == 'B' || header.Type == 'b' ? uint_t(4 + header.StartOrSize)
+                                                                       : uint_t(header.SourceSize);
       const std::size_t calcSectors = Math::Align(calcSize, uint_t(256)) / 256;
-      return calcSectors == header.SourceSectors
-        ? calcSize
-        : 256 * header.SourceSectors;
+      return calcSectors == header.SourceSectors ? calcSize : 256 * header.SourceSectors;
     }
 
     class Container
@@ -106,8 +92,7 @@ namespace Packed
       Container(const void* data, std::size_t size)
         : Data(static_cast<const uint8_t*>(data))
         , Size(size)
-      {
-      }
+      {}
 
       bool FastCheck() const
       {
@@ -116,7 +101,7 @@ namespace Packed
           return false;
         }
         const RawHeader& header = GetHeader();
-        const std::size_t packedSize = fromLE(header.PackedSize);
+        const std::size_t packedSize = header.PackedSize;
         if (!packedSize)
         {
           return false;
@@ -131,7 +116,7 @@ namespace Packed
       std::size_t GetUsedSize() const
       {
         const RawHeader& header = GetHeader();
-        return sizeof(header) + fromLE(header.PackedSize);
+        return sizeof(header) + header.PackedSize;
       }
 
       const RawHeader& GetHeader() const
@@ -139,6 +124,7 @@ namespace Packed
         assert(Size >= sizeof(RawHeader));
         return *safe_ptr_cast<const RawHeader*>(Data);
       }
+
     private:
       const uint8_t* const Data;
       const std::size_t Size;
@@ -157,7 +143,7 @@ namespace Packed
     public:
       virtual ~DataDecoder() = default;
 
-      virtual std::unique_ptr<Dump> GetDecodedData() = 0;
+      virtual Binary::Container::Ptr GetDecodedData() = 0;
     };
 
     class StoreDataDecoder : public DataDecoder
@@ -169,76 +155,41 @@ namespace Packed
         assert(STORE == Header.Method);
       }
 
-      std::unique_ptr<Dump> GetDecodedData() override
+      Binary::Container::Ptr GetDecodedData() override
       {
-        const uint_t packedSize = fromLE(Header.PackedSize);
-        const uint8_t* const sourceData = safe_ptr_cast<const uint8_t*>(&Header + 1);
-        std::unique_ptr<Dump> res(new Dump(packedSize));
-        std::memcpy(res->data(), sourceData, packedSize);
-        return res;
+        const uint_t packedSize = Header.PackedSize;
+        const auto* const sourceData = safe_ptr_cast<const uint8_t*>(&Header + 1);
+        return Binary::CreateContainer(Binary::View{sourceData, packedSize});
       }
+
     private:
       const RawHeader& Header;
     };
 
-    const uint8_t SFT_64_1[] =
-    {
-      0x07,//size
-      0x01, 0x13, 0x34, 0xE5, 0xF6, 0x96, 0xF7 // packed data llllbbbb
+    const uint8_t SFT_64_1[] = {
+        0x07,                                     // size
+        0x01, 0x13, 0x34, 0xE5, 0xF6, 0x96, 0xF7  // packed data llllbbbb
     };
 
-    const uint8_t SFT_64_2[] =
-    {
-     0x10,
-     0x00, 0x12, 0x03, 0x24, 0x15, 0x36, 0x27,
-     0x38, 0x39, 0x6A, 0x7B, 0x4C, 0x9D, 0x6E,
-     0x1F, 0x09
-    };
+    const uint8_t SFT_64_2[] = {0x10, 0x00, 0x12, 0x03, 0x24, 0x15, 0x36, 0x27, 0x38,
+                                0x39, 0x6A, 0x7B, 0x4C, 0x9D, 0x6E, 0x1F, 0x09};
 
-    const uint8_t SFT_64_3[] =
-    {
-     0x07,
-     0x12, 0x23, 0x14, 0xE5, 0xF6, 0x96, 0xF7
-    };
+    const uint8_t SFT_64_3[] = {0x07, 0x12, 0x23, 0x14, 0xE5, 0xF6, 0x96, 0xF7};
 
-    const uint8_t SFT_64_4[] =
-    {
-     0x0D,
-     0x01, 0x22, 0x23, 0x14, 0x15, 0x36, 0x37,
-     0x68, 0x89, 0x9A, 0xDB, 0x3C, 0x05
-    };
+    const uint8_t SFT_64_4[] = {0x0D, 0x01, 0x22, 0x23, 0x14, 0x15, 0x36, 0x37, 0x68, 0x89, 0x9A, 0xDB, 0x3C, 0x05};
 
-    const uint8_t SFT_64_5[] =
-    {
-     0x07,
-     0x12, 0x13, 0x44, 0xC5, 0xF6, 0x96, 0xF7
-    };
+    const uint8_t SFT_64_5[] = {0x07, 0x12, 0x13, 0x44, 0xC5, 0xF6, 0x96, 0xF7};
 
-    const uint8_t SFT_64_6[] =
-    {
-     0x0E,
-     0x02, 0x01, 0x12, 0x23, 0x14, 0x15, 0x36,
-     0x37, 0x68, 0x89, 0x9A, 0xDB, 0x3C, 0x05
-    };
+    const uint8_t SFT_64_6[] = {0x0E, 0x02, 0x01, 0x12, 0x23, 0x14, 0x15, 0x36,
+                                0x37, 0x68, 0x89, 0x9A, 0xDB, 0x3C, 0x05};
 
-    const uint8_t SFT_100[] =
-    {
-     0x62,
-     0x0A, 0x7B, 0x07, 0x06, 0x1B, 0x06, 0xBB,
-     0x0C, 0x4B, 0x03, 0x09, 0x07, 0x0B, 0x09,
-     0x0B, 0x09, 0x07, 0x16, 0x07, 0x08, 0x06,
-     0x05, 0x06, 0x07, 0x06, 0x05, 0x36, 0x07,
-     0x16, 0x17, 0x0B, 0x0A, 0x06, 0x08, 0x0A,
-     0x0B, 0x05, 0x06, 0x15, 0x04, 0x06, 0x17,
-     0x05, 0x0A, 0x08, 0x05, 0x06, 0x15, 0x06,
-     0x0A, 0x25, 0x06, 0x08, 0x07, 0x18, 0x0A,
-     0x07, 0x0A, 0x08, 0x0B, 0x07, 0x0B, 0x04,
-     0x25, 0x04, 0x25, 0x04, 0x0A, 0x06, 0x04,
-     0x05, 0x14, 0x05, 0x09, 0x34, 0x07, 0x06,
-     0x17, 0x09, 0x1A, 0x2B, 0xFC, 0xFC, 0xFC,
-     0xFB, 0xFB, 0xFB, 0x0C, 0x0B, 0x2C, 0x0B,
-     0x2C, 0x0B, 0x3C, 0x0B, 0x2C, 0x2B, 0xAC
-    };
+    const uint8_t SFT_100[] = {0x62, 0x0A, 0x7B, 0x07, 0x06, 0x1B, 0x06, 0xBB, 0x0C, 0x4B, 0x03, 0x09, 0x07, 0x0B, 0x09,
+                               0x0B, 0x09, 0x07, 0x16, 0x07, 0x08, 0x06, 0x05, 0x06, 0x07, 0x06, 0x05, 0x36, 0x07, 0x16,
+                               0x17, 0x0B, 0x0A, 0x06, 0x08, 0x0A, 0x0B, 0x05, 0x06, 0x15, 0x04, 0x06, 0x17, 0x05, 0x0A,
+                               0x08, 0x05, 0x06, 0x15, 0x06, 0x0A, 0x25, 0x06, 0x08, 0x07, 0x18, 0x0A, 0x07, 0x0A, 0x08,
+                               0x0B, 0x07, 0x0B, 0x04, 0x25, 0x04, 0x25, 0x04, 0x0A, 0x06, 0x04, 0x05, 0x14, 0x05, 0x09,
+                               0x34, 0x07, 0x06, 0x17, 0x09, 0x1A, 0x2B, 0xFC, 0xFC, 0xFC, 0xFB, 0xFB, 0xFB, 0x0C, 0x0B,
+                               0x2C, 0x0B, 0x2C, 0x0B, 0x3C, 0x0B, 0x2C, 0x2B, 0xAC};
 
     struct SFTEntry
     {
@@ -246,22 +197,19 @@ namespace Packed
       uint_t Value;
       uint_t Code;
 
-      bool operator < (const SFTEntry& rh) const
+      bool operator<(const SFTEntry& rh) const
       {
-        return Bits == rh.Bits 
-          ? Value < rh.Value
-          : Bits < rh.Bits;
+        return Bits == rh.Bits ? Value < rh.Value : Bits < rh.Bits;
       }
     };
 
-    //implode bitstream decoder
+    // implode bitstream decoder
     class SafeByteStream : public ByteStream
     {
     public:
       SafeByteStream(const uint8_t* data, std::size_t size)
         : ByteStream(data, size)
-      {
-      }
+      {}
 
       uint8_t GetByte()
       {
@@ -275,9 +223,7 @@ namespace Packed
     public:
       Bitstream(const uint8_t* data, std::size_t size)
         : SafeByteStream(data, size)
-        , Bits(), Mask(128)
-      {
-      }
+      {}
 
       bool GetBit()
       {
@@ -302,7 +248,7 @@ namespace Packed
       uint_t ReadByTree(const std::vector<SFTEntry>& tree)
       {
         auto it = tree.begin();
-        for (uint_t bits = 0, result = 0; ;)
+        for (uint_t bits = 0, result = 0;;)
         {
           result |= GetBit() << bits++;
           for (; it->Bits <= bits; ++it)
@@ -316,9 +262,10 @@ namespace Packed
         }
         return 0;
       }
+
     private:
-      uint_t Bits;
-      uint_t Mask;
+      uint_t Bits = 0;
+      uint_t Mask = 128;
     };
 
     class ImplodeDataDecoder : public DataDecoder
@@ -330,7 +277,7 @@ namespace Packed
         assert(IMPLODE == Header.Method);
       }
 
-      std::unique_ptr<Dump> GetDecodedData() override
+      Binary::Container::Ptr GetDecodedData() override
       {
         const std::size_t dataSize = GetSourceFileSize(Header);
         const bool isBigFile = dataSize >= 0x1600;
@@ -364,16 +311,14 @@ namespace Packed
           const uint_t distBits = isBigTextFile ? 7 : 6;
           const uint_t minMatchLen = isBigTextFile ? 3 : 2;
 
-          Bitstream stream(safe_ptr_cast<const uint8_t*>(&Header + 1), fromLE(Header.PackedSize));
-          Dump result;
+          Bitstream stream(safe_ptr_cast<const uint8_t*>(&Header + 1), Header.PackedSize);
+          Binary::DataBuilder result(2 * Header.PackedSize);
           while (!stream.Eof())
           {
             if (stream.GetBit())
             {
-              const uint_t data = isBigTextFile
-                ? stream.ReadByTree(SFT1)
-                : stream.GetBits(8);
-              result.push_back(static_cast<uint8_t>(data));
+              const uint_t data = isBigTextFile ? stream.ReadByTree(SFT1) : stream.GetBits(8);
+              result.AddByte(static_cast<uint8_t>(data));
             }
             else
             {
@@ -387,10 +332,10 @@ namespace Packed
                 len += stream.GetBits(8);
               }
               len += minMatchLen;
-              if (dist > result.size())
+              if (dist > result.Size())
               {
-                const std::size_t zeroes = std::min<std::size_t>(dist - result.size(), len);
-                std::fill_n(std::back_inserter(result), zeroes, 0);
+                const std::size_t zeroes = std::min<std::size_t>(dist - result.Size(), len);
+                Fill(result, zeroes, 0);
                 len -= zeroes;
               }
               if (len)
@@ -399,15 +344,14 @@ namespace Packed
               }
             }
           }
-          std::unique_ptr<Dump> res(new Dump());
-          res->swap(result);
-          return res;
+          return result.CaptureResult();
         }
         catch (const std::exception&)
         {
-          return std::unique_ptr<Dump>();
+          return {};
         }
       }
+
     private:
       static uint_t InvertBits(uint_t val)
       {
@@ -435,7 +379,9 @@ namespace Packed
         assert(InvertBits(1) == 0x8000);
         assert(InvertBits(0x180) == 0x180);
         assert(InvertBits(0x8000) == 1);
-        uint_t code = 0, codeIncrement = 0, lastBits = 0;
+        uint_t code = 0;
+        uint_t codeIncrement = 0;
+        uint_t lastBits = 0;
         for (auto it = tree.rbegin(), lim = tree.rend(); it != lim; ++it)
         {
           code += codeIncrement;
@@ -448,6 +394,7 @@ namespace Packed
         }
         result.swap(tree);
       }
+
     private:
       const RawHeader& Header;
     };
@@ -456,26 +403,20 @@ namespace Packed
     {
       static const uint_t LIMITER = 256;
 
-      uint_t Parent;
-      uint8_t Value;
-      bool IsFree;
+      uint_t Parent = 0;
+      uint8_t Value = '\0';
+      bool IsFree = false;
 
-      LZWEntry()
-        : Parent()
-        , Value()
-        , IsFree()
-      {
-      }
+      LZWEntry() = default;
 
       explicit LZWEntry(uint_t value)
         : Parent(LIMITER)
         , Value(static_cast<uint8_t>(value < LIMITER ? value : 0))
         , IsFree(value >= LIMITER)
-      {
-      }
+      {}
     };
 
-    typedef std::array<LZWEntry, 8192> LZWTree;
+    using LZWTree = std::array<LZWEntry, 8192>;
 
     class ShrinkDataDecoder : public DataDecoder
     {
@@ -486,21 +427,21 @@ namespace Packed
         assert(SHRINK == Header.Method);
       }
 
-      std::unique_ptr<Dump> GetDecodedData() override
+      Binary::Container::Ptr GetDecodedData() override
       {
         try
         {
-          Bitstream stream(safe_ptr_cast<const uint8_t*>(&Header + 1), fromLE(Header.PackedSize));
-          Dump result;
+          Bitstream stream(safe_ptr_cast<const uint8_t*>(&Header + 1), Header.PackedSize);
+          Binary::DataBuilder result(2 * Header.PackedSize);
 
           LZWTree tree;
           ResetTree(tree);
 
-          auto lastFree = tree.begin() + LZWEntry::LIMITER;
+          auto* lastFree = tree.begin() + LZWEntry::LIMITER;
 
           uint_t codeSize = 9;
           uint_t oldCode = stream.GetBits(codeSize);
-          result.push_back(static_cast<uint8_t>(oldCode));
+          result.AddByte(static_cast<uint8_t>(oldCode));
           while (!stream.Eof())
           {
             const uint_t code = stream.GetBits(codeSize);
@@ -520,8 +461,8 @@ namespace Packed
             else
             {
               const bool isFree = tree.at(code).IsFree;
-              Dump substring(isFree ? 1 : 0);
-              for (uint_t curCode = isFree ? oldCode : code; curCode != LZWEntry::LIMITER; )
+              Binary::Dump substring(isFree ? 1 : 0);
+              for (uint_t curCode = isFree ? oldCode : code; curCode != LZWEntry::LIMITER;)
               {
                 const LZWEntry& curEntry = tree.at(curCode);
                 Require(curCode != curEntry.Parent);
@@ -534,24 +475,25 @@ namespace Packed
               {
                 substring.front() = substring.back();
               }
-              std::copy(substring.rbegin(), substring.rend(), std::back_inserter(result));
-              for (++lastFree; lastFree != tree.end() && !lastFree->IsFree; ++lastFree) {}
+              std::reverse(substring.begin(), substring.end());
+              result.Add(substring);
+              for (++lastFree; lastFree != tree.end() && !lastFree->IsFree; ++lastFree)
+              {}
               Require(lastFree != tree.end());
-              lastFree->Value = substring.back();
+              lastFree->Value = substring.front();
               lastFree->Parent = oldCode;
               lastFree->IsFree = false;
               oldCode = code;
             }
           }
-          std::unique_ptr<Dump> res(new Dump());
-          res->swap(result);
-          return res;
+          return result.CaptureResult();
         }
         catch (const std::exception&)
         {
-          return std::unique_ptr<Dump>();
+          return {};
         }
       }
+
     private:
       static void ResetTree(LZWTree& tree)
       {
@@ -567,8 +509,7 @@ namespace Packed
         std::vector<bool> hasChilds(parentsCount);
         for (std::size_t idx = 0; idx < parentsCount; ++idx)
         {
-          if (!tree[idx + LZWEntry::LIMITER].IsFree &&
-              tree[idx + LZWEntry::LIMITER].Parent > LZWEntry::LIMITER)
+          if (!tree[idx + LZWEntry::LIMITER].IsFree && tree[idx + LZWEntry::LIMITER].Parent > LZWEntry::LIMITER)
           {
             const std::size_t parent = tree[idx + LZWEntry::LIMITER].Parent - LZWEntry::LIMITER;
             hasChilds[parent] = true;
@@ -583,6 +524,7 @@ namespace Packed
           }
         }
       }
+
     private:
       const RawHeader& Header;
     };
@@ -598,7 +540,7 @@ namespace Packed
       case SHRINK:
         return std::unique_ptr<DataDecoder>(new ShrinkDataDecoder(header));
       default:
-        return std::unique_ptr<DataDecoder>();
+        return {};
       };
     };
 
@@ -609,52 +551,51 @@ namespace Packed
         : Header(container.GetHeader())
         , Delegate(CreateDecoder(Header))
         , IsValid(container.FastCheck() && Delegate.get())
-      {
-      }
+      {}
 
-      std::unique_ptr<Dump> GetDecodedData() override
+      Binary::Container::Ptr GetDecodedData() override
       {
         if (!IsValid)
         {
-          return std::unique_ptr<Dump>();
+          return {};
         }
-        std::unique_ptr<Dump> result = Delegate->GetDecodedData();
+        auto result = Delegate->GetDecodedData();
         while (result.get())
         {
           const std::size_t dataSize = GetSourceFileSize(Header);
-          if (dataSize != result->size())
+          if (dataSize != result->Size())
           {
             break;
           }
           const uint32_t realCRC = Binary::Crc32(*result);
-          //ZXZip CRC32 calculation does not invert result
-          if (realCRC != ~fromLE(Header.SourceCRC))
+          // ZXZip CRC32 calculation does not invert result
+          if (realCRC != ~Header.SourceCRC)
           {
             break;
           }
           return result;
         }
         IsValid = false;
-        return std::unique_ptr<Dump>();
+        return {};
       }
+
     private:
       const RawHeader& Header;
       const std::unique_ptr<DataDecoder> Delegate;
       bool IsValid;
     };
-  }//namespace ZXZip
+  }  // namespace ZXZip
 
   class ZXZipDecoder : public Decoder
   {
   public:
     ZXZipDecoder()
       : Depacker(Binary::CreateFormat(ZXZip::HEADER_PATTERN, ZXZip::MIN_SIZE))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Text::ZXZIP_DECODER_DESCRIPTION;
+      return ZXZip::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -666,16 +607,17 @@ namespace Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const ZXZip::Container container(rawData.Start(), rawData.Size());
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       ZXZip::DispatchedDataDecoder decoder(container);
       return CreateContainer(decoder.GetDecodedData(), container.GetUsedSize());
     }
+
   private:
     const Binary::Format::Ptr Depacker;
   };
@@ -684,5 +626,4 @@ namespace Packed
   {
     return MakePtr<ZXZipDecoder>();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

@@ -1,25 +1,27 @@
 /**
-*
-* @file
-*
-* @brief  SoundTracker tracks dumper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SoundTracker tracks dumper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../../utils.h"
-#include <formats/chiptune/builder_meta.h>
-#include <formats/chiptune/builder_pattern.h>
-#include <formats/chiptune/aym/ascsoundmaster.h>
+#include "formats/chiptune/aym/ascsoundmaster.h"
+#include "formats/chiptune/builder_meta.h"
+#include "formats/chiptune/builder_pattern.h"
+#include "formats/test/utils.h"
+
+#include "string_view.h"
 
 namespace
 {
   using namespace Formats::Chiptune::ASCSoundMaster;
 
-  Char ToHex(uint_t val)
+  auto ToHex(uint_t val)
   {
-    return val >= 10 ? (val - 10 + 'A') : val + '0';
+    return val >= 10 ? 'A' + (val - 10) : '0' + val;
   }
 
   inline std::string GetNote(uint_t note)
@@ -31,7 +33,10 @@ namespace
     return std::string(TONES + halftone * 2, TONES + halftone * 2 + 2) + char('1' + octave);
   }
 
-  class ASCDumpBuilder : public Builder, public Formats::Chiptune::MetaBuilder, public Formats::Chiptune::PatternBuilder
+  class ASCDumpBuilder
+    : public Builder
+    , public Formats::Chiptune::MetaBuilder
+    , public Formats::Chiptune::PatternBuilder
   {
   public:
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
@@ -39,24 +44,29 @@ namespace
       return *this;
     }
 
-    void SetProgram(const String& program) override
+    void SetProgram(StringView program) override
     {
       std::cout << "Program: " << program << std::endl;
     }
 
-    void SetTitle(const String& program) override
+    void SetTitle(StringView program) override
     {
       std::cout << "Title: " << program << std::endl;
     }
 
-    void SetAuthor(const String& author) override
+    void SetAuthor(StringView author) override
     {
       std::cout << "Author: " << author << std::endl;
     }
-    
-    void SetStrings(const Strings::Array& strings) override
+
+    void SetStrings(const Strings::Array& /*strings*/) override
     {
       std::cout << "Strings: [some]" << std::endl;
+    }
+
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
     }
 
     void SetInitialTempo(uint_t tempo) override
@@ -66,22 +76,25 @@ namespace
 
     void SetSample(uint_t index, Sample sample) override
     {
-      std::cout << "[Sample" << ToHex(index) << "]\n"
-      "Loop: " << sample.Loop << ".." << sample.LoopLimit << '\n';
-      for (const auto & it : sample.Lines)
+      std::cout << "[Sample" << ToHex(index)
+                << "]\n"
+                   "Loop: "
+                << sample.Loop << ".." << sample.LoopLimit << '\n';
+      for (const auto& it : sample.Lines)
       {
-        std::cout << "V=" << ToHex(it.Level) << " T=" << it.ToneDeviation << ' ' << 
-          (it.ToneMask ? 'T' : 't') << (it.NoiseMask ? 'N' : 'n') << (it.EnableEnvelope ? 'E' : ' ') << 
-          "A=" << it.Adding << " dV=" << it.VolSlide <<
-          '\n';
+        std::cout << "V=" << ToHex(it.Level) << " T=" << it.ToneDeviation << ' ' << (it.ToneMask ? 'T' : 't')
+                  << (it.NoiseMask ? 'N' : 'n') << (it.EnableEnvelope ? 'E' : ' ') << "A=" << it.Adding
+                  << " dV=" << it.VolSlide << '\n';
       }
       std::cout << std::endl;
     }
 
     void SetOrnament(uint_t index, Ornament ornament) override
     {
-      std::cout << "[Ornament" << ToHex(index) << "]\n"
-      "Loop: " << ornament.Loop << ".." << ornament.LoopLimit << '\n';
+      std::cout << "[Ornament" << ToHex(index)
+                << "]\n"
+                   "Loop: "
+                << ornament.Loop << ".." << ornament.LoopLimit << '\n';
       for (auto it : ornament.Lines)
       {
         std::cout << it.NoteAddon << ' ' << it.NoiseAddon << '\n';
@@ -123,7 +136,7 @@ namespace
       {
         std::cout << Line << std::endl;
       }
-      //nn C-1 SEOVee
+      // nn C-1 SEOVee
       Line = String(36, ' ');
       Line[0] = '0' + index / 10;
       Line[1] = '0' + index % 10;
@@ -131,7 +144,7 @@ namespace
 
     void SetTempo(uint_t tempo) override
     {
-      //TODO
+      // TODO
     }
 
     void StartChannel(uint_t index) override
@@ -180,7 +193,7 @@ namespace
 
     void SetEnvelope() override
     {
-      //TODO
+      // TODO
     }
 
     void SetNoEnvelope() override
@@ -190,44 +203,44 @@ namespace
 
     void SetNoise(uint_t val) override
     {
-      //TODO
+      // TODO
     }
 
     void SetContinueSample() override
     {
-      //TODO
+      // TODO
     }
 
     void SetContinueOrnament() override
     {
-      //TODO
+      // TODO
     }
 
     void SetGlissade(int_t val) override
     {
-      //TODO
+      // TODO
     }
 
     void SetSlide(int_t steps, bool useToneSliding) override
     {
-      //TODO
+      // TODO
     }
 
     void SetVolumeSlide(uint_t period, int_t delta) override
     {
-      //TODO
+      // TODO
     }
 
     void SetBreakSample() override
     {
-      //TODO
+      // TODO
     }
 
   private:
     String Line;
-    Char* ChanPtr;
+    char* ChanPtr;
   };
-}
+}  // namespace
 
 int main(int argc, char* argv[])
 {
@@ -237,9 +250,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Dump> rawData(new Dump());
-    Test::OpenFile(argv[2], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[2]);
     const std::string type(argv[1]);
     ASCDumpBuilder builder;
     if (type == "as0")

@@ -1,21 +1,17 @@
 /**
-* 
-* @file
-*
-* @brief  Chiptune container helper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Chiptune container helper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//library includes
-#include <formats/chiptune.h>
+#include "formats/chiptune.h"
 
-namespace Formats
+namespace Formats::Chiptune
 {
-  namespace Chiptune
-  {
-    Container::Ptr CreateKnownCrcContainer(Binary::Container::Ptr data, uint_t crc);
-    Container::Ptr CreateCalculatingCrcContainer(Binary::Container::Ptr data, std::size_t offset, std::size_t size);
-  }
-}
+  Container::Ptr CreateKnownCrcContainer(Binary::Container::Ptr data, uint_t crc);
+  Container::Ptr CreateCalculatingCrcContainer(Binary::Container::Ptr data, std::size_t offset, std::size_t size);
+}  // namespace Formats::Chiptune

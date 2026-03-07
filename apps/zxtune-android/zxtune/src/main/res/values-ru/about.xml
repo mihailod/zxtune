@@ -31,11 +31,16 @@
     \tASAP от <b>Piotr Fusik</b>\n
     \tjsoup от <b>Jonathan Hedley</b>\n
     \tminimp3 от <b>lieff</b>\n
-    \tstb-vorbis от <b>Sean Barrett</b>\n
     \tlibFLAC\n
     \tv2m-player от <b>Farbrausch</b> и <b>Joakim L.Gilje</b>\n
     \tFFmpeg\n
     \tlibvgm от <b>Valley Bell</b>\n
+    \tlibopenmpt\n
+    \tsseqplayer от <b>Christopher Snowhill</b>\n
+    \tLibAtrac9 от <b>Alex Barney</b>\n
+    \tmpg123 от <b>Thomas Orgis</b>\n
+    \tOGG Vorbis\n
+    \tvgmstream\n
     \n
     Посвящается <b>Lizzi</b>
   </string>
@@ -45,5 +50,6 @@
   <!-- containers -->
   <string name="plugin_multitrack">Многотрековые</string>
   <string name="plugin_archive">Архиваторы</string>
+  <string name="plugin_compressor">Упаковщики</string>
   <string name="plugin_decompiler">Декомпиляторы</string>
 </resources>

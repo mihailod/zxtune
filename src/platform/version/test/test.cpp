@@ -1,19 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief Test for version API
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Test for version API
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <platform/version/api.h>
+#include "platform/version/api.h"
+
 #include <iostream>
 
-namespace Text
+namespace Platform::Version
 {
-  extern const Char PROGRAM_NAME[] = {'T', 'e', 's', 't', 0};
+  const StringView PROGRAM_NAME = "Test";
 }
 
 int main()

@@ -1,51 +1,49 @@
 /**
-*
-* @file
-*
-* @brief  ASCScreenCrusher support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ASCScreenCrusher support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/image/container.h"
-//common includes
-#include <contract.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/format_factories.h>
-#include <formats/image.h>
-//text includes
-#include <formats/text/image.h>
 
-namespace Formats
-{
-namespace Image
+#include "binary/format_factories.h"
+#include "formats/image.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
+#include <memory>
+
+namespace Formats::Image
 {
   namespace ASCScreenCrusher
   {
-    const std::string DEPACKER_PATTERN(
-     "f3"      //di
-     "cd5200"  //call #0052
-     "3b"      //dec sp
-     "3b"      //dec sp
-     "c1"      //pop bc
-     "219700"  //ld hl,#0097
-     "09"      //add hl,bc
-     "eb"      //ex de,hl
-     "("
-     "21?00"   //ld hl,#00xx
-     "09"      //add hl,bc
-     "73"      //ld (hl),e
-     "23"      //inc hl
-     "72"      //ld (hl),d
-     "){3}"
-     "21be00"  //ld hl,#00be
-     "09"      //add hl,bc
-     "1100?"   //ld de,#4000
-     "d5"      //push de
-    );
+    const auto DESCRIPTION = "ASC ScreenCrasher"sv;
+    const auto DEPACKER_PATTERN =
+        "f3"      // di
+        "cd5200"  // call #0052
+        "3b"      // dec sp
+        "3b"      // dec sp
+        "c1"      // pop bc
+        "219700"  // ld hl,#0097
+        "09"      // add hl,bc
+        "eb"      // ex de,hl
+        "("
+        "21?00"  // ld hl,#00xx
+        "09"     // add hl,bc
+        "73"     // ld (hl),e
+        "23"     // inc hl
+        "72"     // ld (hl),d
+        "){3}"
+        "21be00"  // ld hl,#00be
+        "09"      // add hl,bc
+        "1100?"   // ld de,#4000
+        "d5"      // push de
+        ""sv;
 
     /*
       @0052 48ROM
@@ -66,8 +64,7 @@ namespace Image
         : Start(data)
         , Cursor(Start + offset)
         , End(Start + size)
-      {
-      }
+      {}
 
       uint8_t GetByte()
       {
@@ -79,6 +76,7 @@ namespace Image
       {
         return Cursor - Start;
       }
+
     private:
       const uint8_t* const Start;
       const uint8_t* Cursor;
@@ -92,21 +90,20 @@ namespace Image
         : AttrBase(256 * sizeCode)
         , ScrStart((AttrBase & 0x0300) << 3)
         , ScrLimit((AttrBase ^ 0x1800) & 0xfc00)
-      {
-      }
+      {}
 
       std::size_t GetStart() const
       {
         return ScrStart;
       }
 
-      std::size_t operator ()(std::size_t virtAddr) const
+      std::size_t operator()(std::size_t virtAddr) const
       {
         if (virtAddr < ScrLimit)
         {
           const std::size_t line = (virtAddr & 0x0007) << 8;
-          const std::size_t row =  (virtAddr & 0x0038) << 2;
-          const std::size_t col =  (virtAddr & 0x07c0) >> 6;
+          const std::size_t row = (virtAddr & 0x0038) << 2;
+          const std::size_t col = (virtAddr & 0x07c0) >> 6;
           return (virtAddr & 0x1800) | line | row | col;
         }
         else
@@ -114,6 +111,7 @@ namespace Image
           return AttrBase + virtAddr;
         }
       }
+
     private:
       const std::size_t AttrBase;
       const std::size_t ScrStart;
@@ -129,23 +127,22 @@ namespace Image
         IsValid = DecodeData();
       }
 
-      std::unique_ptr<Dump> GetResult()
+      std::unique_ptr<Binary::Dump> GetResult()
       {
-        return IsValid
-          ? std::move(Result)
-          : std::unique_ptr<Dump>();
+        return IsValid ? std::move(Result) : std::unique_ptr<Binary::Dump>();
       }
 
       std::size_t GetUsedSize() const
       {
         return Stream.GetProcessedBytes();
       }
+
     private:
       bool DecodeData()
       {
         try
         {
-          Dump decoded(PIXELS_SIZE + ATTRS_SIZE);
+          Binary::Dump decoded(PIXELS_SIZE + ATTRS_SIZE);
           std::fill_n(&decoded[PIXELS_SIZE], ATTRS_SIZE, 7);
 
           const AddrTranslator translate(0);
@@ -173,17 +170,17 @@ namespace Image
               }
               break;
             default:
+            {
+              uint16_t source = target - (256 * (val & 0x07) + Stream.GetByte());
+              for (uint8_t len = ((val & 0xf8) >> 3) + 3; len != 0; --len)
               {
-                uint16_t source = target - (256 * (val & 0x07) + Stream.GetByte());
-                for (uint8_t len = ((val & 0xf8) >> 3) + 3; len != 0; --len)
-                {
-                  decoded.at(translate(target++)) = decoded.at(translate(source++));
-                }
+                decoded.at(translate(target++)) = decoded.at(translate(source++));
               }
+            }
             }
           }
           Require(target == decoded.size());
-          Result.reset(new Dump());
+          Result = std::make_unique<Binary::Dump>();
           Result->swap(decoded);
           return true;
         }
@@ -192,24 +189,24 @@ namespace Image
           return false;
         }
       }
+
     private:
       bool IsValid;
       ByteStream Stream;
-      std::unique_ptr<Dump> Result;
+      std::unique_ptr<Binary::Dump> Result;
     };
-  }//namespace ASCScreenCrusher
+  }  // namespace ASCScreenCrusher
 
   class ASCScreenCrusherDecoder : public Decoder
   {
   public:
     ASCScreenCrusherDecoder()
       : Depacker(Binary::CreateFormat(ASCScreenCrusher::DEPACKER_PATTERN, ASCScreenCrusher::MIN_SIZE))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Text::ASCSCREENCRUSHER_DECODER_DESCRIPTION;
+      return ASCScreenCrusher::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -221,11 +218,12 @@ namespace Image
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       ASCScreenCrusher::DataDecoder decoder(rawData);
       return CreateContainer(decoder.GetResult(), decoder.GetUsedSize());
     }
+
   private:
     const Binary::Format::Ptr Depacker;
   };
@@ -234,5 +232,4 @@ namespace Image
   {
     return MakePtr<ASCScreenCrusherDecoder>();
   }
-}//namespace Image
-}//namespace Formats
+}  // namespace Formats::Image

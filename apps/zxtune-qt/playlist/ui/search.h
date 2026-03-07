@@ -1,23 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief Search dialog interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Search dialog interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-#include <playlist/supp/operations.h>
+#include "apps/zxtune-qt/playlist/supp/operations.h"
 
 class QWidget;
 
-namespace Playlist
+namespace Playlist::UI
 {
-  namespace UI
-  {
-    Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent);
-  }
-}
+  Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent);
+}  // namespace Playlist::UI

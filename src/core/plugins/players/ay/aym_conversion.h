@@ -1,19 +1,18 @@
 /**
-*
-* @file
-*
-* @brief  AYM-base conversion details
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AYM-base conversion details
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//library includes
-#include <core/plugin_attrs.h>
+#include "core/plugin_attrs.h"
+
+#include "types.h"
 
 namespace Module
 {
@@ -24,7 +23,7 @@ namespace Module
       using namespace ZXTune::Capabilities::Module;
       return Conversion::PSG | Conversion::ZX50 | Conversion::AYDUMP | Conversion::FYM;
     }
-  }
+  }  // namespace AYM
 
   namespace Vortex
   {
@@ -32,5 +31,5 @@ namespace Module
     {
       return 0;
     }
-  }
-}
+  }  // namespace Vortex
+}  // namespace Module

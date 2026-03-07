@@ -8,6 +8,7 @@
 #include "helper.h"
 #include "playerbase.hpp"
 #include "../utils/DataLoader.h"
+#include "../emu/logging.h"
 #include "dblk_compr.h"
 #include <vector>
 #include <string>
@@ -34,13 +35,14 @@ struct VGM_HEADER
 	UINT32 loopTicks;	// number of samples for the looping part
 	UINT32 recordHz;	// rate of the recording in Hz (60 for NTSC, 50 for PAL, 0 disables rate scaling)
 	
-	INT8 loopBase;
-	UINT8 loopModifier;	// 4.4 fixed point
-	INT16 volumeGain;	// 8.8 fixed point, +0x100 = +6 db
+	INT8 loopBase;		// to be subtracted from total number of loops
+	UINT8 loopModifier;	// 4.4 fixed point, loop multiplicator applies to default number of loops
+	INT16 volumeGain;	// 8.8 fixed point, log scale, +0x100 = +6 db
 };
 
 struct VGM_PLAY_OPTIONS
 {
+	PLR_GEN_OPTS genOpts;
 	UINT32 playbackHz;	// set to 60 (NTSC) or 50 (PAL) for region-specific song speed adjustment
 						// Note: requires VGM_HEADER.recordHz to be non-zero to work.
 	UINT8 hardStopOld;	// enforce silence at end of old VGMs (<1.50), fixes Key Off events being trimmed off
@@ -50,13 +52,20 @@ struct VGM_PLAY_OPTIONS
 class VGMPlayer : public PlayerBase
 {
 public:
+	struct DEVLOG_CB_DATA
+	{
+		VGMPlayer* player;
+		size_t chipDevID;
+	};
 	struct CHIP_DEVICE	// Note: has to be a POD, because I use memset() on it.
 	{
 		VGM_BASEDEV base;
 		UINT8 vgmChipType;
+		UINT8 chipType;
 		UINT8 chipID;
 		UINT32 flags;
 		size_t optID;
+		size_t cfgID;
 		DEVFUNC_WRITE_A8D8 write8;		// write 8-bit data to 8-bit register/offset
 		DEVFUNC_WRITE_A16D8 writeM8;	// write 8-bit data to 16-bit memory offset
 		DEVFUNC_WRITE_A8D16 writeD16;	// write 16-bit data to 8-bit register/offset
@@ -65,8 +74,19 @@ public:
 		DEVFUNC_WRITE_BLOCK romWrite;
 		DEVFUNC_WRITE_MEMSIZE romSizeB;
 		DEVFUNC_WRITE_BLOCK romWriteB;
+		DEVLOG_CB_DATA logCbData;
 	};
-	
+	struct DACSTRM_DEV
+	{
+		DEV_INFO defInf;
+		UINT8 streamID;
+		UINT8 bankID;
+		UINT8 pbMode;
+		UINT32 freq;
+		UINT32 lastItem;
+		UINT32 maxItems;
+	};
+
 protected:
 	struct HDR_CHIP_DEF
 	{
@@ -91,16 +111,10 @@ protected:
 		size_t deviceID;	// index for _devices array
 		UINT8 vgmChipType;
 		UINT8 type;
-		UINT16 instance;
+		UINT8 instance;
 		std::vector<UINT8> cfgData;
 	};
 	
-	struct DACSTRM_DEV
-	{
-		DEV_INFO defInf;
-		UINT8 streamID;
-		UINT8 bankID;
-	};
 	struct PCM_BANK
 	{
 		std::vector<UINT8> data;
@@ -111,8 +125,9 @@ protected:
 	typedef void (VGMPlayer::*COMMAND_FUNC)(void);	// VGM command member function callback
 	struct DEVLINK_CB_DATA
 	{
-		VGMPlayer* object;
-		UINT8 chipType;
+		VGMPlayer* player;
+		SONG_DEV_CFG* sdCfg;
+		CHIP_DEVICE* chipDev;
 	};
 	struct COMMAND_INFO
 	{
@@ -134,8 +149,9 @@ public:
 	
 	UINT32 GetPlayerType(void) const;
 	const char* GetPlayerName(void) const;
-	static UINT8 IsMyFile(DATA_LOADER *fileLoader);
-	UINT8 LoadFile(DATA_LOADER *fileLoader);
+	static UINT8 PlayerCanLoadFile(DATA_LOADER *dataLoader);
+	UINT8 CanLoadFile(DATA_LOADER *dataLoader) const;
+	UINT8 LoadFile(DATA_LOADER *dataLoader);
 	UINT8 UnloadFile(void);
 	const VGM_HEADER* GetFileHeader(void) const;
 	
@@ -152,8 +168,10 @@ public:
 	
 	//UINT32 GetSampleRate(void) const;
 	UINT8 SetSampleRate(UINT32 sampleRate);
-	//UINT8 SetPlaybackSpeed(double speed);
-	//void SetCallback(PLAYER_EVENT_CB cbFunc, void* cbParam);
+	double GetPlaybackSpeed(void) const;
+	UINT8 SetPlaybackSpeed(double speed);
+	//void SetEventCallback(PLAYER_EVENT_CB cbFunc, void* cbParam);
+	//void SetFileReqCallback(PLAYER_FILEREQ_CB cbFunc, void* cbParam);
 	UINT32 Tick2Sample(UINT32 ticks) const;
 	UINT32 Sample2Tick(UINT32 samples) const;
 	double Tick2Second(UINT32 ticks) const;
@@ -165,6 +183,9 @@ public:
 	UINT32 GetTotalTicks(void) const;	// get time for playing once in ticks
 	UINT32 GetLoopTicks(void) const;	// get time for one loop in ticks
 	//UINT32 GetTotalPlayTicks(UINT32 numLoops) const;	// get time for playing + looping (without fading)
+	
+	UINT32 GetModifiedLoopCount(UINT32 defaultLoops) const;	// get loop count, modified according to LoopModified/LoopBase header
+	const std::vector<DACSTRM_DEV>& GetStreamDevInfo(void) const;
 	
 	UINT8 Start(void);
 	UINT8 Stop(void);
@@ -181,9 +202,14 @@ protected:
 	std::string GetUTF8String(const UINT8* startPtr, const UINT8* endPtr);
 	
 	size_t DeviceID2OptionID(UINT32 id) const;
+	void RefreshDevOptions(CHIP_DEVICE& chipDev, const PLR_DEV_OPTS& devOpts);
 	void RefreshMuting(CHIP_DEVICE& chipDev, const PLR_MUTE_OPTS& muteOpts);
+	void RefreshPanning(CHIP_DEVICE& chipDev, const PLR_PAN_OPTS& panOpts);
 	
 	void RefreshTSRates(void);
+	
+	static void PlayerLogCB(void* userParam, void* source, UINT8 level, const char* message);
+	static void SndEmuLogCB(void* userParam, void* source, UINT8 level, const char* message);
 	
 	UINT32 GetHeaderChipClock(UINT8 chipType) const;	// returns raw chip clock value from VGM header
 	inline UINT32 GetChipCount(UINT8 chipType) const;
@@ -191,15 +217,18 @@ protected:
 	UINT16 GetChipVolume(UINT8 chipType, UINT8 chipID, UINT8 isLinked) const;
 	UINT16 EstimateOverallVolume(void) const;
 	void NormalizeOverallVolume(UINT16 overallVol);
+	void GenerateDeviceConfig(void);
 	void InitDevices(void);
 	
 	static void DeviceLinkCallback(void* userParam, VGM_BASEDEV* cDev, DEVLINK_INFO* dLink);
-	void LoadOPL4ROM(CHIP_DEVICE* chipDev);
 	CHIP_DEVICE* GetDevicePtr(UINT8 chipType, UINT8 chipID);
+	void LoadOPL4ROM(CHIP_DEVICE* chipDev);
 	
 	UINT8 SeekToTick(UINT32 tick);
 	UINT8 SeekToFilePos(UINT32 pos);
 	void ParseFile(UINT32 ticks);
+
+	void ParseFileForFMClocks();
 	
 	// --- VGM command functions ---
 	void Cmd_invalid(void);
@@ -243,17 +272,21 @@ protected:
 	void Cmd_NES_Reg(void);					// command B4 - NES APU register write (Reg8_Data8 with remapping)
 	void Cmd_YMW_Bank(void);				// command C3 - YMW258 bank write (Ofs8_Data16 with remapping)
 	void Cmd_SAA_Reg(void);					// command BD - SAA1099 register write (Reg8_Data8 with remapping)
+	void Cmd_OKIM6295_Reg(void);			// command B8 - OKIM6295 register write (Ofs8_Data8 with minor fixes)
 	void Cmd_AY_Stereo(void);				// command 30 - set AY8910 stereo mask
 	
 	CPCONV* _cpcUTF16;	// UTF-16 LE -> UTF-8 codepage conversion
+	DEV_LOGGER _logger;
 	DATA_LOADER *_dLoad;
 	const UINT8* _fileData;	// data pointer for quick access, equals _dLoad->GetFileData().data()
+	std::vector<UINT8> _yrwRom;	// cache for OPL4 sample ROM (yrw801.rom)
+	UINT8 _shownCmdWarnings[0x100];
 	
 	enum
 	{
 		_HDR_BUF_SIZE = 0x100,
-		_OPT_DEV_COUNT = 0x29,
-		_CHIP_COUNT = 0x29,
+		_OPT_DEV_COUNT = 0x2a,
+		_CHIP_COUNT = 0x2a,
 		_PCM_BANK_COUNT = 0x40
 	};
 	
@@ -288,17 +321,23 @@ protected:
 	// tick/sample conversion rates
 	UINT64 _tsMult;
 	UINT64 _tsDiv;
+	UINT64 _ttMult;
+	UINT64 _lastTsMult;
+	UINT64 _lastTsDiv;
 	
 	UINT32 _filePos;
 	UINT32 _fileTick;
 	UINT32 _playTick;
 	UINT32 _playSmpl;
 	UINT32 _curLoop;
+	UINT32 _lastLoopTick;
 	
 	UINT8 _playState;
 	UINT8 _psTrigger;	// used to temporarily trigger special commands
 	//PLAYER_EVENT_CB _eventCbFunc;
 	//void* _eventCbParam;
+	//PLAYER_FILEREQ_CB _fileReqCbFunc;
+	//void* _fileReqCbParam;
 	
 	static const UINT8 _OPT_DEV_LIST[_OPT_DEV_COUNT];	// list of configurable libvgm devices (different from VGM chip list]
 	static const UINT8 _DEV_LIST[_CHIP_COUNT];	// VGM chip ID -> libvgm device ID
@@ -315,10 +354,11 @@ protected:
 	PLR_DEV_OPTS _devOpts[_OPT_DEV_COUNT * 2];	// space for 2 instances per chip
 	size_t _devOptMap[0x100][2];	// maps libvgm device ID to _devOpts vector
 	
-	std::vector<SONG_DEV_CFG> _songDevCfg;
+	std::vector<SONG_DEV_CFG> _devCfgs;
 	size_t _vdDevMap[_CHIP_COUNT][2];	// maps VGM device ID to _devices vector
 	size_t _optDevMap[_OPT_DEV_COUNT * 2];	// maps _devOpts vector index to _devices vector
 	std::vector<CHIP_DEVICE> _devices;
+	std::vector<std::string> _devNames;
 	
 	size_t _dacStrmMap[0x100];	// maps VGM DAC stream ID -> _dacStreams vector
 	std::vector<DACSTRM_DEV> _dacStreams;
@@ -326,9 +366,15 @@ protected:
 	PCM_BANK _pcmBank[_PCM_BANK_COUNT];
 	PCM_COMPR_TBL _pcmComprTbl;
 	
+	UINT8 _p2612Fix;	// enable hack/fix for Project2612 VGMs
 	UINT32 _ym2612pcm_bnkPos;
 	UINT8 _rf5cBank[2][2];	// [0 RF5C68 / 1 RF5C164][chipID]
 	QSOUND_WORK _qsWork[2];
+
+	UINT8 _v101Fix;	// enable hack/fix for v1.00/v1.01 VGMs with FM clock
+	UINT32 _v101ym2413clock;
+	UINT32 _v101ym2612clock;
+	UINT32 _v101ym2151clock;
 };
 
 #endif	// __VGMPLAYER_HPP__

@@ -1,18 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  Public interface of benchmark libray.
-*
-* @author vitamin.caig@gmail.com
-*
-* @note   This is non-production library and application is used to research, so it looks much more complex than required.
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Public interface of benchmark libray.
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ * @note   This is non-production library and application is used to research, so it looks much more complex than
+ *required.
+ *
+ **/
 
 #pragma once
 
-//std includes
 #include <string>
 
 namespace Benchmark
@@ -37,4 +37,4 @@ namespace Benchmark
   };
 
   void ForAllTests(TestsVisitor& visitor);
-}
+}  // namespace Benchmark

@@ -1,69 +1,59 @@
 /**
-* 
-* @file
-*
-* @brief  ZX-State snapshots support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ZX-State snapshots support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/archived/zxstate_supp.h"
-//common includes
-#include <contract.h>
-#include <error.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/container_base.h>
-#include <binary/container_factories.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <binary/compression/zlib_container.h>
-#include <debug/log.h>
-#include <formats/archived.h>
-#include <strings/format.h>
-//std includes
+
+#include "binary/compression/zlib_container.h"
+#include "binary/container_base.h"
+#include "binary/container_factories.h"
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+#include "formats/archived.h"
+#include "strings/format.h"
+#include "strings/map.h"
+
+#include "contract.h"
+#include "error.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <array>
 #include <cstring>
 #include <list>
-#include <map>
 #include <numeric>
-#include <sstream>
-//boost includes
-#include <boost/range/size.hpp>
-//text include
-#include <formats/text/archived.h>
 
-namespace Formats
-{
-namespace Archived
+namespace Formats::Archived
 {
   namespace ZXState
   {
     const Debug::Stream Dbg("Formats::Archived::ZXState");
 
-    const std::string FORMAT(
-      "'Z'X'S'T" //signature
-      "01"       //major
-      "00-04"    //minor
-      "00-10"    //machineId
-      "%0000000x"//flags
-    );
+    const auto DESCRIPTION = "SZX (ZX-State)"sv;
+    const auto FORMAT =
+        "'Z'X'S'T"   // signature
+        "01"         // major
+        "00-04"      // minor
+        "00-10"      // machineId
+        "%0000000x"  // flags
+        ""sv;
 
     struct DataBlockDescription
     {
-      const void* Content;
-      std::size_t Size;
-      bool IsCompressed;
-      std::size_t UncompressedSize;
+      const void* Content = nullptr;
+      std::size_t Size = 0;
+      bool IsCompressed = false;
+      std::size_t UncompressedSize = 0;
 
-      DataBlockDescription()
-        : Content()
-        , Size()
-        , IsCompressed()
-        , UncompressedSize()
-      {
-      }
+      DataBlockDescription() = default;
     };
 
     class ChunksVisitor
@@ -74,24 +64,23 @@ namespace Archived
       virtual bool Visit(const Chunk& ch) = 0;
       virtual bool Visit(const Chunk& ch, const DataBlockDescription& blk) = 0;
       virtual bool Visit(const Chunk& ch, uint_t idx, const DataBlockDescription& blk) = 0;
-      virtual bool Visit(const Chunk& ch, const String& suffix, const DataBlockDescription& blk) = 0;
+      virtual bool Visit(const Chunk& ch, StringView suffix, const DataBlockDescription& blk) = 0;
     };
 
-    const Char RAM_SUFFIX[] = {'R', 'A', 'M', 0};
-    const Char ROM_SUFFIX[] = {'R', 'O', 'M', 0};
+    const auto RAM_SUFFIX = "RAM"sv;
+    const auto ROM_SUFFIX = "ROM"sv;
 
     class ChunksSet
     {
     public:
       explicit ChunksSet(const Binary::Container& data)
         : Data(data)
-      {
-      }
+      {}
 
       std::size_t Parse(ChunksVisitor& visitor) const
       {
         ChunksIterator iterator(Data);
-        for (std::size_t size = iterator.GetPosition(); ; size = iterator.GetPosition())
+        for (std::size_t size = iterator.GetPosition();; size = iterator.GetPosition())
         {
           if (const Chunk* cur = iterator.GetNext())
           {
@@ -104,166 +93,167 @@ namespace Archived
         }
         return 0;
       }
+
     private:
       static bool ParseChunk(const Chunk& cur, ChunksVisitor& visitor)
       {
-        if (const ChunkATASP* atasp = cur.IsA<ChunkATASP>())
+        if (const auto* atasp = cur.IsA<ChunkATASP>())
         {
           return visitor.Visit(*atasp);
         }
-        if (const ChunkATASPRAM* ataspram = cur.IsA<ChunkATASPRAM>())
+        if (const auto* ataspram = cur.IsA<ChunkATASPRAM>())
         {
           return ParseMultiBlockChunk(*ataspram, visitor);
         }
-        else if (const ChunkAYBLOCK* ayblock = cur.IsA<ChunkAYBLOCK>())
+        else if (const auto* ayblock = cur.IsA<ChunkAYBLOCK>())
         {
           return visitor.Visit(*ayblock);
         }
-        else if (const ChunkBETA128* beta128 = cur.IsA<ChunkBETA128>())
+        else if (const auto* beta128 = cur.IsA<ChunkBETA128>())
         {
           return ParseSingleBlockChunk(*beta128, visitor);
         }
-        else if (const ChunkBETADISK* betadisk = cur.IsA<ChunkBETADISK>())
+        else if (const auto* betadisk = cur.IsA<ChunkBETADISK>())
         {
           return ParseMultiBlockChunk(*betadisk, visitor);
         }
-        else if (const ChunkCF* cf = cur.IsA<ChunkCF>())
+        else if (const auto* cf = cur.IsA<ChunkCF>())
         {
           return visitor.Visit(*cf);
         }
-        else if (const ChunkCFRAM* cfram = cur.IsA<ChunkCFRAM>())
+        else if (const auto* cfram = cur.IsA<ChunkCFRAM>())
         {
           return ParseMultiBlockChunk(*cfram, visitor);
         }
-        else if (const ChunkCOVOX* covox = cur.IsA<ChunkCOVOX>())
+        else if (const auto* covox = cur.IsA<ChunkCOVOX>())
         {
           return visitor.Visit(*covox);
         }
-        else if (const ChunkCREATOR* creator = cur.IsA<ChunkCREATOR>())
+        else if (const auto* creator = cur.IsA<ChunkCREATOR>())
         {
           return visitor.Visit(*creator);
         }
-        else if (const ChunkDIVIDE* divide = cur.IsA<ChunkDIVIDE>())
+        else if (const auto* divide = cur.IsA<ChunkDIVIDE>())
         {
           return ParseSingleBlockChunk(*divide, visitor);
         }
-        else if (const ChunkDIVIDERAMPAGE* dividerampage = cur.IsA<ChunkDIVIDERAMPAGE>())
+        else if (const auto* dividerampage = cur.IsA<ChunkDIVIDERAMPAGE>())
         {
           return ParseMultiBlockChunk(*dividerampage, visitor);
         }
-        else if (const ChunkDOCK* dock = cur.IsA<ChunkDOCK>())
+        else if (const auto* dock = cur.IsA<ChunkDOCK>())
         {
           return ParseMultiBlockChunk(*dock, visitor);
         }
-        else if (const ChunkDSKFILE* dskfile = cur.IsA<ChunkDSKFILE>())
+        else if (const auto* dskfile = cur.IsA<ChunkDSKFILE>())
         {
           return ParseMultiBlockChunk(*dskfile, visitor);
         }
-        else if (const ChunkGS* gs = cur.IsA<ChunkGS>())
+        else if (const auto* gs = cur.IsA<ChunkGS>())
         {
           return ParseSingleBlockChunk(*gs, visitor);
         }
-        else if (const ChunkGSRAMPAGE* gsrampage = cur.IsA<ChunkGSRAMPAGE>())
+        else if (const auto* gsrampage = cur.IsA<ChunkGSRAMPAGE>())
         {
           return ParseMultiBlockChunk(*gsrampage, visitor);
         }
-        else if (const ChunkIF1* if1 = cur.IsA<ChunkIF1>())
+        else if (const auto* if1 = cur.IsA<ChunkIF1>())
         {
           return ParseSingleBlockChunk(*if1, visitor);
         }
-        else if (const ChunkIF2ROM* if2rom = cur.IsA<ChunkIF2ROM>())
+        else if (const auto* if2rom = cur.IsA<ChunkIF2ROM>())
         {
           return ParseSingleBlockChunk(*if2rom, visitor);
         }
-        else if (const ChunkJOYSTICK* joystick = cur.IsA<ChunkJOYSTICK>())
+        else if (const auto* joystick = cur.IsA<ChunkJOYSTICK>())
         {
           return visitor.Visit(*joystick);
         }
-        else if (const ChunkKEYBOARD* keyboard = cur.IsA<ChunkKEYBOARD>())
+        else if (const auto* keyboard = cur.IsA<ChunkKEYBOARD>())
         {
           return visitor.Visit(*keyboard);
         }
-        else if (const ChunkMCART* mcart = cur.IsA<ChunkMCART>())
+        else if (const auto* mcart = cur.IsA<ChunkMCART>())
         {
           return ParseMultiBlockChunk(*mcart, visitor);
         }
-        else if (const ChunkMOUSE* mouse = cur.IsA<ChunkMOUSE>())
+        else if (const auto* mouse = cur.IsA<ChunkMOUSE>())
         {
           return visitor.Visit(*mouse);
         }
-        else if (const ChunkMULTIFACE* multiface = cur.IsA<ChunkMULTIFACE>())
+        else if (const auto* multiface = cur.IsA<ChunkMULTIFACE>())
         {
           return ParseSingleBlockChunk(*multiface, visitor);
         }
-        else if (const ChunkOPUS* opus = cur.IsA<ChunkOPUS>())
+        else if (const auto* opus = cur.IsA<ChunkOPUS>())
         {
           return ParseMergedBlocksChunk(*opus, visitor);
         }
-        else if (const ChunkOPUSDISK* opusdisk = cur.IsA<ChunkOPUSDISK>())
+        else if (const auto* opusdisk = cur.IsA<ChunkOPUSDISK>())
         {
           return ParseMultiBlockChunk(*opusdisk, visitor);
         }
-        else if (const ChunkPLTT* pltt = cur.IsA<ChunkPLTT>())
+        else if (const auto* pltt = cur.IsA<ChunkPLTT>())
         {
           return visitor.Visit(*pltt);
         }
-        else if (const ChunkPLUS3* plus3 = cur.IsA<ChunkPLUS3>())
+        else if (const auto* plus3 = cur.IsA<ChunkPLUS3>())
         {
           return visitor.Visit(*plus3);
         }
-        else if (const ChunkPLUSD* plusd = cur.IsA<ChunkPLUSD>())
+        else if (const auto* plusd = cur.IsA<ChunkPLUSD>())
         {
           return ParseMergedBlocksChunk(*plusd, visitor);
         }
-        else if (const ChunkPLUSDDISK* plusddisk = cur.IsA<ChunkPLUSDDISK>())
+        else if (const auto* plusddisk = cur.IsA<ChunkPLUSDDISK>())
         {
           return ParseMultiBlockChunk(*plusddisk, visitor);
         }
-        else if (const ChunkRAMPAGE* rampage = cur.IsA<ChunkRAMPAGE>())
+        else if (const auto* rampage = cur.IsA<ChunkRAMPAGE>())
         {
           return ParseMultiBlockChunk(*rampage, visitor);
         }
-        else if (const ChunkROM* rom = cur.IsA<ChunkROM>())
+        else if (const auto* rom = cur.IsA<ChunkROM>())
         {
           return ParseSingleBlockChunk(*rom, visitor);
         }
-        else if (const ChunkSCLD* scld = cur.IsA<ChunkSCLD>())
+        else if (const auto* scld = cur.IsA<ChunkSCLD>())
         {
           return visitor.Visit(*scld);
         }
-        else if (const ChunkSIDE* side = cur.IsA<ChunkSIDE>())
+        else if (const auto* side = cur.IsA<ChunkSIDE>())
         {
           return visitor.Visit(*side);
         }
-        else if (const ChunkSPECDRUM* specdrum = cur.IsA<ChunkSPECDRUM>())
+        else if (const auto* specdrum = cur.IsA<ChunkSPECDRUM>())
         {
           return visitor.Visit(*specdrum);
         }
-        else if (const ChunkSPECREGS* specregs = cur.IsA<ChunkSPECREGS>())
+        else if (const auto* specregs = cur.IsA<ChunkSPECREGS>())
         {
           return visitor.Visit(*specregs);
         }
-        else if (const ChunkSPECTRANET* spectranet = cur.IsA<ChunkSPECTRANET>())
+        else if (const auto* spectranet = cur.IsA<ChunkSPECTRANET>())
         {
           return ParseMergedBlocksChunk(*spectranet, visitor);
         }
-        else if (const ChunkTAPE* tape = cur.IsA<ChunkTAPE>())
+        else if (const auto* tape = cur.IsA<ChunkTAPE>())
         {
           return ParseMultiBlockChunk(*tape, visitor);
         }
-        else if (const ChunkUSPEECH* uspeech = cur.IsA<ChunkUSPEECH>())
+        else if (const auto* uspeech = cur.IsA<ChunkUSPEECH>())
         {
           return visitor.Visit(*uspeech);
         }
-        else if (const ChunkZXPRINTER* zxprinter = cur.IsA<ChunkZXPRINTER>())
+        else if (const auto* zxprinter = cur.IsA<ChunkZXPRINTER>())
         {
           return visitor.Visit(*zxprinter);
         }
-        else if (const ChunkZ80REGS* z80regs = cur.IsA<ChunkZ80REGS>())
+        else if (const auto* z80regs = cur.IsA<ChunkZ80REGS>())
         {
           return visitor.Visit(*z80regs);
         }
-        else // unknown chunk
+        else  // unknown chunk
         {
           return false;
         }
@@ -271,12 +261,12 @@ namespace Archived
 
       static bool ParseSingleBlockChunk(const ChunkIF1& ch, ChunksVisitor& visitor)
       {
-        typedef ChunkTraits<ChunkIF1> Traits;
+        using Traits = ChunkTraits<ChunkIF1>;
         if (const std::size_t targetSize = Traits::GetTargetSize(ch))
         {
           if (targetSize != 0x4000 && targetSize != 0x2000)
           {
-            //invalid size
+            // invalid size
             return false;
           }
           DataBlockDescription blk;
@@ -294,7 +284,7 @@ namespace Archived
 
       static bool ParseSingleBlockChunk(const ChunkIF2ROM& ch, ChunksVisitor& visitor)
       {
-        typedef ChunkTraits<ChunkIF2ROM> Traits;
+        using Traits = ChunkTraits<ChunkIF2ROM>;
         DataBlockDescription blk;
         blk.Content = Traits::GetData(ch);
         blk.Size = Traits::GetDataSize(ch);
@@ -306,7 +296,7 @@ namespace Archived
       template<class ChunkType>
       static bool ParseSingleBlockChunk(const ChunkType& ch, ChunksVisitor& visitor)
       {
-        typedef ChunkTraits<ChunkType> Traits;
+        using Traits = ChunkTraits<ChunkType>;
         if (const std::size_t targetSize = Traits::GetTargetSize(ch))
         {
           DataBlockDescription blk;
@@ -326,18 +316,18 @@ namespace Archived
       {
         DataBlockDescription romBlk;
         romBlk.Content = ch.Data;
-        romBlk.Size = fromLE(ch.FlashSize);
-        romBlk.IsCompressed = 0 != (fromLE(ch.Flags) & ch.COMPRESSED);
+        romBlk.Size = ch.FlashSize;
+        romBlk.IsCompressed = 0 != (ch.Flags & ch.COMPRESSED);
         romBlk.UncompressedSize = ch.DUMPSIZE;
         if (!visitor.Visit(ch, ROM_SUFFIX, romBlk))
         {
           return false;
         }
-        const uint32_t* const romDescr = safe_ptr_cast<const uint32_t*>(ch.Data + romBlk.Size);
+        const auto* const romDescr = safe_ptr_cast<const le_uint32_t*>(ch.Data + romBlk.Size);
         DataBlockDescription ramBlk;
         ramBlk.Content = romDescr + 1;
         ramBlk.Size = *romDescr;
-        ramBlk.IsCompressed = 0 != (fromLE(ch.Flags) & ch.COMPRESSED_RAM);
+        ramBlk.IsCompressed = 0 != (ch.Flags & ch.COMPRESSED_RAM);
         ramBlk.UncompressedSize = ch.DUMPSIZE;
         return visitor.Visit(ch, RAM_SUFFIX, ramBlk);
       }
@@ -345,21 +335,21 @@ namespace Archived
       template<class ChunkType>
       static bool ParseMergedBlocksChunk(const ChunkType& ch, ChunksVisitor& visitor)
       {
-        typedef ChunkTraits<ChunkType> Traits;
+        using Traits = ChunkTraits<ChunkType>;
         DataBlockDescription ramBlk;
         ramBlk.Content = Traits::GetData(ch);
-        ramBlk.Size = fromLE(ch.RamDataSize);
+        ramBlk.Size = ch.RamDataSize;
         ramBlk.IsCompressed = Traits::IsDataCompressed(ch);
         ramBlk.UncompressedSize = ch.RAMSIZE;
         if (!visitor.Visit(ch, RAM_SUFFIX, ramBlk))
         {
           return false;
         }
-        if (0 != (fromLE(ch.Flags) & ch.CUSTOMROM))
+        if (0 != (ch.Flags & ch.CUSTOMROM))
         {
           DataBlockDescription romBlk;
           romBlk.Content = Traits::GetData(ch) + ramBlk.Size;
-          romBlk.Size = fromLE(ch.RomDataSize);
+          romBlk.Size = ch.RomDataSize;
           romBlk.IsCompressed = Traits::IsDataCompressed(ch);
           romBlk.UncompressedSize = ch.ROMSIZE;
           if (!visitor.Visit(ch, ROM_SUFFIX, romBlk))
@@ -373,7 +363,7 @@ namespace Archived
       template<class ChunkType>
       static bool ParseMultiBlockChunk(const ChunkType& ch, ChunksVisitor& visitor)
       {
-        typedef ChunkTraits<ChunkType> Traits;
+        using Traits = ChunkTraits<ChunkType>;
         if (const std::size_t targetSize = Traits::GetTargetSize(ch))
         {
           DataBlockDescription blk;
@@ -388,6 +378,7 @@ namespace Archived
           return true;
         }
       }
+
     private:
       class ChunksIterator
       {
@@ -395,9 +386,9 @@ namespace Archived
         explicit ChunksIterator(const Binary::Container& container)
           : Stream(container)
         {
-          const Header& hdr = Stream.ReadField<Header>();
+          const auto& hdr = Stream.Read<Header>();
           Require(hdr.Id == Header::SIGNATURE);
-          Dbg("ZXState container ver %1%.%2%", uint_t(hdr.Major), uint_t(hdr.Minor));
+          Dbg("ZXState container ver {}.{}", uint_t(hdr.Major), uint_t(hdr.Minor));
         }
 
         const Chunk* GetNext()
@@ -407,8 +398,8 @@ namespace Archived
           {
             return nullptr;
           }
-          const Chunk& chunk = Stream.ReadField<Chunk>();
-          const std::size_t chunkSize = fromLE(chunk.Size);
+          const auto& chunk = Stream.Read<Chunk>();
+          const std::size_t chunkSize = chunk.Size;
           if (rest < sizeof(Chunk) + chunkSize)
           {
             return nullptr;
@@ -421,14 +412,16 @@ namespace Archived
         {
           return Stream.GetPosition();
         }
+
       private:
         Binary::InputStream Stream;
       };
+
     private:
       const Binary::Container& Data;
     };
 
-    const std::size_t MAX_DECOMPRESS_SIZE = 2 * 1048576;//2M
+    const std::size_t MAX_DECOMPRESS_SIZE = 2 * 1048576;  // 2M
 
     Binary::Container::Ptr DecompressData(const DataBlockDescription& blk)
     {
@@ -440,13 +433,13 @@ namespace Archived
       }
       catch (const Error& e)
       {
-        Dbg("Failed to decompress: %1%", e.ToString());
+        Dbg("Failed to decompress: {}", e.ToString());
       }
       catch (const std::exception&)
       {
         Dbg("Failed to decompress");
       }
-      return Binary::Container::Ptr();
+      return {};
     }
 
     Binary::Container::Ptr ExtractData(const DataBlockDescription& blk)
@@ -465,20 +458,20 @@ namespace Archived
       }
       else
       {
-        return Binary::Container::Ptr();
+        return {};
       }
     }
 
     class SingleBlockFile : public Archived::File
     {
     public:
-      SingleBlockFile(Binary::Container::Ptr archive, String name, DataBlockDescription  block)
+      SingleBlockFile(Binary::Container::Ptr archive, StringView name, DataBlockDescription block)
         : Data(std::move(archive))
-        , Name(std::move(name))
-        , Block(std::move(block))
+        , Name(name)
+        , Block(block)
       {
-        Dbg("Created file '%1%', size=%2%, packed size=%3%, compression=%4%",
-          Name, Block.UncompressedSize, Block.Size, Block.IsCompressed);
+        Dbg("Created file '{}', size={}, packed size={}, compression={}", Name, Block.UncompressedSize, Block.Size,
+            Block.IsCompressed);
       }
 
       String GetName() const override
@@ -493,16 +486,17 @@ namespace Archived
 
       Binary::Container::Ptr GetData() const override
       {
-        Dbg("Decompressing '%1%' (%2% -> %3%)", Name, Block.Size, Block.UncompressedSize);
+        Dbg("Decompressing '{}' ({} -> {})", Name, Block.Size, Block.UncompressedSize);
         return ExtractData(Block);
       }
+
     private:
       const Binary::Container::Ptr Data;
       const String Name;
       const DataBlockDescription Block;
     };
 
-    typedef std::vector<DataBlockDescription> DataBlocks;
+    using DataBlocks = std::vector<DataBlockDescription>;
 
     std::size_t SumBlocksSize(std::size_t sum, const DataBlockDescription& descr)
     {
@@ -512,12 +506,12 @@ namespace Archived
     class MultiBlockFile : public Archived::File
     {
     public:
-      MultiBlockFile(Binary::Container::Ptr archive, String name, DataBlocks blocks)
+      MultiBlockFile(Binary::Container::Ptr archive, StringView name, DataBlocks blocks)
         : Data(std::move(archive))
-        , Name(std::move(name))
+        , Name(name)
         , Blocks(std::move(blocks))
       {
-        Dbg("Created file '%1%', contains from %2% parts", Name, Blocks.size());
+        Dbg("Created file '{}', contains from {} parts", Name, Blocks.size());
       }
 
       String GetName() const override
@@ -536,104 +530,107 @@ namespace Archived
         {
           const std::size_t unpacked = GetSize();
           Require(unpacked != 0);
-          Dbg("Decompressing '%1%' (%2% blocks, %3% butes result)", Name, Blocks.size(), unpacked);
-          std::unique_ptr<Dump> result(new Dump(unpacked));
-          auto* target = result->data();
+          Dbg("Decompressing '{}' ({} blocks, {} butes result)", Name, Blocks.size(), unpacked);
+          Binary::DataBuilder result(unpacked);
           for (const auto& block : Blocks)
           {
-            const Binary::Container::Ptr data = ExtractData(block);
+            const auto data = ExtractData(block);
             Require(data && data->Size() == block.UncompressedSize);
-            std::memcpy(target, data->Start(), block.UncompressedSize);
-            target += block.UncompressedSize;
+            result.Add(*data);
           }
-          return Binary::CreateContainer(std::move(result));
+          return result.CaptureResult();
         }
         catch (const std::exception&)
         {
           Dbg("Failed to decompress");
-          return Binary::Container::Ptr();
+          return {};
         }
       }
+
     private:
       const Binary::Container::Ptr Data;
       const String Name;
       const DataBlocks Blocks;
     };
 
+    // TODO: StringView
     String GenerateChunkName(const Chunk& ch)
     {
-      char syms[sizeof(ch.Id)];
-      std::memcpy(syms, &ch.Id, sizeof(ch.Id));
-      return FromCharArray(syms);
+      std::array<char, sizeof(ch.Id)> syms;
+      std::memcpy(syms.data(), &ch.Id, sizeof(ch.Id));
+      return {syms.data(), syms.size()};
     }
 
     template<class T>
     String GenerateChunkName(const Chunk& ch, const T& suffix)
     {
-      const String base = GenerateChunkName(ch);
-      if (ch.Id == ChunkATASPRAM::SIGNATURE ||
-          ch.Id == ChunkCFRAM::SIGNATURE ||
-          ch.Id == ChunkDIVIDERAMPAGE::SIGNATURE ||
-          ch.Id == ChunkDOCK::SIGNATURE ||
-          ch.Id == ChunkGSRAMPAGE::SIGNATURE ||
-          ch.Id == ChunkRAMPAGE::SIGNATURE
-         )
+      auto base = GenerateChunkName(ch);
+      if (ch.Id == ChunkATASPRAM::SIGNATURE || ch.Id == ChunkCFRAM::SIGNATURE || ch.Id == ChunkDIVIDERAMPAGE::SIGNATURE
+          || ch.Id == ChunkDOCK::SIGNATURE || ch.Id == ChunkGSRAMPAGE::SIGNATURE || ch.Id == ChunkRAMPAGE::SIGNATURE)
       {
         return base;
       }
       else
       {
-        std::basic_ostringstream<Char> str;
-        str << base << Char('.') << suffix;
-        return str.str();
+        base += '.';
+        if constexpr (std::is_same_v<T, StringView>)
+        {
+          base += suffix;
+        }
+        else
+        {
+          base += std::to_string(suffix);
+        }
+        return base;
       }
     }
 
-    typedef std::map<String, DataBlocks> NamedBlocksMap;
+    using NamedBlocksMap = Strings::ValueMap<DataBlocks>;
 
-    class FilledBlocks : public NamedBlocksMap
-                       , public ChunksVisitor
+    class FilledBlocks
+      : public NamedBlocksMap
+      , public ChunksVisitor
     {
     public:
       bool Visit(const Chunk& ch) override
       {
-        Dbg("Skipping useless '%1%'", GenerateChunkName(ch));
+        Dbg("Skipping useless '{}'", GenerateChunkName(ch));
         return true;
       }
 
       bool Visit(const Chunk& ch, const DataBlockDescription& blk) override
       {
-        const String& name = GenerateChunkName(ch);
-        Dbg("Single block '%1%'", name);
+        const auto& name = GenerateChunkName(ch);
+        Dbg("Single block '{}'", name);
         (*this)[name].push_back(blk);
         return true;
       }
 
       bool Visit(const Chunk& ch, uint_t idx, const DataBlockDescription& blk) override
       {
-        const String& name = GenerateChunkName(ch, idx);
-        Dbg("Single indexed block '%1%'", name);
+        const auto& name = GenerateChunkName(ch, idx);
+        Dbg("Single indexed block '{}'", name);
         DataBlocksAdapter blocks((*this)[name], ch.Id);
         blocks.Add(idx, blk);
         return true;
       }
 
-      bool Visit(const Chunk& ch, const String& suffix, const DataBlockDescription& blk) override
+      bool Visit(const Chunk& ch, StringView suffix, const DataBlockDescription& blk) override
       {
-        const String& name = GenerateChunkName(ch, suffix);
-        Dbg("Single suffixed block '%1%'", name);
+        const auto& name = GenerateChunkName(ch, suffix);
+        Dbg("Single suffixed block '{}'", name);
         (*this)[name].push_back(blk);
         return true;
       }
+
     private:
       class DataBlocksAdapter
       {
       public:
-        DataBlocksAdapter(DataBlocks& delegate, uint32_t type)
+        DataBlocksAdapter(DataBlocks& delegate, const Identifier& type)
           : Delegate(delegate)
           , Rampages(type == ChunkRAMPAGE::SIGNATURE)
-        {
-        }
+        {}
 
         void Add(uint_t idx, const DataBlockDescription& blk)
         {
@@ -644,14 +641,14 @@ namespace Archived
           }
           Delegate[orderNum] = blk;
         }
+
       private:
         std::size_t GetOrderNum(uint_t idx) const
         {
           static const std::size_t RAMPAGES[] = {2, 3, 1, 4, 5, 0};
-          return Rampages && idx < boost::size(RAMPAGES)
-            ? RAMPAGES[idx]
-            : idx;
+          return Rampages && idx < std::size(RAMPAGES) ? RAMPAGES[idx] : idx;
         }
+
       private:
         DataBlocks& Delegate;
         const bool Rampages;
@@ -664,32 +661,36 @@ namespace Archived
       Container(Binary::Container::Ptr archive, NamedBlocksMap blocks)
         : BaseContainer(std::move(archive))
         , Blocks(std::move(blocks))
-      {
-      }
+      {}
 
       void ExploreFiles(const Container::Walker& walker) const override
       {
         for (const auto& block : Blocks)
         {
-          const File::Ptr file = CreateFileOnBlocks(block.first, block.second);
+          const auto file = CreateFileOnBlocks(block.first, block.second);
           walker.OnFile(*file);
         }
       }
 
-      File::Ptr FindFile(const String& name) const override
+      File::Ptr FindFile(StringView name) const override
       {
-        const NamedBlocksMap::const_iterator it = Blocks.find(name);
-        return it != Blocks.end()
-          ? CreateFileOnBlocks(it->first, it->second)
-          : File::Ptr();
+        if (const auto* ptr = Blocks.FindPtr(name))
+        {
+          return CreateFileOnBlocks(name, *ptr);
+        }
+        else
+        {
+          return {};
+        }
       }
 
       uint_t CountFiles() const override
       {
         return static_cast<uint_t>(Blocks.size());
       }
+
     private:
-      File::Ptr CreateFileOnBlocks(const String& name, const DataBlocks& blocks) const
+      File::Ptr CreateFileOnBlocks(StringView name, const DataBlocks& blocks) const
       {
         if (blocks.size() == 1)
         {
@@ -700,22 +701,22 @@ namespace Archived
           return MakePtr<MultiBlockFile>(Delegate, name, blocks);
         }
       }
+
     private:
       const NamedBlocksMap Blocks;
     };
-  }//namespace ZXState
+  }  // namespace ZXState
 
   class ZXStateDecoder : public Decoder
   {
   public:
     ZXStateDecoder()
       : Format(Binary::CreateFormat(ZXState::FORMAT))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Text::ZXSTATE_DECODER_DESCRIPTION;
+      return ZXState::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -728,7 +729,7 @@ namespace Archived
       using namespace ZXState;
       if (!Format->Match(data))
       {
-        return ZXState::Container::Ptr();
+        return {};
       }
       const ChunksSet chunks(data);
       FilledBlocks blocks;
@@ -736,13 +737,14 @@ namespace Archived
       {
         if (!blocks.empty())
         {
-          const Binary::Container::Ptr archive = data.GetSubcontainer(0, size);
-          return MakePtr<ZXState::Container>(archive, blocks);
+          auto archive = data.GetSubcontainer(0, size);
+          return MakePtr<ZXState::Container>(std::move(archive), blocks);
         }
         Dbg("No files found");
       }
-      return ZXState::Container::Ptr();
+      return {};
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -751,5 +753,4 @@ namespace Archived
   {
     return MakePtr<ZXStateDecoder>();
   }
-}//namespace Archived
-}//namespace Formats
+}  // namespace Formats::Archived

@@ -41,11 +41,13 @@ static DEVDEF_RWFUNC devFunc[] =
 {
 	{RWF_REGISTER | RWF_WRITE, DEVRW_A16D8, 0, VSU_Write},
 	//{RWF_REGISTER | RWF_READ, DEVRW_A16D8, 0, NULL},	// read returns 0 in vbjin/Mednafen
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, vsu_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef =
 {
 	"VSU-VUE", "Mednafen", FCC_MEDN,
+	6,  // Channels
 	
 	device_start_vsu,
 	device_stop_vsu,
@@ -56,6 +58,7 @@ static DEV_DEF devDef =
 	vsu_set_mute_mask,
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	NULL,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs

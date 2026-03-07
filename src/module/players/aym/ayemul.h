@@ -1,22 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  AY EMUL chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AY EMUL chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <module/players/factory.h>
+#include "module/players/factory.h"
 
-namespace Module
+namespace Module::AYEMUL
 {
-  namespace AYEMUL
-  {
-    Factory::Ptr CreateFactory();
-  }
-}
+  Factory::Ptr CreateFactory();
+}  // namespace Module::AYEMUL

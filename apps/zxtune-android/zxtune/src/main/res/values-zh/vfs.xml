@@ -41,6 +41,8 @@
     <string name="vfs_zxart_compo_oldschool">老牌音乐比赛</string>
     <string name="vfs_zxart_compo_mainstream">主流音乐比赛</string>
     <string name="vfs_zxart_compo_progressive">渐进音乐比赛</string>
+    <string name="vfs_zxart_compo_ts">TurboSound音乐比赛</string>
+    <string name="vfs_zxart_compo_tsfm">TSFM音乐比赛</string>
     <string name="vfs_zxart_compo_related">音乐从本次活动的作品</string>
     <!-- joshw.info -->
     <string name="vfs_joshw_root_description">各种档案</string>
@@ -189,7 +191,26 @@
     <string name="vfs_vgmrips_chips_name">芯片</string>
     <string name="vfs_vgmrips_systems_name">系统</string>
     <string name="vfs_vgmrips_random_name">随机曲调</string>
+    <!-- ocremix.org -->
+    <string name="vfs_ocremix_systems_name">系统</string>
+    <string name="vfs_ocremix_organizations_name">组织</string>
+    <string name="vfs_ocremix_remixes_name">混音</string>
+    <string name="vfs_ocremix_albums_name">专辑</string>
+    <string name="vfs_ocremix_games_name">游戏</string>
+    <!-- khinsider -->
+    <string name="vfs_khinsider_random_name">随机专辑</string>
+    <string name="vfs_khinsider_top_name">最佳专辑</string>
+    <string name="vfs_khinsider_series_name">流行系列</string>
+    <string name="vfs_khinsider_platforms_name">平台</string>
+    <string name="vfs_khinsider_types_name">类型专辑</string>
+    <string name="vfs_khinsider_albumsletters_name">字母专辑</string>
+    <string name="vfs_khinsider_albumsyears_name">年度专辑</string>
+    <string name="vfs_khinsider_top_new100_name">最佳100新添加</string>
+    <string name="vfs_khinsider_top_40_name">最佳40</string>
+    <string name="vfs_khinsider_top_favorites_name">最爱</string>
     <!-- errors -->
     <string name="network_inaccessible">无法访问网络</string>
     <string name="failed_resolve">无法解析 %s</string>
+    <string name="limited_storage_access">点击以授予访问权限</string>
+    <string name="no_stored_playlists_access">点击设置持久存储位置</string>
 </resources>

@@ -1,37 +1,33 @@
 /**
-*
-* @file
-*
-* @brief  Metainfo operating implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Metainfo operating implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/chiptune/metainfo.h"
-//common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/container_factories.h>
-//std includes
-#include <set>
-#include <map>
 
-namespace Formats
-{
-namespace Chiptune
+#include "binary/data_builder.h"
+#include "binary/input_stream.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
+#include <map>
+#include <set>
+
+namespace Formats::Chiptune
 {
   class Patcher : public PatchedDataBuilder
   {
   public:
     explicit Patcher(Binary::View src)
       : Source(src)
-      , SizeAddon(0)
-    {
-    }
+    {}
 
     void InsertData(std::size_t offset, Binary::View data) override
     {
@@ -53,84 +49,75 @@ namespace Chiptune
 
     Binary::Container::Ptr GetResult() const override
     {
-      const auto* srcData = Source.As<uint8_t>();
-      std::unique_ptr<Dump> result(new Dump(srcData, srcData + Source.Size()));
-      ApplyFixes(*result);
-      ApplyOverwrites(*result);
-      ApplyInsertions(*result);
-      return Binary::CreateContainer(std::move(result));
+      Binary::DataBuilder result;
+      result.Add(Source);
+      ApplyFixes(result);
+      ApplyOverwrites(result);
+      ApplyInsertions(result);
+      return result.CaptureResult();
     }
+
   private:
-    void ApplyFixes(Dump& result) const
+    void ApplyFixes(Binary::DataBuilder& result) const
     {
       for (const auto& fix : LEWordFixes)
       {
-        Fix<uint16_t>(&result[fix.first], fix.second);
+        Fix<uint16_t>(result.Get(fix.first), fix.second);
       }
     }
 
     template<class T>
     static void Fix(void* data, int_t delta)
     {
-      T* const ptr = static_cast<T*>(data);
-      const T val = fromLE(*ptr);
-      const T fixedVal = static_cast<T>(val + delta);
-      *ptr = fromLE(fixedVal);
+      auto* ptr = safe_ptr_cast<LE<T>*>(data);
+      *ptr = static_cast<T>(*ptr + delta);
     }
 
-    void ApplyOverwrites(Dump& result) const
+    void ApplyOverwrites(Binary::DataBuilder& result) const
     {
       for (const auto& over : Overwrites)
       {
-        std::memcpy(result.data() + over.first, over.second.Start(), over.second.Size());
+        std::memcpy(result.Get(over.first), over.second.Start(), over.second.Size());
       }
     }
 
-    void ApplyInsertions(Dump& result) const
+    void ApplyInsertions(Binary::DataBuilder& result) const
     {
       if (0 == SizeAddon)
       {
         return;
       }
-      Dump tmp(result.size() + SizeAddon);
-      auto src = result.begin();
-      const auto srcEnd = result.end();
-      auto dst = tmp.begin();
+      Binary::DataBuilder dst(result.Size() + SizeAddon);
+      Binary::DataInputStream src(result.GetView());
       std::size_t oldOffset = 0;
       for (const auto& ins : Insertions)
       {
         if (const std::size_t toCopy = ins.first - oldOffset)
         {
-          const auto nextEnd = src + toCopy;
-          dst = std::copy(src, nextEnd, dst);
-          src = nextEnd;
+          dst.Add(src.ReadData(toCopy));
           oldOffset += toCopy;
         }
-        std::memcpy(&*dst, ins.second.Start(), ins.second.Size());
-        dst += ins.second.Size();
+        dst.Add(ins.second);
       }
-      std::copy(src, srcEnd, dst);
-      result.swap(tmp);
+      dst.Add(src.ReadRestData());
+      result = std::move(dst);
     }
+
   private:
     const Binary::View Source;
-    typedef std::map<std::size_t, Binary::View> BlobsMap;
-    typedef std::map<std::size_t, int_t> FixesMap;
+    using BlobsMap = std::map<std::size_t, Binary::View>;
+    using FixesMap = std::map<std::size_t, int_t>;
     BlobsMap Insertions;
     BlobsMap Overwrites;
     FixesMap LEWordFixes;
-    std::size_t SizeAddon;
+    std::size_t SizeAddon = 0;
   };
-}
-}
+}  // namespace Formats::Chiptune
 
-namespace Formats
+namespace Formats::Chiptune
 {
-  namespace Chiptune
+  PatchedDataBuilder::Ptr PatchedDataBuilder::Create(Binary::View data)
   {
-    PatchedDataBuilder::Ptr PatchedDataBuilder::Create(Binary::View data)
-    {
-      return MakePtr<Patcher>(data);
-    }
+    return MakePtr<Patcher>(data);
   }
-}
+}  // namespace Formats::Chiptune

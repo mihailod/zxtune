@@ -1,6 +1,8 @@
-#include <binary/container_factories.h>
-#include <formats/packed/decoders.h>
-#include <formats/chiptune/decoders.h>
+#include "formats/chiptune/decoders.h"
+#include "formats/packed/decoders.h"
+
+#include "binary/container_factories.h"
+
 #include <stdexcept>
 
 namespace
@@ -13,31 +15,33 @@ namespace
       FillPacked();
       FillChiptune();
     }
-    
+
     void TestPacked(const Binary::Container& rawData) const
     {
-      //Test(*PackedDecoders[5], rawData);
-      //return;
+      // Test(*PackedDecoders[5], rawData);
+      // return;
       for (const auto& decoder : PackedDecoders)
       {
         Test(*decoder, rawData);
       }
     }
-    
+
     void TestChiptune(const Binary::Container& rawData) const
     {
-      Test(*ChiptuneDecoders[51], rawData);return;
+      Test(*ChiptuneDecoders[51], rawData);
+      return;
       for (const auto& decoder : ChiptuneDecoders)
       {
         Test(*decoder, rawData);
       }
     }
-    
+
     static const DecodersSet& Instance()
     {
       static const DecodersSet INSTANCE;
       return INSTANCE;
     }
+
   private:
     void FillPacked()
     {
@@ -46,7 +50,7 @@ namespace
       PackedDecoders.push_back(CreateHrust1Decoder());
       PackedDecoders.push_back(CreateHrust21Decoder());
       PackedDecoders.push_back(CreateHrust23Decoder());
-      //PackedDecoders.push_back(CreateFullDiskImageDecoder());
+      // PackedDecoders.push_back(CreateFullDiskImageDecoder());
       PackedDecoders.push_back(CreateDataSquieezerDecoder());
       PackedDecoders.push_back(CreateMSPackDecoder());
       PackedDecoders.push_back(CreateTRUSHDecoder());
@@ -68,7 +72,7 @@ namespace
       PackedDecoders.push_back(CreateLZH1Decoder());
       PackedDecoders.push_back(CreateLZH2Decoder());
       PackedDecoders.push_back(CreateSna128Decoder());
-      //PackedDecoders.push_back(CreateTeleDiskImageDecoder());
+      // PackedDecoders.push_back(CreateTeleDiskImageDecoder());
       PackedDecoders.push_back(CreateZ80V145Decoder());
       PackedDecoders.push_back(CreateZ80V20Decoder());
       PackedDecoders.push_back(CreateZ80V30Decoder());
@@ -77,7 +81,7 @@ namespace
       PackedDecoders.push_back(CreateGzipDecoder());
       PackedDecoders.push_back(CreateTeleDiskImageDecoder());
     }
-    
+
     void FillChiptune()
     {
       using namespace Formats::Chiptune;
@@ -132,6 +136,7 @@ namespace
       ChiptuneDecoders.push_back(CreateUSFDecoder());
       ChiptuneDecoders.push_back(CreateGSFDecoder());
       ChiptuneDecoders.push_back(Create2SFDecoder());
+      ChiptuneDecoders.push_back(CreateNCSFDecoder());
       ChiptuneDecoders.push_back(CreateSSFDecoder());
       ChiptuneDecoders.push_back(CreateDSFDecoder());
       ChiptuneDecoders.push_back(CreateRasterMusicTrackerDecoder());
@@ -159,18 +164,20 @@ namespace
         }
       }
     }
-    
+
     static void Test(const Formats::Chiptune::Decoder& decoder, const Binary::Container& rawData)
     {
       decoder.Decode(rawData);
     }
+
   private:
     std::vector<Formats::Packed::Decoder::Ptr> PackedDecoders;
     std::vector<Formats::Chiptune::Decoder::Ptr> ChiptuneDecoders;
   };
-}
+}  // namespace
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
+{
   if (size != 0)
   {
     const Binary::Container::Ptr container = Binary::CreateContainer(data, size);

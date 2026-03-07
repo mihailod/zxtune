@@ -1,51 +1,51 @@
 /**
-* 
-* @file
-*
-* @brief Main window implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Main window implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "mainwindow.h"
+#include "apps/zxtune-qt/ui/desktop/mainwindow.h"
+
+#include "apps/zxtune-qt/playlist/ui/container_view.h"
+#include "apps/zxtune-qt/supp/playback_supp.h"
+#include "apps/zxtune-qt/ui/controls/analyzer_control.h"
+#include "apps/zxtune-qt/ui/controls/playback_controls.h"
+#include "apps/zxtune-qt/ui/controls/playback_options.h"
+#include "apps/zxtune-qt/ui/controls/seek_controls.h"
+#include "apps/zxtune-qt/ui/controls/status_control.h"
+#include "apps/zxtune-qt/ui/controls/volume_control.h"
+#include "apps/zxtune-qt/ui/desktop/language.h"
+#include "apps/zxtune-qt/ui/format.h"
+#include "apps/zxtune-qt/ui/informational/aboutdialog.h"
+#include "apps/zxtune-qt/ui/informational/componentsdialog.h"
+#include "apps/zxtune-qt/ui/parameters.h"
+#include "apps/zxtune-qt/ui/preferences/preferencesdialog.h"
+#include "apps/zxtune-qt/ui/state.h"
+#include "apps/zxtune-qt/ui/tools/errordialog.h"
+#include "apps/zxtune-qt/ui/utils.h"
+#include "apps/zxtune-qt/update/check.h"
+#include "apps/zxtune-qt/urls.h"
 #include "mainwindow.ui.h"
-#include "language.h"
-#include "ui/format.h"
-#include "ui/utils.h"
-#include "ui/state.h"
-#include "ui/parameters.h"
-#include "ui/controls/analyzer_control.h"
-#include "ui/controls/playback_controls.h"
-#include "ui/controls/playback_options.h"
-#include "ui/controls/seek_controls.h"
-#include "ui/controls/status_control.h"
-#include "ui/controls/volume_control.h"
-#include "ui/informational/aboutdialog.h"
-#include "ui/informational/componentsdialog.h"
-#include "ui/preferences/preferencesdialog.h"
-#include "ui/tools/errordialog.h"
-#include "playlist/ui/container_view.h"
-#include "supp/playback_supp.h"
-#include "update/check.h"
-//common includes
-#include <contract.h>
-//library includes
-#include <debug/log.h>
-#include <platform/version/api.h>
-#include <strings/format.h>
-//std includes
-#include <utility>
-//qt includes
+
+#include "debug/log.h"
+#include "platform/version/api.h"
+#include "strings/format.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <QtCore/QUrl>
-#include <QtWidgets/QApplication>
 #include <QtGui/QCloseEvent>
 #include <QtGui/QDesktopServices>
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QToolBar>
-//text includes
-#include "text/text.h"
+
+#include <utility>
 
 namespace
 {
@@ -53,20 +53,20 @@ namespace
 
   UI::Language::Ptr CreateLanguage(const Parameters::Container& options)
   {
-    const UI::Language::Ptr res = UI::Language::Create();
-    Parameters::StringType lang = FromQString(res->GetSystem());
-    options.FindValue(Parameters::ZXTuneQT::UI::LANGUAGE, lang);
+    auto res = UI::Language::Create();
+    const auto lang = Parameters::GetString(options, Parameters::ZXTuneQT::UI::LANGUAGE, FromQString(res->GetSystem()));
     res->Set(ToQString(lang));
     return res;
   }
 
-  class DesktopMainWindowImpl : public DesktopMainWindow
-                              , public Ui::MainWindow
+  class DesktopMainWindowImpl
+    : public DesktopMainWindow
+    , public Ui::MainWindow
   {
   public:
     explicit DesktopMainWindowImpl(Parameters::Container::Ptr options)
-      : Options(options)
-      , Language(CreateLanguage(*options))
+      : Options(std::move(options))
+      , Language(CreateLanguage(*Options))
       , Playback(PlaybackSupport::Create(*this, Options))
       , Controls(PlaybackControls::Create(*this, *Playback))
       , FastOptions(PlaybackOptions::Create(*this, *Playback, Options))
@@ -75,15 +75,14 @@ namespace
       , Seeking(SeekControls::Create(*this, *Playback))
       , Analyzer(AnalyzerControl::Create(*this, *Playback))
       , MultiPlaylist(Playlist::UI::ContainerView::Create(*this, Options))
-      , Playing(false)
     {
       setupUi(this);
       State = UI::State::Create(*this);
-      //fill menu
+      // fill menu
       menubar->addMenu(Controls->GetActionsMenu());
       menubar->addMenu(MultiPlaylist->GetActionsMenu());
       menubar->addMenu(menuHelp);
-      //fill toolbar and layout menu
+      // fill toolbar and layout menu
       {
         Toolbars.push_back(AddWidgetOnToolbar(Controls, false));
         Toolbars.push_back(AddWidgetOnToolbar(FastOptions, false));
@@ -91,47 +90,48 @@ namespace
         Toolbars.push_back(AddWidgetOnToolbar(Status, false));
         Toolbars.push_back(AddWidgetOnToolbar(Seeking, true));
         Toolbars.push_back(AddWidgetOnToolbar(Analyzer, false));
-        //playlist is mandatory and cannot be hidden
+        // playlist is mandatory and cannot be hidden
         AddWidgetOnLayout(MultiPlaylist);
         State->Load();
         FillLayoutMenu();
       }
 
-      //connect root actions
-      Require(connect(actionComponents, SIGNAL(triggered()), SLOT(ShowComponentsInformation())));
-      Require(connect(actionAbout, SIGNAL(triggered()), SLOT(ShowAboutProgram())));
-      Require(connect(actionOnlineHelp, SIGNAL(triggered()), SLOT(VisitHelp())));
-      Require(connect(actionWebSite, SIGNAL(triggered()), SLOT(VisitSite())));
-      Require(connect(actionOnlineFAQ, SIGNAL(triggered()), SLOT(VisitFAQ())));
-      Require(connect(actionReportBug, SIGNAL(triggered()), SLOT(ReportIssue())));
-      Require(connect(actionAboutQt, SIGNAL(triggered()), SLOT(ShowAboutQt())));
-      Require(connect(actionPreferences, SIGNAL(triggered()), SLOT(ShowPreferences())));
+      // connect root actions
+      Require(connect(actionComponents, &QAction::triggered, this, &DesktopMainWindowImpl::ShowComponentsInformation));
+      Require(connect(actionAbout, &QAction::triggered, this, &DesktopMainWindowImpl::ShowAboutProgram));
+      Require(connect(actionOnlineHelp, &QAction::triggered, this, &DesktopMainWindowImpl::VisitHelp));
+      Require(connect(actionWebSite, &QAction::triggered, this, &DesktopMainWindowImpl::VisitSite));
+      Require(connect(actionOnlineFAQ, &QAction::triggered, this, &DesktopMainWindowImpl::VisitFAQ));
+      Require(connect(actionReportBug, &QAction::triggered, this, &DesktopMainWindowImpl::ReportIssue));
+      Require(connect(actionAboutQt, &QAction::triggered, this, &DesktopMainWindowImpl::ShowAboutQt));
+      Require(connect(actionPreferences, &QAction::triggered, this, &DesktopMainWindowImpl::ShowPreferences));
       if (Update::CheckOperation* op = Update::CheckOperation::Create(*this))
       {
-        Require(op->connect(actionCheckUpdates, SIGNAL(triggered()), SLOT(Execute())));
-        Require(connect(op, SIGNAL(ErrorOccurred(const Error&)), SLOT(ShowError(const Error&))));
+        Require(connect(actionCheckUpdates, &QAction::triggered, op, &Update::CheckOperation::Execute));
       }
       else
       {
         actionCheckUpdates->setEnabled(false);
       }
 
-      Require(MultiPlaylist->connect(Controls, SIGNAL(OnPrevious()), SLOT(Prev())));
-      Require(MultiPlaylist->connect(Controls, SIGNAL(OnNext()), SLOT(Next())));
-      Require(MultiPlaylist->connect(Playback, SIGNAL(OnStartModule(Sound::Backend::Ptr, Playlist::Item::Data::Ptr)), SLOT(Play())));
-      Require(MultiPlaylist->connect(Playback, SIGNAL(OnResumeModule()), SLOT(Play())));
-      Require(MultiPlaylist->connect(Playback, SIGNAL(OnPauseModule()), SLOT(Pause())));
-      Require(MultiPlaylist->connect(Playback, SIGNAL(OnStopModule()), SLOT(Stop())));
-      Require(MultiPlaylist->connect(Playback, SIGNAL(OnFinishModule()), SLOT(Finish())));
-      Require(Playback->connect(MultiPlaylist, SIGNAL(Activated(Playlist::Item::Data::Ptr)), SLOT(SetDefaultItem(Playlist::Item::Data::Ptr))));
-      Require(Playback->connect(MultiPlaylist, SIGNAL(ItemActivated(Playlist::Item::Data::Ptr)), SLOT(SetItem(Playlist::Item::Data::Ptr))));
-      Require(Playback->connect(MultiPlaylist, SIGNAL(Deactivated()), SLOT(ResetItem())));
-      Require(connect(Playback, SIGNAL(OnStartModule(Sound::Backend::Ptr, Playlist::Item::Data::Ptr)),
-        SLOT(StartModule(Sound::Backend::Ptr, Playlist::Item::Data::Ptr))));
-      Require(connect(Playback, SIGNAL(OnStopModule()), SLOT(StopModule())));
-      Require(connect(Playback, SIGNAL(ErrorOccurred(const Error&)), SLOT(ShowError(const Error&))));
-      Require(connect(actionAddFiles, SIGNAL(triggered()), MultiPlaylist, SLOT(AddFiles())));
-      Require(connect(actionAddFolder, SIGNAL(triggered()), MultiPlaylist, SLOT(AddFolder())));
+      Require(connect(Controls, &PlaybackControls::OnPrevious, MultiPlaylist, &Playlist::UI::ContainerView::Prev));
+      Require(connect(Controls, &PlaybackControls::OnNext, MultiPlaylist, &Playlist::UI::ContainerView::Next));
+      Require(
+          connect(Playback, &PlaybackSupport::OnStartModule, MultiPlaylist,
+                  [playlists = MultiPlaylist](Sound::Backend::Ptr, Playlist::Item::Data::Ptr) { playlists->Play(); }));
+      Require(connect(Playback, &PlaybackSupport::OnResumeModule, MultiPlaylist, &Playlist::UI::ContainerView::Play));
+      Require(connect(Playback, &PlaybackSupport::OnPauseModule, MultiPlaylist, &Playlist::UI::ContainerView::Pause));
+      Require(connect(Playback, &PlaybackSupport::OnStopModule, MultiPlaylist, &Playlist::UI::ContainerView::Stop));
+      Require(connect(Playback, &PlaybackSupport::OnFinishModule, MultiPlaylist, &Playlist::UI::ContainerView::Finish));
+      Require(
+          connect(MultiPlaylist, &Playlist::UI::ContainerView::Activated, Playback, &PlaybackSupport::SetDefaultItem));
+      Require(connect(MultiPlaylist, &Playlist::UI::ContainerView::ItemActivated, Playback, &PlaybackSupport::SetItem));
+      Require(connect(MultiPlaylist, &Playlist::UI::ContainerView::Deactivated, Playback, &PlaybackSupport::ResetItem));
+      Require(connect(Playback, &PlaybackSupport::OnStartModule, this, &DesktopMainWindowImpl::StartModule));
+      Require(connect(Playback, &PlaybackSupport::OnStopModule, this, &DesktopMainWindowImpl::StopModule));
+      Require(connect(Playback, &PlaybackSupport::ErrorOccurred, this, &DesktopMainWindowImpl::ShowError));
+      Require(connect(actionAddFiles, &QAction::triggered, MultiPlaylist, &Playlist::UI::ContainerView::AddFiles));
+      Require(connect(actionAddFolder, &QAction::triggered, MultiPlaylist, &Playlist::UI::ContainerView::AddFolder));
 
       StopModule();
 
@@ -152,70 +152,7 @@ namespace
       }
     }
 
-    void StartModule(Sound::Backend::Ptr /*player*/, Playlist::Item::Data::Ptr item) override
-    {
-      setWindowTitle(ToQString(Strings::Format(Text::TITLE_FORMAT,
-        Platform::Version::GetProgramTitle(),
-        item->GetDisplayName())));
-      Playing = true;
-    }
-
-    void StopModule() override
-    {
-      Playing = false;
-      setWindowTitle(ToQString(Platform::Version::GetProgramTitle()));
-    }
-    
-    void ShowPreferences() override
-    {
-      UI::ShowPreferencesDialog(*this, Playing);
-    }
-
-    void ShowComponentsInformation() override
-    {
-      UI::ShowComponentsInformation(*this);
-    }
-
-    void ShowAboutProgram() override
-    {
-      UI::ShowProgramInformation(*this);
-    }
-
-    void ShowAboutQt() override
-    {
-      QMessageBox::aboutQt(this);
-    }
-
-    void VisitHelp() override
-    {
-      const QLatin1String siteUrl(Text::HELP_URL);
-      QDesktopServices::openUrl(QUrl(siteUrl));
-    }
-
-    void VisitSite() override
-    {
-      const QLatin1String siteUrl(Text::PROGRAM_SITE);
-      QDesktopServices::openUrl(QUrl(siteUrl));
-    }
-
-    void VisitFAQ() override
-    {
-      const QLatin1String faqUrl(Text::FAQ_URL);
-      QDesktopServices::openUrl(QUrl(faqUrl));
-    }
-
-    void ReportIssue() override
-    {
-      const QLatin1String faqUrl(Text::REPORT_BUG_URL);
-      QDesktopServices::openUrl(QUrl(faqUrl));
-    }
-
-    void ShowError(const Error& err) override
-    {
-      ShowErrorMessage(QString(), err);
-    }
-
-    //QWidgets virtuals
+    // QWidgets virtuals
     void closeEvent(QCloseEvent* event) override
     {
       Playback->Stop();
@@ -223,7 +160,7 @@ namespace
       MultiPlaylist->Teardown();
       event->accept();
     }
-    
+
     bool event(QEvent* event) override
     {
       const bool res = ::MainWindow::event(event);
@@ -243,12 +180,13 @@ namespace
       }
       ::MainWindow::changeEvent(event);
     }
+
   private:
-    typedef std::pair<QWidget*, QToolBar*> WidgetOnToolbar;
+    using WidgetOnToolbar = std::pair<QWidget*, QToolBar*>;
 
     WidgetOnToolbar AddWidgetOnToolbar(QWidget* widget, bool lastInRow)
     {
-      const auto toolBar = new QToolBar(this);
+      auto* const toolBar = new QToolBar(this);
       toolBar->setObjectName(widget->objectName());
       QSizePolicy sizePolicy(QSizePolicy::Maximum, QSizePolicy::MinimumExpanding);
       sizePolicy.setHorizontalStretch(0);
@@ -265,7 +203,7 @@ namespace
       {
         addToolBarBreak();
       }
-      return WidgetOnToolbar(widget, toolBar);
+      return {widget, toolBar};
     }
 
     QWidget* AddWidgetOnLayout(QWidget* widget)
@@ -273,16 +211,77 @@ namespace
       centralWidget()->layout()->addWidget(widget);
       return widget;
     }
-    
+
     void FillLayoutMenu()
     {
       menuLayout->clear();
-      for (std::vector<WidgetOnToolbar>::const_iterator it = Toolbars.begin(), lim = Toolbars.end(); it != lim; ++it)
+      for (const auto& toolbar : Toolbars)
       {
-        it->second->setWindowTitle(it->first->windowTitle());
-        menuLayout->addAction(it->second->toggleViewAction());
+        toolbar.second->setWindowTitle(toolbar.first->windowTitle());
+        auto* action = toolbar.second->toggleViewAction();
+        action->setMenuRole(QAction::NoRole);
+        menuLayout->addAction(action);
       }
     }
+
+    void StartModule(Sound::Backend::Ptr /*player*/, Playlist::Item::Data::Ptr item)
+    {
+      setWindowTitle(
+          ToQString(Strings::Format("{1} [{0}]", Platform::Version::GetProgramTitle(), item->GetDisplayName())));
+      Playing = true;
+    }
+
+    void StopModule()
+    {
+      Playing = false;
+      setWindowTitle(ToQString(Platform::Version::GetProgramTitle()));
+    }
+
+    void ShowPreferences()
+    {
+      UI::ShowPreferencesDialog(*this, Playing);
+    }
+
+    void ShowComponentsInformation()
+    {
+      UI::ShowComponentsInformation(*this);
+    }
+
+    void ShowAboutProgram()
+    {
+      UI::ShowProgramInformation(*this);
+    }
+
+    void ShowAboutQt()
+    {
+      QMessageBox::aboutQt(this);
+    }
+
+    void VisitHelp()
+    {
+      QDesktopServices::openUrl(ToQString(Urls::Help()));
+    }
+
+    void VisitSite()
+    {
+      QDesktopServices::openUrl(ToQString(Urls::Site()));
+    }
+
+    void VisitFAQ()
+    {
+      QDesktopServices::openUrl(ToQString(Urls::Faq()));
+    }
+
+    void ReportIssue()
+    {
+      QDesktopServices::openUrl(ToQString(Urls::Bugreport()));
+    }
+
+    void ShowError(const Error& err)
+    {
+      ShowErrorMessage(QString(), err);
+    }
+
   private:
     const Parameters::Container::Ptr Options;
     const UI::Language::Ptr Language;
@@ -295,14 +294,14 @@ namespace
     SeekControls* const Seeking;
     AnalyzerControl* const Analyzer;
     Playlist::UI::ContainerView* const MultiPlaylist;
-    bool Playing;
+    bool Playing = false;
     std::vector<WidgetOnToolbar> Toolbars;
   };
-}
+}  // namespace
 
 MainWindow::Ptr DesktopMainWindow::Create(Parameters::Container::Ptr options)
 {
-  const MainWindow::Ptr res = new DesktopMainWindowImpl(options);
+  auto res = MakePtr<DesktopMainWindowImpl>(std::move(options));
   res->show();
   return res;
 }

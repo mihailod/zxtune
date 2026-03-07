@@ -1,81 +1,69 @@
 /**
-*
-* @file
-*
-* @brief  WAV backend implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  WAV backend implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "sound/backends/file_backend.h"
 #include "sound/backends/l10n.h"
 #include "sound/backends/storage.h"
-//common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-//library includes
-#include <math/numeric.h>
-#include <sound/backend_attrs.h>
-#include <sound/render_params.h>
-//std includes
+
+#include "binary/dump.h"
+#include "l10n/markup.h"
+#include "math/numeric.h"
+#include "sound/backend_attrs.h"
+#include "sound/render_params.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
 #include <algorithm>
 #include <cstring>
-//text includes
-#include <sound/backends/text/backends.h>
 
-#define FILE_TAG EF5CB4C6
-
-namespace Sound
+namespace Sound::Wav
 {
-namespace Wav
-{
-  const String ID = Text::WAV_BACKEND_ID;
+  const auto BACKEND_ID = "wav"_id;
   const char* const DESCRIPTION = L10n::translate("WAV support backend");
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
   // Standard .wav header
-  PACK_PRE struct WaveFormat
+  struct WaveFormat
   {
-    uint8_t Id[4];          //'RIFF'
-    uint32_t Size;          //file size - 8
-    uint8_t Type[4];        //'WAVE'
-    uint8_t ChunkId[4];     //'fmt '
-    uint32_t ChunkSize;     //16
-    uint16_t Compression;   //1
-    uint16_t Channels;
-    uint32_t Samplerate;
-    uint32_t BytesPerSec;
-    uint16_t Align;
-    uint16_t BitsPerSample;
-    uint8_t DataId[4];      //'data'
-    uint32_t DataSize;
-  } PACK_POST;
+    uint8_t Id[4];            //'RIFF'
+    le_uint32_t Size;         // file size - 8
+    uint8_t Type[4];          //'WAVE'
+    uint8_t ChunkId[4];       //'fmt '
+    le_uint32_t ChunkSize;    // 16
+    le_uint16_t Compression;  // 1
+    le_uint16_t Channels;
+    le_uint32_t Samplerate;
+    le_uint32_t BytesPerSec;
+    le_uint16_t Align;
+    le_uint16_t BitsPerSample;
+    uint8_t DataId[4];  //'data'
+    le_uint32_t DataSize;
+  };
 
-  PACK_PRE struct ListHeader
+  struct ListHeader
   {
-    uint8_t Id[4];   //LIST
-    uint32_t Size;   //next content size
-    uint8_t Type[4]; //INFO
-  } PACK_POST;
+    uint8_t Id[4];     // LIST
+    le_uint32_t Size;  // next content size
+    uint8_t Type[4];   // INFO
+  };
 
-  PACK_PRE struct InfoElement
+  struct InfoElement
   {
     uint8_t Id[4];
-    uint32_t Size; //next content size - 1
+    le_uint32_t Size;  // next content size - 1
     uint8_t Content[1];
-  } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+  };
 
   const uint8_t RIFF[] = {'R', 'I', 'F', 'F'};
-  const uint8_t RIFX[] = {'R', 'I', 'F', 'X'};
   const uint8_t WAVE[] = {'W', 'A', 'V', 'E'};
   const uint8_t FORMAT[] = {'f', 'm', 't', ' '};
   const uint8_t DATA[] = {'d', 'a', 't', 'a'};
@@ -89,17 +77,18 @@ namespace Wav
   /*
   From https://ccrma.stanford.edu/courses/422/projects/WaveFormat :
 
-  Notes: 
+  Notes:
    - The default byte ordering assumed for WAVE data files is little-endian.
-     Files written using the big-endian byte ordering scheme have the identifier RIFX instead of RIFF. 
-   - The sample data must end on an even byte boundary. Whatever that means. 
+     Files written using the big-endian byte ordering scheme have the identifier RIFX instead of RIFF.
+   - The sample data must end on an even byte boundary. Whatever that means.
    - 8-bit samples are stored as unsigned bytes, ranging from 0 to 255.
-     16-bit samples are stored as 2's-complement signed integers, ranging from -32768 to 32767. 
-   - There may be additional subchunks in a Wave data stream. If so, each will have a char[4] SubChunkID, and unsigned long SubChunkSize, and SubChunkSize amount of data. 
-   - RIFF stands for Resource Interchange File Format. 
+     16-bit samples are stored as 2's-complement signed integers, ranging from -32768 to 32767.
+   - There may be additional subchunks in a Wave data stream. If so, each will have a char[4] SubChunkID, and unsigned
+  long SubChunkSize, and SubChunkSize amount of data.
+   - RIFF stands for Resource Interchange File Format.
   */
- 
-  class ListMetadata : public Dump
+
+  class ListMetadata : public Binary::Dump
   {
   public:
     ListMetadata()
@@ -109,29 +98,32 @@ namespace Wav
 
     void SetTitle(const String& title)
     {
-      AddElement(INAM, ToStdString(title));
+      AddElement(INAM, title);
     }
 
     void SetAuthor(const String& author)
     {
-      AddElement(IART, ToStdString(author));
+      AddElement(IART, author);
     }
 
     void SetComment(const String& comment)
     {
-      AddElement(ICMT, ToStdString(comment));
+      AddElement(ICMT, comment);
     }
+
   private:
-    void AddElement(const uint8_t* id, const std::string& str)
+    // TODO: clarify about terminating zero
+    void AddElement(const uint8_t* id, const String& str)
     {
+      static_assert(sizeof(str[0]) == 1, "No multibyte strings allowed here");
       ListHeader* const hdr = GetHeader();
       const std::size_t strSize = str.size() + 1;
       InfoElement* const elem = AddElement(strSize);
       std::memcpy(elem->Id, id, sizeof(elem->Id));
-      elem->Size = fromLE(strSize);
+      elem->Size = strSize;
       std::memcpy(elem->Content, str.c_str(), strSize);
       elem->Content[strSize] = 0;
-      hdr->Size = fromLE(size() - offsetof(ListHeader, Type));
+      hdr->Size = size() - offsetof(ListHeader, Type);
     }
 
     ListHeader* GetHeader()
@@ -139,7 +131,7 @@ namespace Wav
       if (empty())
       {
         resize(sizeof(ListHeader));
-        ListHeader* const hdr = safe_ptr_cast<ListHeader*>(data());
+        auto* const hdr = safe_ptr_cast<ListHeader*>(data());
         std::memcpy(hdr->Id, LIST, sizeof(LIST));
         std::memcpy(hdr->Type, INFO, sizeof(INFO));
         hdr->Size = 0;
@@ -151,7 +143,7 @@ namespace Wav
     InfoElement* AddElement(std::size_t contentSize)
     {
       const std::size_t oldSize = size();
-      const std::size_t elemSize = Math::Align<std::size_t>(offsetof(InfoElement, Content) + contentSize, 2);
+      const auto elemSize = Math::Align<std::size_t>(offsetof(InfoElement, Content) + contentSize, 2);
       resize(oldSize + elemSize);
       return safe_ptr_cast<InfoElement*>(&at(oldSize));
     }
@@ -162,27 +154,19 @@ namespace Wav
   public:
     FileStream(uint_t soundFreq, Binary::SeekableOutputStream::Ptr stream)
       : Stream(std::move(stream))
-      , DoneBytes(0)
     {
-      //init struct
-      if (isLE())
-      {
-        std::memcpy(Format.Id, RIFF, sizeof(RIFF));
-      }
-      else
-      {
-        std::memcpy(Format.Id, RIFX, sizeof(RIFX));
-      }
+      // init struct
+      std::memcpy(Format.Id, RIFF, sizeof(RIFF));
       std::memcpy(Format.Type, WAVE, sizeof(WAVE));
       std::memcpy(Format.ChunkId, FORMAT, sizeof(FORMAT));
-      Format.ChunkSize = fromLE<uint32_t>(16);
-      Format.Compression = fromLE<uint16_t>(1);//PCM
-      Format.Channels = fromLE<uint16_t>(Sample::CHANNELS);
+      Format.ChunkSize = 16;
+      Format.Compression = 1;  // PCM
+      Format.Channels = Sample::CHANNELS;
       std::memcpy(Format.DataId, DATA, sizeof(DATA));
-      Format.Samplerate = fromLE(static_cast<uint32_t>(soundFreq));
-      Format.BytesPerSec = fromLE(static_cast<uint32_t>(soundFreq * sizeof(Sample)));
-      Format.Align = fromLE<uint16_t>(sizeof(Sample));
-      Format.BitsPerSample = fromLE<uint16_t>(Sample::BITS);
+      Format.Samplerate = soundFreq;
+      Format.BytesPerSec = soundFreq * sizeof(Sample);
+      Format.Align = sizeof(Sample);
+      Format.BitsPerSample = Sample::BITS;
       Flush();
     }
 
@@ -201,9 +185,7 @@ namespace Wav
       Meta.SetComment(comment);
     }
 
-    void FlushMetadata() override
-    {
-    }
+    void FlushMetadata() override {}
 
     void ApplyData(Chunk data) override
     {
@@ -229,14 +211,15 @@ namespace Wav
       Stream->Flush();
       // write header
       Stream->Seek(0);
-      Format.Size = fromLE<uint32_t>(sizeof(Format) - offsetof(WaveFormat, Type) + DoneBytes + Meta.size());
-      Format.DataSize = fromLE<uint32_t>(DoneBytes);
+      Format.Size = sizeof(Format) - offsetof(WaveFormat, Type) + DoneBytes + Meta.size();
+      Format.DataSize = DoneBytes;
       Stream->ApplyData(Format);
       Stream->Seek(DoneBytes + sizeof(Format));
     }
+
   private:
     const Binary::SeekableOutputStream::Ptr Stream;
-    uint32_t DoneBytes;
+    uint32_t DoneBytes = 0;
     WaveFormat Format;
     ListMetadata Meta;
   };
@@ -244,47 +227,44 @@ namespace Wav
   class FileStreamFactory : public Sound::FileStreamFactory
   {
   public:
-    explicit FileStreamFactory(Parameters::Accessor::Ptr params)
-      : RenderingParameters(RenderParameters::Create(params))
-    {
-    }
+    explicit FileStreamFactory(uint_t frequency)
+      : Frequency(frequency)
+    {}
 
-    String GetId() const override
+    BackendId GetId() const override
     {
-      return ID;
+      return BACKEND_ID;
     }
 
     FileStream::Ptr CreateStream(Binary::OutputStream::Ptr stream) const override
     {
-      if (const Binary::SeekableOutputStream::Ptr seekable = std::dynamic_pointer_cast<Binary::SeekableOutputStream>(stream))
+      if (auto seekable = std::dynamic_pointer_cast<Binary::SeekableOutputStream>(stream))
       {
-        return MakePtr<FileStream>(RenderingParameters->SoundFreq(), seekable);
+        return MakePtr<FileStream>(Frequency, std::move(seekable));
       }
       throw Error(THIS_LINE, translate("WAV conversion is not supported on non-seekable streams."));
     }
+
   private:
-    const RenderParameters::Ptr RenderingParameters;
+    const uint_t Frequency;
   };
 
   class BackendWorkerFactory : public Sound::BackendWorkerFactory
   {
   public:
-    BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr /*holder*/) const override
+    BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr holder) const override
     {
-      const FileStreamFactory::Ptr factory = MakePtr<FileStreamFactory>(params);
-      return CreateFileBackendWorker(params, factory);
+      auto factory = MakePtr<FileStreamFactory>(GetSoundFrequency(*params));
+      return CreateFileBackendWorker(std::move(params), holder->GetModuleProperties(), std::move(factory));
     }
   };
-}//Wav
-}//Sound
+}  // namespace Sound::Wav
 
 namespace Sound
 {
   void RegisterWavBackend(BackendsStorage& storage)
   {
-    const BackendWorkerFactory::Ptr factory = MakePtr<Wav::BackendWorkerFactory>();
-    storage.Register(Wav::ID, Wav::DESCRIPTION, CAP_TYPE_FILE, factory);
+    auto factory = MakePtr<Wav::BackendWorkerFactory>();
+    storage.Register(Wav::BACKEND_ID, Wav::DESCRIPTION, CAP_TYPE_FILE, std::move(factory));
   }
-}
-
-#undef FILE_TAG
+}  // namespace Sound

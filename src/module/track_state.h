@@ -1,17 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  TrackState interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TrackState interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <module/state.h>
+#include "module/state.h"
 
 namespace Module
 {
@@ -20,7 +19,7 @@ namespace Module
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<const TrackState> Ptr;
+    using Ptr = std::shared_ptr<const TrackState>;
 
     //! Current position (up to TrackInformation::PositionsCount)
     virtual uint_t Position() const = 0;
@@ -35,4 +34,4 @@ namespace Module
     //! Current active channels count (up to Information::Channels)
     virtual uint_t Channels() const = 0;
   };
-}
+}  // namespace Module

@@ -1,53 +1,52 @@
 /**
-*
-* @file
-*
-* @brief  Memory region non-owning reference
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Memory region non-owning reference
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//std includes
+#include "pointers.h"
+#include "types.h"
+
 #include <type_traits>
 #include <vector>
 
 namespace Binary
 {
+  template<class T>
+  inline constexpr bool is_applicable_for_view = std::is_trivially_copyable_v<T> && !std::is_pointer_v<T>;
+
   class View
   {
   private:
     View()
-     : View(nullptr, 0)
-    {
-    }
+      : View(nullptr, 0)
+    {}
+
   public:
     View(const void* start, std::size_t size)
       : Begin(size ? start : nullptr)
       , Length(Begin ? size : 0)
-    {
-    }
+    {}
 
-    template<class T>
+    template<class T, std::enable_if_t<is_applicable_for_view<T>, int> = 0>
     View(const std::vector<T>& data)
       : View(data.data(), data.size() * sizeof(T))
-    {
-    }
+    {}
 
-    //is_trivially_copyable is not implemented in windows mingw
-    template<typename T,
-             typename std::enable_if<std::is_pod<T>::value && !std::is_pointer<T>::value && std::is_compound<T>::value, int>::type = 0>
+    // is_trivially_copyable is not implemented in windows mingw
+    template<class T, std::enable_if_t<is_applicable_for_view<T> && std::is_compound_v<T>, int> = 0>
     View(const T& data)
       : View(&data, sizeof(data))
-    {
-    }
+    {}
 
-    //TODO: remove
-    /*explicit*/View(const class Data& data);
+    // TODO: remove
+    /*explicit*/ View(const class Data& data);
 
     const void* Start() const
     {
@@ -59,12 +58,12 @@ namespace Binary
       return Length;
     }
 
-    explicit operator bool () const
+    explicit operator bool() const
     {
       return Length != 0;
     }
 
-    bool operator == (View rh) const
+    bool operator==(View rh) const
     {
       return Begin == rh.Begin && Length == rh.Length;
     }
@@ -73,25 +72,22 @@ namespace Binary
     {
       if (offset < Length)
       {
-        return View(static_cast<const uint8_t*>(Begin) + offset, std::min(maxSize, Length - offset));
+        return {static_cast<const uint8_t*>(Begin) + offset, std::min(maxSize, Length - offset)};
       }
       else
       {
-        return View();
+        return {};
       }
     }
 
-    template<typename T,
-             typename std::enable_if<std::is_pod<T>::value && !std::is_pointer<T>::value, int>::type = 0>
+    template<class T, std::enable_if_t<is_applicable_for_view<T>, int> = 0>
     const T* As() const
     {
-      return sizeof(T) <= Length
-           ? static_cast<const T*>(Begin)
-           : nullptr;
+      return sizeof(T) <= Length ? safe_ptr_cast<const T*>(Begin) : nullptr;
     }
 
   private:
     const void* const Begin;
     const std::size_t Length;
   };
-}
+}  // namespace Binary

@@ -1,53 +1,50 @@
 /**
-* 
-* @file
-*
-* @brief  ExtremeTracker1 chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ExtremeTracker1 chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/dac/extremetracker1.h"
+
+#include "devices/dac/sample_factories.h"
+#include "formats/chiptune/digital/extremetracker1.h"
 #include "module/players/dac/dac_properties_helper.h"
 #include "module/players/dac/dac_simple.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <devices/dac/sample_factories.h>
-#include <formats/chiptune/digital/extremetracker1.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
-#include <module/players/tracking.h>
-//text includes
-#include <module/text/platforms.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
+#include "module/players/tracking.h"
 
-namespace Module
-{
-namespace ExtremeTracker1
+#include "make_ptr.h"
+
+#include <array>
+
+namespace Module::ExtremeTracker1
 {
   const std::size_t CHANNELS_COUNT = 4;
 
   const uint_t C_1_STEP_GLISS = 0x50;
-  
-  //supported tracking commands
+
+  // supported tracking commands
   enum CmdType
   {
-    //no parameters
+    // no parameters
     EMPTY,
-    //1 param
+    // 1 param
     GLISS,
   };
 
   inline int_t StepToHz(int_t step)
   {
-    //C-1 frequency is 32.7Hz
-    //step * 32.7 / c-1_step
+    // C-1 frequency is 32.7Hz
+    // step * 32.7 / c-1_step
     return step * 3270 / int_t(C_1_STEP_GLISS * 100);
   }
-  
-  typedef DAC::SimpleModuleData ModuleData;
+
+  using ModuleData = DAC::SimpleModuleData;
 
   class DataBuilder : public Formats::Chiptune::ExtremeTracker1::Builder
   {
@@ -56,9 +53,8 @@ namespace ExtremeTracker1
       : Properties(props)
       , Meta(props)
       , Patterns(PatternsBuilder::Create<CHANNELS_COUNT>())
-      , Data(MakeRWPtr<ModuleData>())
-    {
-    }
+      , Data(MakeRWPtr<ModuleData>(CHANNELS_COUNT))
+    {}
 
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
@@ -121,26 +117,25 @@ namespace ExtremeTracker1
     {
       Patterns.GetChannel().AddCommand(GLISS, gliss);
     }
-    
+
     ModuleData::Ptr CaptureResult()
     {
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     DAC::PropertiesHelper& Properties;
     MetaProperties Meta;
     PatternsBuilder Patterns;
     ModuleData::RWPtr Data;
   };
-  
+
   struct GlissData
   {
-    GlissData() : Sliding(), Glissade()
-    {
-    }
-    int_t Sliding;
-    int_t Glissade;
+    GlissData() = default;
+    int_t Sliding = 0;
+    int_t Glissade = 0;
 
     void Reset()
     {
@@ -176,6 +171,7 @@ namespace ExtremeTracker1
         GetNewLineState(state, track);
       }
     }
+
   private:
     void SynthesizeChannelsData(DAC::TrackBuilder& track)
     {
@@ -192,11 +188,11 @@ namespace ExtremeTracker1
 
     void GetNewLineState(const TrackModelState& state, DAC::TrackBuilder& track)
     {
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
         for (uint_t chan = 0; chan != CHANNELS_COUNT; ++chan)
         {
-          if (const auto src = line->GetChannel(chan))
+          if (const auto* const src = line->GetChannel(chan))
           {
             DAC::ChannelDataBuilder builder = track.GetChannel(chan);
             GetNewChannelState(*src, Gliss[chan], builder);
@@ -205,7 +201,7 @@ namespace ExtremeTracker1
       }
     }
 
-    void GetNewChannelState(const Cell& src, GlissData& gliss, DAC::ChannelDataBuilder& builder)
+    static void GetNewChannelState(const Cell& src, GlissData& gliss, DAC::ChannelDataBuilder& builder)
     {
       if (src.HasData())
       {
@@ -247,6 +243,7 @@ namespace ExtremeTracker1
         }
       }
     }
+
   private:
     const ModuleData::Ptr Data;
     std::array<GlissData, CHANNELS_COUNT> Gliss;
@@ -258,13 +255,11 @@ namespace ExtremeTracker1
     Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
       : Data(std::move(data))
       , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, CHANNELS_COUNT))
-    {
-    }
+    {}
 
-    Information::Ptr GetInformation() const override
+    TrackModel::Ptr GetTrackModel() const override
     {
-      return Info;
+      return Data;
     }
 
     Parameters::Accessor::Ptr GetProperties() const override
@@ -274,47 +269,43 @@ namespace ExtremeTracker1
 
     DAC::DataIterator::Ptr CreateDataIterator() const override
     {
-      auto iterator = CreateTrackStateIterator(Data);
+      auto iterator = CreateTrackStateIterator(GetFrameDuration(), Data);
       auto renderer = MakePtr<DataRenderer>(Data);
       return DAC::CreateDataIterator(std::move(iterator), std::move(renderer));
     }
 
-    void GetSamples(Devices::DAC::Chip::Ptr chip) const override
+    void GetSamples(Devices::DAC::Chip& chip) const override
     {
-      for (uint_t idx = 0, lim = Data->Samples.Size(); idx != lim; ++idx)
-      {
-        chip->SetSample(idx, Data->Samples.Get(idx));
-      }
+      Data->SetupSamples(chip);
     }
+
   private:
     const ModuleData::Ptr Data;
     const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
   };
 
   class Factory : public DAC::Factory
   {
   public:
-    DAC::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    DAC::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
-      DAC::PropertiesHelper props(*properties);
+      DAC::PropertiesHelper props(*properties, CHANNELS_COUNT);
       DataBuilder dataBuilder(props);
       if (const auto container = Formats::Chiptune::ExtremeTracker1::Parse(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
         return MakePtr<Chiptune>(dataBuilder.CaptureResult(), std::move(properties));
       }
       else
       {
-        return DAC::Chiptune::Ptr();
+        return {};
       }
     }
   };
-  
+
   Factory::Ptr CreateFactory()
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::ExtremeTracker1

@@ -1,34 +1,29 @@
 /**
-* 
-* @file
-*
-* @brief  GamePacker packer support
-*
-* @author vitamin.caig@gmail.com
-*
-* @note   Based on Pusher sources by Himik/ZxZ
-*
-**/
+ *
+ * @file
+ *
+ * @brief  GamePacker packer support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ * @note   Based on Pusher sources by Himik/ZxZ
+ *
+ **/
 
-//local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-//library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-//std includes
-#include <cstring>
-#include <iterator>
-//text includes
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+#include "string_view.h"
+
+#include <cstring>
+
+namespace Formats::Packed
 {
   namespace GamePacker
   {
@@ -36,138 +31,127 @@ namespace Packed
 
     struct Version1
     {
-      static const String DESCRIPTION;
-      static const std::size_t MIN_SIZE = 0x20;//TODO
-      static const std::string DEPACKER_PATTERN;
+      static const StringView DESCRIPTION;
+      static const std::size_t MIN_SIZE = 0x20;  // TODO
+      static const StringView DEPACKER_PATTERN;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-      PACK_PRE struct RawHeader
+      struct RawHeader
       {
         //+0
         char Padding1;
         //+1
-        uint16_t DepackerBodyAddr;
+        le_uint16_t DepackerBodyAddr;
         //+3
         char Padding2[5];
         //+8
-        uint16_t DepackerBodySize;
+        le_uint16_t DepackerBodySize;
         //+a
         char Padding3[3];
         //+d
-        uint16_t EndOfPackedSource;
+        le_uint16_t EndOfPackedSource;
         //+f
         char Padding4[4];
         //+13
-        uint16_t PackedSize;
+        le_uint16_t PackedSize;
         //+15
 
         uint_t GetPackedDataOffset() const
         {
-          const uint_t selfAddr = fromLE(DepackerBodyAddr) - 0x1d;
-          const uint_t packedDataStart = fromLE(EndOfPackedSource) - fromLE(PackedSize) + 1;
+          const uint_t selfAddr = DepackerBodyAddr - 0x1d;
+          const uint_t packedDataStart = EndOfPackedSource - PackedSize + 1;
           return packedDataStart - selfAddr;
         }
 
         uint_t GetPackedDataSize() const
         {
-          return fromLE(PackedSize);
+          return PackedSize;
         }
-      } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+      };
     };
 
     struct Version2
     {
-      static const String DESCRIPTION;
-      static const std::size_t MIN_SIZE = 0x20;//TODO
-      static const std::string DEPACKER_PATTERN;
+      static const StringView DESCRIPTION;
+      static const std::size_t MIN_SIZE = 0x20;  // TODO
+      static const StringView DEPACKER_PATTERN;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-      PACK_PRE struct RawHeader
+      struct RawHeader
       {
         //+0
         char Padding1;
         //+1
-        uint16_t DepackerBodyAddr;
+        le_uint16_t DepackerBodyAddr;
         //+3
         char Padding2[4];
         //+7
-        uint16_t DepackerBodySize;
+        le_uint16_t DepackerBodySize;
         //+9
         char Padding3[5];
         //+e
-        uint16_t PackedSource;
+        le_uint16_t PackedSource;
         //+10
 
         uint_t GetPackedDataOffset() const
         {
-          const uint_t selfAddr = fromLE(DepackerBodyAddr) - 0x0d;
-          return fromLE(PackedSource) - selfAddr;
+          const uint_t selfAddr = DepackerBodyAddr - 0x0d;
+          return PackedSource - selfAddr;
         }
 
-        uint_t GetPackedDataSize() const
+        static uint_t GetPackedDataSize()
         {
           return 0;
         }
-      } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+      };
     };
 
-    const String Version1::DESCRIPTION = Text::GAM_DECODER_DESCRIPTION; 
-    const std::string Version1::DEPACKER_PATTERN =
-      "21??"   // ld hl,xxxx depacker body src
-      "11??"   // ld de,xxxx depacker body dst
-      "d5"     // push de
-      "01??"   // ld bc,xxxx depacker body size
-      "edb0"   // ldir
-      "21??"   // ld hl,xxxx PackedSource
-      "11ffff" // ld de,ffff EndOfPacked
-      "01??"   // ld bc,xxxx PackedSize
-      "edb8"   // lddr
-      "13"     // inc de
-      "eb"     // ex de,hl
-      "11??"   // ld de,depack target
-      "c9"     // ret
-      //+29 (0x1d) DepackerBody starts here
-      "7c"     // ld a,h
-      "b5"     // or l
-    ;
+    const StringView Version1::DESCRIPTION = "GamePacker"sv;
+    const StringView Version1::DEPACKER_PATTERN =
+        "21??"    // ld hl,xxxx depacker body src
+        "11??"    // ld de,xxxx depacker body dst
+        "d5"      // push de
+        "01??"    // ld bc,xxxx depacker body size
+        "edb0"    // ldir
+        "21??"    // ld hl,xxxx PackedSource
+        "11ffff"  // ld de,ffff EndOfPacked
+        "01??"    // ld bc,xxxx PackedSize
+        "edb8"    // lddr
+        "13"      // inc de
+        "eb"      // ex de,hl
+        "11??"    // ld de,depack target
+        "c9"      // ret
+        //+29 (0x1d) DepackerBody starts here
+        "7c"  // ld a,h
+        "b5"  // or l
+        ""sv;
 
-    const String Version2::DESCRIPTION = Text::GAMPLUS_DECODER_DESCRIPTION;
-    const std::string Version2::DEPACKER_PATTERN =
-      "21??"   // ld hl,xxxx depacker body src
-      "11??"   // ld de,xxxx depacker body dst
-      "01??"   // ld bc,xxxx depacker body size
-      "d5"     // push de
-      "edb0"   // ldir
-      "c9"     // ret
-      //+13 (0x0d)
-      "21??"   // ld hl,xxxx PackedSource
-      "11??"   // ld de,xxxx PackedTarget
-      "7e"
-      "cb7f"
-      "20?"
-      "e60f"
-      "47"
-      "ed6f"
-      "23"
-      "c603"
-      "4f"
-      "7b"
-      "96"
-      //23 e5 6f 7a 98 67 0600 edb0 e1 18e3 e67f ca7181 23 cb77 2007 4f 0600 edb0 18d2 e6 3f c603 48 7e 23 12 1310fc18c5
-    ;
+    const StringView Version2::DESCRIPTION = "GamePacker+"sv;
+    const StringView Version2::DEPACKER_PATTERN =
+        "21??"  // ld hl,xxxx depacker body src
+        "11??"  // ld de,xxxx depacker body dst
+        "01??"  // ld bc,xxxx depacker body size
+        "d5"    // push de
+        "edb0"  // ldir
+        "c9"    // ret
+        //+13 (0x0d)
+        "21??"  // ld hl,xxxx PackedSource
+        "11??"  // ld de,xxxx PackedTarget
+        "7e"
+        "cb7f"
+        "20?"
+        "e60f"
+        "47"
+        "ed6f"
+        "23"
+        "c603"
+        "4f"
+        "7b"
+        "96"
+        // 23 e5 6f 7a 98 67 0600 edb0 e1 18e3 e67f ca7181 23 cb77 2007 4f 0600 edb0 18d2 e6 3f c603 48 7e 23 12
+        // 1310fc18c5
+        ""sv;
 
-    static_assert(sizeof(Version1::RawHeader) == 0x15, "Invalid layout");
-    static_assert(sizeof(Version2::RawHeader) == 0x10, "Invalid layout");
+    static_assert(sizeof(Version1::RawHeader) * alignof(Version1::RawHeader) == 0x15, "Invalid layout");
+    static_assert(sizeof(Version2::RawHeader) * alignof(Version2::RawHeader) == 0x10, "Invalid layout");
 
     template<class Version>
     class Container
@@ -176,8 +160,7 @@ namespace Packed
       Container(const void* data, std::size_t size)
         : Data(static_cast<const uint8_t*>(data))
         , Size(size)
-      {
-      }
+      {}
 
       bool Check() const
       {
@@ -198,7 +181,7 @@ namespace Packed
       std::size_t GetPackedDataSize() const
       {
         const typename Version::RawHeader& header = GetHeader();
-        if (uint_t packed = header.GetPackedDataSize())
+        if (const uint_t packed = header.GetPackedDataSize())
         {
           return packed;
         }
@@ -210,6 +193,7 @@ namespace Packed
         assert(Size >= sizeof(typename Version::RawHeader));
         return *safe_ptr_cast<const typename Version::RawHeader*>(Data);
       }
+
     private:
       const uint8_t* const Data;
       const std::size_t Size;
@@ -223,8 +207,6 @@ namespace Packed
         : IsValid(container.Check())
         , Header(container.GetHeader())
         , Stream(container.GetPackedData(), container.GetPackedDataSize())
-        , Result(new Dump())
-        , Decoded(*Result)
       {
         if (IsValid && !Stream.Eof())
         {
@@ -232,25 +214,22 @@ namespace Packed
         }
       }
 
-      std::unique_ptr<Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid
-          ? std::move(Result)
-          : std::unique_ptr<Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
 
       std::size_t GetUsedSize() const
       {
-        return IsValid
-          ? Header.GetPackedDataOffset() + Stream.GetProcessedBytes()
-          : 0;
+        return IsValid ? Header.GetPackedDataOffset() + Stream.GetProcessedBytes() : 0;
       }
+
     private:
       bool DecodeData()
       {
-        Decoded.reserve(Header.GetPackedDataSize() * 2);
+        Decoded = Binary::DataBuilder(Header.GetPackedDataSize() * 2);
 
-        while (!Stream.Eof() && Decoded.size() < MAX_DECODED_SIZE)
+        while (!Stream.Eof() && Decoded.Size() < MAX_DECODED_SIZE)
         {
           const uint8_t byt = Stream.GetByte();
           if (0 == (byt & 128))
@@ -271,7 +250,7 @@ namespace Packed
             }
             for (; count && !Stream.Eof(); --count)
             {
-              Decoded.push_back(Stream.GetByte());
+              Decoded.AddByte(Stream.GetByte());
             }
             if (count)
             {
@@ -282,19 +261,19 @@ namespace Packed
           {
             const uint_t data = Stream.GetByte();
             const uint_t len = (byt & 63) + 3;
-            std::fill_n(std::back_inserter(Decoded), len, data);
+            Fill(Decoded, len, data);
           }
         }
         return true;
       }
+
     private:
       bool IsValid;
       const typename Version::RawHeader& Header;
       ByteStream Stream;
-      std::unique_ptr<Dump> Result;
-      Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
-  }//namespace GamePacker
+  }  // namespace GamePacker
 
   template<class Version>
   class GamePackerDecoder : public Decoder
@@ -302,10 +281,9 @@ namespace Packed
   public:
     GamePackerDecoder()
       : Depacker(Binary::CreateFormat(Version::DEPACKER_PATTERN, Version::MIN_SIZE))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Version::DESCRIPTION;
     }
@@ -319,17 +297,18 @@ namespace Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
 
       const GamePacker::Container<Version> container(rawData.Start(), rawData.Size());
       if (!container.Check())
       {
-        return Container::Ptr();
+        return {};
       }
       GamePacker::DataDecoder<Version> decoder(container);
       return CreateContainer(decoder.GetResult(), decoder.GetUsedSize());
     }
+
   private:
     const Binary::Format::Ptr Depacker;
   };
@@ -343,5 +322,4 @@ namespace Packed
   {
     return MakePtr<GamePackerDecoder<GamePacker::Version2> >();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

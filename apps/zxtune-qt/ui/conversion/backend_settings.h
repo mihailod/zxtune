@@ -1,19 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief Backend settings base widget interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Backend settings base widget interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-#include <parameters/container.h>
-//qt includes
+#include "parameters/container.h"
+
+#include "string_view.h"
+#include "types.h"
+
 #include <QtWidgets/QWidget>
 
 namespace UI
@@ -23,10 +24,18 @@ namespace UI
     Q_OBJECT
   protected:
     explicit BackendSettingsWidget(QWidget& parent);
+
   public:
-    virtual String GetBackendId() const = 0;
+    // TODO: use Sound::BackendId
+    virtual StringView GetBackendId() const = 0;
     virtual QString GetDescription() const = 0;
+
+    template<class T>
+    void SettingChanged(T)
+    {
+      emit SettingsChanged();
+    }
   signals:
     void SettingsChanged();
   };
-}
+}  // namespace UI

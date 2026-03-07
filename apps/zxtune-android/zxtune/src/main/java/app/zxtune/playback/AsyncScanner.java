@@ -9,7 +9,6 @@ import androidx.core.os.OperationCanceledException;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import app.zxtune.Log;
@@ -193,7 +192,12 @@ public final class AsyncScanner {
 
     @Override
     public TimeStamp getDuration() {
-      return TimeStamp.createFrom(module.getDurationInMs(), TimeUnit.MILLISECONDS);
+      return module.getDuration();
+    }
+
+    @Override
+    public long getSize() {
+      return module.getProperty(ModuleAttributes.SIZE, 0);
     }
 
     @Override

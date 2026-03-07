@@ -1,19 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief OGG settings widget factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief OGG settings widget factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "backend_settings.h"
+class QWidget;
 
 namespace UI
 {
-  BackendSettingsWidget* CreateOGGSettingsWidget(QWidget& parent);
+  class BackendSettingsWidget* CreateOGGSettingsWidget(QWidget& parent);
 }

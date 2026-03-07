@@ -131,6 +131,7 @@
 #include "../snddef.h"
 #include "../EmuHelper.h"
 #include "../EmuCores.h"
+#include "../logging.h"
 #include "upd7759.h"
 
 
@@ -155,6 +156,7 @@ static void upd7759_alloc_rom(void* info, UINT32 memsize);
 static void upd7759_write_rom(void* info, UINT32 offset, UINT32 length, const UINT8* data);
 
 static void upd7759_set_mute_mask(void *info, UINT32 MuteMask);
+static void upd7759_set_log_cb(void* info, DEVCB_LOG func, void* param);
 
 
 static DEVDEF_RWFUNC devFunc[] =
@@ -163,11 +165,13 @@ static DEVDEF_RWFUNC devFunc[] =
 	{RWF_REGISTER | RWF_READ, DEVRW_A8D8, 0, upd7759_read},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_BLOCK, 0, upd7759_write_rom},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_MEMSIZE, 0, upd7759_alloc_rom},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, upd7759_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef =
 {
 	"uPD7759", "MAME", FCC_MAME,
+	1,  // Channels
 	
 	device_start_upd7759,
 	device_stop_upd7759,
@@ -178,6 +182,7 @@ static DEV_DEF devDef =
 	upd7759_set_mute_mask,
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	upd7759_set_log_cb,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs
@@ -202,7 +207,6 @@ const DEV_DEF* devDefList_uPD7759[] =
 
 
 #define DEBUG_STATES    (0)
-#define DEBUG_METHOD    logerror
 
 
 
@@ -234,7 +238,12 @@ enum
 	STATE_NIBBLE_MSN,
 	STATE_NIBBLE_LSN
 };
-
+// chip modes
+enum
+{
+	MODE_STAND_ALONE,
+	MODE_SLAVE
+};
 
 
 /************************************************************
@@ -247,6 +256,7 @@ typedef struct _upd7759_state upd7759_state;
 struct _upd7759_state
 {
 	DEV_DATA _devData;
+	DEV_LOGGER logger;
 
 	/* chip configuration */
 	UINT8     sample_offset_shift;        /* header sample address shift (access data > 0xffff) */
@@ -277,6 +287,7 @@ struct _upd7759_state
 	UINT8       first_valid_header;         /* did we get our first valid header yet? */
 	UINT32      offset;                     /* current ROM offset */
 	UINT32      repeat_offset;              /* current ROM repeat offset */
+	int         mode;                       /* current mode of the sound chip */
 
 	/* ADPCM processing */
 	INT8        adpcm_state;                /* ADPCM state index */
@@ -289,7 +300,6 @@ struct _upd7759_state
 	UINT8 *     rombase;                    /* pointer to ROM data or NULL for slave mode */
 	UINT32      romoffset;                  /* ROM offset to make save/restore easier */
 	UINT32      rommask;                    /* maximum address offset */
-	UINT8       ChipMode;                   /* 0 - Master, 1 - Slave */
 
 	UINT8       Muted;
 
@@ -362,19 +372,19 @@ INLINE void update_adpcm(upd7759_state *chip, int data)
 
 *************************************************************/
 
-static void get_fifo_data(upd7759_state *chip)
+static UINT8 get_fifo_data(upd7759_state *chip)
 {
 	if (chip->dbuf_pos_read == chip->dbuf_pos_write)
 	{
-		logerror("Warning: UPD7759 reading empty FIFO!\n");
-		return;
+		emu_logf(&chip->logger, DEVLOG_DEBUG, "reading empty FIFO!\n");
+		return 1;
 	}
 	
 	chip->fifo_in = chip->data_buf[chip->dbuf_pos_read];
 	chip->dbuf_pos_read ++;
 	chip->dbuf_pos_read &= 0x3F;
 	
-	return;
+	return 0;
 }
 
 static void advance_state(upd7759_state *chip)
@@ -388,10 +398,22 @@ static void advance_state(upd7759_state *chip)
 
 		/* drop DRQ state: update to the intended state */
 		case STATE_DROP_DRQ:
+			if (chip->mode == MODE_SLAVE) // Slave Mode only
+			{
+				UINT8 fail = get_fifo_data(chip);
+				if (fail)
+				{
+					if (chip->drq < 2)	// up to 2 attempts at waiting for the data
+					{
+						chip->drq ++;
+						chip->clocks_left = 21;
+						return;
+					}
+				}
+			}
+
 			chip->drq = 0;
 
-			if (chip->ChipMode)
-				get_fifo_data(chip);    // Slave Mode only
 			chip->clocks_left = chip->post_drq_clocks;
 			chip->state = chip->post_drq_state;
 			break;
@@ -399,7 +421,7 @@ static void advance_state(upd7759_state *chip)
 		/* Start state: we begin here as soon as a sample is triggered */
 		case STATE_START:
 			chip->req_sample = chip->rom ? chip->fifo_in : 0x10;
-			if (DEBUG_STATES) DEBUG_METHOD("UPD7759: req_sample = %02X\n", chip->req_sample);
+			if (DEBUG_STATES) emu_logf(&chip->logger, DEVLOG_TRACE, "req_sample = %02X\n", chip->req_sample);
 
 			/* 35+ cycles after we get here, the /DRQ goes low
 			 *     (first byte (number of samples in ROM) should be sent in response)
@@ -415,7 +437,7 @@ static void advance_state(upd7759_state *chip)
 		/* First request state: issue a request for the first byte */
 		/* The expected response will be the index of the last sample */
 		case STATE_FIRST_REQ:
-			if (DEBUG_STATES) DEBUG_METHOD("UPD7759: first data request\n");
+			if (DEBUG_STATES) emu_logf(&chip->logger, DEVLOG_TRACE, "first data request\n");
 			chip->drq = 1;
 
 			/* 44 cycles later, we will latch this value and request another byte */
@@ -427,7 +449,7 @@ static void advance_state(upd7759_state *chip)
 		/* The second byte read will be just a dummy */
 		case STATE_LAST_SAMPLE:
 			chip->last_sample = chip->rom ? chip->rom[0] : chip->fifo_in;
-			if (DEBUG_STATES) DEBUG_METHOD("UPD7759: last_sample = %02X, requesting dummy 1\n", chip->last_sample);
+			if (DEBUG_STATES) emu_logf(&chip->logger, DEVLOG_TRACE, "last_sample = %02X, requesting dummy 1\n", chip->last_sample);
 			chip->drq = 1;
 
 			/* 28 cycles later, we will latch this value and request another byte */
@@ -438,7 +460,7 @@ static void advance_state(upd7759_state *chip)
 		/* First dummy state: ignore any data here and issue a request for the third byte */
 		/* The expected response will be the MSB of the sample address */
 		case STATE_DUMMY1:
-			if (DEBUG_STATES) DEBUG_METHOD("UPD7759: dummy1, requesting offset_hi\n");
+			if (DEBUG_STATES) emu_logf(&chip->logger, DEVLOG_TRACE, "dummy1, requesting offset_hi\n");
 			chip->drq = 1;
 
 			/* 32 cycles later, we will latch this value and request another byte */
@@ -450,7 +472,7 @@ static void advance_state(upd7759_state *chip)
 		/* The expected response will be the LSB of the sample address */
 		case STATE_ADDR_MSB:
 			chip->offset = (chip->rom ? chip->rom[chip->req_sample * 2 + 5] : chip->fifo_in) << (8 + chip->sample_offset_shift);
-			if (DEBUG_STATES) DEBUG_METHOD("UPD7759: offset_hi = %02X, requesting offset_lo\n", chip->offset >> (8 + chip->sample_offset_shift));
+			if (DEBUG_STATES) emu_logf(&chip->logger, DEVLOG_TRACE, "offset_hi = %02X, requesting offset_lo\n", chip->offset >> (8 + chip->sample_offset_shift));
 			chip->drq = 1;
 
 			/* 44 cycles later, we will latch this value and request another byte */
@@ -462,8 +484,8 @@ static void advance_state(upd7759_state *chip)
 		/* The expected response will be just a dummy */
 		case STATE_ADDR_LSB:
 			chip->offset |= (chip->rom ? chip->rom[chip->req_sample * 2 + 6] : chip->fifo_in) << chip->sample_offset_shift;
-			if (DEBUG_STATES) DEBUG_METHOD("UPD7759: offset_lo = %02X, requesting dummy 2\n", (chip->offset >> chip->sample_offset_shift) & 0xff);
-			if (chip->offset > chip->rommask) logerror("uPD7759 offset %X > rommask %X\n",chip->offset, chip->rommask);
+			if (DEBUG_STATES) emu_logf(&chip->logger, DEVLOG_TRACE, "offset_lo = %02X, requesting dummy 2\n", (chip->offset >> chip->sample_offset_shift) & 0xff);
+			if (chip->offset > chip->rommask) emu_logf(&chip->logger, DEVLOG_DEBUG, "offset %X > rommask %X\n",chip->offset, chip->rommask);
 			chip->drq = 1;
 
 			/* 36 cycles later, we will latch this value and request another byte */
@@ -476,7 +498,7 @@ static void advance_state(upd7759_state *chip)
 		case STATE_DUMMY2:
 			chip->offset++;
 			chip->first_valid_header = 0;
-			if (DEBUG_STATES) DEBUG_METHOD("UPD7759: dummy2, requesting block header\n");
+			if (DEBUG_STATES) emu_logf(&chip->logger, DEVLOG_TRACE, "dummy2, requesting block header\n");
 			chip->drq = 1;
 
 			/* 36?? cycles later, we will latch this value and request another byte */
@@ -494,7 +516,7 @@ static void advance_state(upd7759_state *chip)
 				chip->offset = chip->repeat_offset;
 			}
 			chip->block_header = chip->rom ? chip->rom[chip->offset++ & chip->rommask] : chip->fifo_in;
-			if (DEBUG_STATES) DEBUG_METHOD("UPD7759: header (@%05X) = %02X, requesting next byte\n", chip->offset, chip->block_header);
+			if (DEBUG_STATES) emu_logf(&chip->logger, DEVLOG_TRACE, "header (@%05X) = %02X, requesting next byte\n", chip->offset, chip->block_header);
 			chip->drq = 1;
 
 			/* our next step depends on the top two bits */
@@ -537,7 +559,7 @@ static void advance_state(upd7759_state *chip)
 		/* The expected response will be the first data byte */
 		case STATE_NIBBLE_COUNT:
 			chip->nibbles_left = (chip->rom ? chip->rom[chip->offset++ & chip->rommask] : chip->fifo_in) + 1;
-			if (DEBUG_STATES) DEBUG_METHOD("UPD7759: nibble_count = %u, requesting next byte\n", (unsigned)chip->nibbles_left);
+			if (DEBUG_STATES) emu_logf(&chip->logger, DEVLOG_TRACE, "nibble_count = %u, requesting next byte\n", (unsigned)chip->nibbles_left);
 			chip->drq = 1;
 
 			/* 36?? cycles later, we will latch this value and request another byte */
@@ -593,10 +615,6 @@ static void upd7759_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 {
 	upd7759_state *chip = (upd7759_state *)param;
 	UINT32 i;
-	INT32 clocks_left = chip->clocks_left;
-	INT16 sample = chip->Muted ? 0 : chip->sample;
-	UINT32 step = chip->step;
-	UINT32 pos = chip->pos;
 	DEV_SMPL *buffer = outputs[0];
 	DEV_SMPL *buffer2 = outputs[1];
 
@@ -606,51 +624,46 @@ static void upd7759_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 		for (; i < samples; i++)
 		{
 			/* store the current sample */
+			INT16 sample = chip->Muted ? 0 : chip->sample;
 			buffer[i] = sample << 7;
 			buffer2[i] = sample << 7;
 
 			/* advance by the number of clocks/output sample */
-			pos += step;
+			chip->pos += chip->step;
 
-			/* handle clocks, but only in standalone mode */
-			if (! chip->ChipMode)
+			if (chip->mode == MODE_STAND_ALONE)
 			{
-				while (chip->rom && pos >= FRAC_ONE)
+				/* handle clocks, but only in standalone mode */
+				while (chip->rom != NULL && chip->pos >= FRAC_ONE)
 				{
-					int clocks_this_time = pos >> FRAC_BITS;
-					if (clocks_this_time > clocks_left)
-						clocks_this_time = clocks_left;
+					int clocks_this_time = chip->pos >> FRAC_BITS;
+					if (clocks_this_time > chip->clocks_left)
+						clocks_this_time = chip->clocks_left;
 
 					/* clock once */
-					pos -= clocks_this_time * FRAC_ONE;
-					clocks_left -= clocks_this_time;
+					chip->pos -= clocks_this_time * FRAC_ONE;
+					chip->clocks_left -= clocks_this_time;
 
 					/* if we're out of clocks, time to handle the next state */
-					if (clocks_left == 0)
+					if (chip->clocks_left == 0)
 					{
 						/* advance one state; if we hit idle, bail */
 						advance_state(chip);
 						if (chip->state == STATE_IDLE)
 							break;
-
-						/* reimport the variables that we cached */
-						clocks_left = chip->clocks_left;
-						sample = chip->Muted ? 0 : chip->sample;
 					}
 				}
 			}
 			else
 			{
-				// advance the state (4x because of Clock Divider /4)
-				INT32 rem_clocks = 4;
-				
-				while(rem_clocks && clocks_left <= rem_clocks)
+				while(chip->clocks_left <= (INT32)(chip->pos >> FRAC_BITS))
 				{
-					rem_clocks -= clocks_left;
+					chip->pos -= chip->clocks_left << FRAC_BITS;
+					chip->clocks_left = 0;
 					upd7759_slave_update(chip);
-					clocks_left = chip->clocks_left;
 				}
-				clocks_left -= rem_clocks;
+				chip->clocks_left -= (chip->pos >> FRAC_BITS);
+				chip->pos &= FRAC_MASK;
 			}
 		}
 
@@ -661,10 +674,6 @@ static void upd7759_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 		memset(&buffer[i], 0, samples * sizeof(DEV_SMPL));
 		memset(&buffer2[i], 0, samples * sizeof(DEV_SMPL));
 	}
-
-	/* flush the state back */
-	chip->clocks_left = clocks_left;
-	chip->pos = pos;
 }
 
 /************************************************************
@@ -682,7 +691,7 @@ static void upd7759_slave_update(void *ptr)
 	advance_state(chip);
 
 	// if the DRQ changed, update it
-	//logerror("upd7759_slave_update: DRQ %d->%d\n", olddrq, chip->drq);
+	//emu_logf(&chip->logger, DEVLOG_DEBUG, "slave_update: DRQ %d->%d\n", olddrq, chip->drq);
 	if (olddrq != chip->drq && chip->drqcallback != NULL)
 		(*chip->drqcallback)(chip, chip->drq);
 
@@ -729,7 +738,7 @@ static void upd7759_reset(void *info)
 	/* turn off any timer */
 	//if (chip->timer)
 	//	chip->timer->adjust(attotime::never);
-	if (chip->ChipMode)
+	if (chip->mode == MODE_SLAVE)
 		chip->clocks_left = -1;
 }
 
@@ -742,7 +751,7 @@ static UINT8 device_start_upd7759(const DEV_GEN_CFG* cfg, DEV_INFO* retDevInf)
 	if (chip == NULL)
 		return 0xFF;
 
-	chip->ChipMode = cfg->flags;
+	chip->mode = (cfg->flags & 1) ? MODE_SLAVE : MODE_STAND_ALONE;
 
 	/* chip configuration */
 	//chip->sample_offset_shift = (type() == UPD7759) ? 1 : 0;
@@ -761,7 +770,7 @@ static UINT8 device_start_upd7759(const DEV_GEN_CFG* cfg, DEV_INFO* retDevInf)
 	chip->romoffset = 0x00;
 	chip->romsize = 0x00;
 	chip->rom = chip->rombase = NULL;
-	if (chip->ChipMode)
+	if (chip->mode == MODE_SLAVE)
 	{
 		//assert(type() == UPD7759); // other chips do not support slave mode
 		//chip->timer = timer_alloc(TIMER_SLAVE_UPDATE);
@@ -822,7 +831,7 @@ static void upd7759_start_w(void *info, UINT8 state)
 	UINT8 oldstart = chip->start;
 	chip->start = (state != 0);
 
-	//logerror("upd7759_start_w: %d->%d\n", oldstart, chip->start);
+	//emu_logf(&chip->logger, DEVLOG_DEBUG, "start_w: %d->%d\n", oldstart, chip->start);
 
 	/* on the rising edge, if we're idle, start going, but not if we're held in reset */
 	if (chip->state == STATE_IDLE && !oldstart && chip->start && chip->reset)
@@ -842,12 +851,17 @@ static void upd7759_port_w(void *info, UINT8 data)
 	/* update the FIFO value */
 	upd7759_state *chip = (upd7759_state *)info;
 	
-	if (! chip->ChipMode)
+	if (chip->mode == MODE_STAND_ALONE)
 	{
 		chip->fifo_in = data;
 	}
 	else
 	{
+		if (((chip->dbuf_pos_write + 1) & 0x3F) == chip->dbuf_pos_read)
+		{
+			emu_logf(&chip->logger, DEVLOG_DEBUG, "trying to write to full FIFO!\n");
+			return;
+		}
 		// Valley Bell: added FIFO buffer for Slave mode
 		chip->data_buf[chip->dbuf_pos_write] = data;
 		chip->dbuf_pos_write ++;
@@ -945,5 +959,12 @@ static void upd7759_set_mute_mask(void *info, UINT32 MuteMask)
 	
 	chip->Muted = MuteMask & 0x01;
 	
+	return;
+}
+
+static void upd7759_set_log_cb(void* info, DEVCB_LOG func, void* param)
+{
+	upd7759_state *chip = (upd7759_state *)info;
+	dev_logger_set(&chip->logger, chip, func, param);
 	return;
 }

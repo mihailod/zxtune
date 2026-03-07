@@ -7,7 +7,9 @@
 #include "helper.h"
 #include "playerbase.hpp"
 #include "../utils/DataLoader.h"
+#include "../emu/logging.h"
 #include <vector>
+#include <string>
 
 
 #define FCC_DRO 	0x44524F00
@@ -56,6 +58,7 @@ struct DRO_HEADER
 	UINT8 cmdDlyLong;
 	UINT8 regCmdCnt;
 	UINT8 regCmdMap[0x80];
+	UINT32 dataOfs;
 };
 
 // DRO v2 often incorrectly specify DualOPL2 instead of OPL3
@@ -65,28 +68,36 @@ struct DRO_HEADER
 #define DRO_V2OPL3_ENFORCE	0x02	// always enforce OPL3 mode when the DRO says DualOPL2
 struct DRO_PLAY_OPTIONS
 {
+	PLR_GEN_OPTS genOpts;
 	UINT8 v2opl3Mode;	// DRO v2 DualOPL2 -> OPL3 fixes
 };
 
 
-typedef struct _dro_chip_device DRO_CHIPDEV;
-struct _dro_chip_device
-{
-	VGM_BASEDEV base;
-	size_t optID;
-	DEVFUNC_WRITE_A8D8 write;
-};
-
 class DROPlayer : public PlayerBase
 {
+private:
+	struct DEVLOG_CB_DATA
+	{
+		DROPlayer* player;
+		size_t chipDevID;
+	};
+	struct DRO_CHIPDEV
+	{
+		VGM_BASEDEV base;
+		size_t optID;
+		DEVFUNC_WRITE_A8D8 write;
+		DEVLOG_CB_DATA logCbData;
+	};
+	
 public:
 	DROPlayer();
 	~DROPlayer();
 	
 	UINT32 GetPlayerType(void) const;
 	const char* GetPlayerName(void) const;
-	static UINT8 IsMyFile(DATA_LOADER *fileLoader);
-	UINT8 LoadFile(DATA_LOADER *fileLoader);
+	static UINT8 PlayerCanLoadFile(DATA_LOADER *dataLoader);
+	UINT8 CanLoadFile(DATA_LOADER *dataLoader) const;
+	UINT8 LoadFile(DATA_LOADER *dataLoader);
 	UINT8 UnloadFile(void);
 	const DRO_HEADER* GetFileHeader(void) const;
 	
@@ -102,8 +113,9 @@ public:
 	
 	//UINT32 GetSampleRate(void) const;
 	UINT8 SetSampleRate(UINT32 sampleRate);
-	//UINT8 SetPlaybackSpeed(double speed);
-	//void SetCallback(PLAYER_EVENT_CB cbFunc, void* cbParam);
+	double GetPlaybackSpeed(void) const;
+	UINT8 SetPlaybackSpeed(double speed);
+	//void SetEventCallback(PLAYER_EVENT_CB cbFunc, void* cbParam);
 	UINT32 Tick2Sample(UINT32 ticks) const;
 	UINT32 Sample2Tick(UINT32 samples) const;
 	double Tick2Second(UINT32 ticks) const;
@@ -125,9 +137,16 @@ public:
 private:
 	size_t DeviceID2OptionID(UINT32 id) const;
 	void RefreshMuting(DRO_CHIPDEV& chipDev, const PLR_MUTE_OPTS& muteOpts);
+	void RefreshPanning(DRO_CHIPDEV& chipDev, const PLR_PAN_OPTS& panOpts);
 	
 	void ScanInitBlock(void);
+
+	void RefreshTSRates(void);
 	
+	static void PlayerLogCB(void* userParam, void* source, UINT8 level, const char* message);
+	static void SndEmuLogCB(void* userParam, void* source, UINT8 level, const char* message);
+	
+	void GenerateDeviceConfig(void);
 	UINT8 SeekToTick(UINT32 tick);
 	UINT8 SeekToFilePos(UINT32 pos);
 	void ParseFile(UINT32 ticks);
@@ -136,16 +155,17 @@ private:
 	void DoFileEnd(void);
 	void WriteReg(UINT8 port, UINT8 reg, UINT8 data);
 	
+	DEV_LOGGER _logger;
 	DATA_LOADER* _dLoad;
 	const UINT8* _fileData;	// data pointer for quick access, equals _dLoad->GetFileData().data()
 	
 	DRO_HEADER _fileHdr;
 	std::vector<UINT8> _devTypes;
 	std::vector<UINT8> _devPanning;
+	std::vector<DEV_GEN_CFG> _devCfgs;
 	UINT8 _realHwType;
 	UINT8 _portShift;	// 0 for OPL2 (1 port per chip), 1 for OPL3 (2 ports per chip)
 	UINT8 _portMask;	// (1 << _portShift) - 1
-	UINT32 _dataOfs;
 	UINT32 _tickFreq;
 	UINT32 _totalTicks;
 	
@@ -159,10 +179,14 @@ private:
 	// tick/sample conversion rates
 	UINT64 _tsMult;
 	UINT64 _tsDiv;
+	UINT64 _ttMult;
+	UINT64 _lastTsMult;
+	UINT64 _lastTsDiv;
 	
 	DRO_PLAY_OPTIONS _playOpts;
 	PLR_DEV_OPTS _devOpts[3];	// 0 = 1st OPL2, 1 = 2nd OPL2, 2 = 1st OPL3
 	std::vector<DRO_CHIPDEV> _devices;
+	std::vector<std::string> _devNames;
 	size_t _optDevMap[3];	// maps _devOpts vector index to _devices vector
 	
 	UINT32 _filePos;

@@ -1,31 +1,32 @@
 /**
-* 
-* @file
-*
-* @brief  Binary::Container CRTP helper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Binary::Container CRTP helper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/container.h>
-//std includes
+#include "binary/container.h"
+
 #include <type_traits>
 
 namespace Binary
 {
-  template<class BaseType, class DelegateType = Binary::Container>
+  template<class BaseType, class DelegateType = Container>
   class BaseContainer : public BaseType
   {
   public:
     explicit BaseContainer(typename DelegateType::Ptr delegate)
       : Delegate(std::move(delegate))
     {
-      static_assert(std::is_base_of<Binary::Container, BaseType>::value, "Template parameter should have Binary::Container base");
-      static_assert(std::is_base_of<Binary::Container, DelegateType>::value, "Template parameter should have Binary::Container base");
+      static_assert(std::is_base_of<Container, BaseType>::value,
+                    "Template parameter should have Binary::Container base");
+      static_assert(std::is_base_of<Container, DelegateType>::value,
+                    "Template parameter should have Binary::Container base");
     }
 
     const void* Start() const override
@@ -42,7 +43,8 @@ namespace Binary
     {
       return Delegate->GetSubcontainer(offset, size);
     }
+
   protected:
     const typename DelegateType::Ptr Delegate;
   };
-}
+}  // namespace Binary

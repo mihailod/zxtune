@@ -1,17 +1,16 @@
 /**
-* 
-* @file
-*
-* @brief Options access interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Options access interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <parameters/container.h>
+#include "parameters/container.h"
 
 class GlobalOptions
 {

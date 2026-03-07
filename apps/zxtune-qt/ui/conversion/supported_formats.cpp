@@ -1,28 +1,27 @@
 /**
-* 
-* @file
-*
-* @brief Supported formats pane implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Supported formats pane implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "supported_formats.h"
+#include "apps/zxtune-qt/ui/conversion/supported_formats.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/conversion/parameters.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "supported_formats.ui.h"
-#include "parameters.h"
-#include "supp/options.h"
-#include "ui/utils.h"
-#include "ui/tools/parameters_helpers.h"
-//common includes
-#include <contract.h>
-//library includes
-#include <sound/service.h>
-//std includes
-#include <functional>
-#include <set>
-//qt includes
+
+#include "sound/service.h"
+#include "strings/map.h"
+
+#include "contract.h"
+#include "string_view.h"
+
 #include <QtWidgets/QRadioButton>
 
 namespace
@@ -32,14 +31,13 @@ namespace
   public:
     explicit FileBackendsSet(Parameters::Accessor::Ptr options)
     {
-      const Sound::Service::Ptr service = Sound::CreateFileService(options);
-      for (Sound::BackendInformation::Iterator::Ptr backends = service->EnumerateBackends(); backends->IsValid(); backends->Next())
+      const auto service = Sound::CreateFileService(std::move(options));
+      for (const auto& info : service->EnumerateBackends())
       {
-        const Sound::BackendInformation::Ptr info = backends->Get();
-        Ids.insert(std::make_pair(info->Id(), info->Status()));
+        Ids.emplace(info->Id(), info->Status());
       }
     }
-    
+
     Strings::Array GetAvailable() const
     {
       Strings::Array result;
@@ -53,25 +51,23 @@ namespace
       return result;
     }
 
-    Error GetStatus(const String& id) const
+    Error GetStatus(StringView id) const
     {
-      const Id2Status::const_iterator it = Ids.find(id);
-      return it != Ids.end()
-        ? it->second
-        : Error();//TODO
+      return Ids.Get(id);
     }
+
   private:
-    typedef std::map<String, Error> Id2Status;
-    Id2Status Ids;
+    Strings::ValueMap<Error> Ids;
   };
 
-  const Char TYPE_WAV[] = {'w', 'a', 'v', 0};
-  const Char TYPE_MP3[] = {'m', 'p', '3', 0};
-  const Char TYPE_OGG[] = {'o', 'g', 'g', 0};
-  const Char TYPE_FLAC[] = {'f', 'l', 'a', 'c', 0};
+  const auto TYPE_WAV = "wav"sv;
+  const auto TYPE_MP3 = "mp3"sv;
+  const auto TYPE_OGG = "ogg"sv;
+  const auto TYPE_FLAC = "flac"sv;
 
-  class SupportedFormats : public UI::SupportedFormatsWidget
-                         , private Ui::SupportedFormats
+  class SupportedFormats
+    : public UI::SupportedFormatsWidget
+    , private Ui::SupportedFormats
   {
   public:
     explicit SupportedFormats(QWidget& parent)
@@ -79,7 +75,7 @@ namespace
       , Options(GlobalOptions::Instance().Get())
       , Backends(Options)
     {
-      //setup self
+      // setup self
       setupUi(this);
 
       Buttons[TYPE_WAV] = selectWAV;
@@ -87,9 +83,8 @@ namespace
       Buttons[TYPE_OGG] = selectOGG;
       Buttons[TYPE_FLAC] = selectFLAC;
 
-      std::for_each(Buttons.begin(), Buttons.end(),
-        std::bind1st(std::mem_fun(&SupportedFormats::SetupButton), this));
-      //fixup
+      std::for_each(Buttons.begin(), Buttons.end(), [this](auto button) { SetupButton(button); });
+      // fixup
       for (const auto& id2b : Buttons)
       {
         if (id2b.second->isChecked())
@@ -101,7 +96,7 @@ namespace
       selectWAV->setChecked(true);
     }
 
-    String GetSelectedId() const override
+    StringView GetSelectedId() const override
     {
       for (const auto& id2b : Buttons)
       {
@@ -124,12 +119,13 @@ namespace
       }
       return {};
     }
+
   private:
-    typedef std::map<String, QRadioButton*> IdToButton;
+    using IdToButton = std::map<StringView, QRadioButton*>;
 
     void SetupButton(IdToButton::value_type but)
     {
-      Require(connect(but.second, SIGNAL(toggled(bool)), SIGNAL(SettingsChanged())));
+      Require(connect(but.second, &QRadioButton::toggled, this, [this](bool) { emit SettingsChanged(); }));
       if (const Error status = Backends.GetStatus(but.first))
       {
         but.second->setEnabled(false);
@@ -141,19 +137,19 @@ namespace
       }
       Parameters::ExclusiveValue::Bind(*but.second, *Options, Parameters::ZXTuneQT::UI::Export::TYPE, but.first);
     }
+
   private:
     const Parameters::Container::Ptr Options;
     const FileBackendsSet Backends;
     IdToButton Buttons;
   };
-}
+}  // namespace
 
 namespace UI
 {
   SupportedFormatsWidget::SupportedFormatsWidget(QWidget& parent)
     : QWidget(&parent)
-  {
-  }
+  {}
 
   SupportedFormatsWidget* SupportedFormatsWidget::Create(QWidget& parent)
   {
@@ -164,4 +160,4 @@ namespace UI
   {
     return FileBackendsSet(GlobalOptions::Instance().Get()).GetAvailable();
   }
-}
+}  // namespace UI

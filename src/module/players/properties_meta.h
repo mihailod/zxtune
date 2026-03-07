@@ -1,19 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief  Formats::Chiptune::MetaBuilder adapter
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Formats::Chiptune::MetaBuilder adapter
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
+#include "formats/chiptune/builder_meta.h"
 #include "module/players/properties_helper.h"
-//library includes
-#include <formats/chiptune/builder_meta.h>
+
+#include "string_view.h"
 
 namespace Module
 {
@@ -22,15 +22,17 @@ namespace Module
   public:
     explicit MetaProperties(PropertiesHelper& delegate)
       : Delegate(delegate)
-    {
-    }
-    
-    void SetProgram(const String& program) override;
-    void SetTitle(const String& title) override;
-    void SetAuthor(const String& author) override;
+    {}
+
+    void SetProgram(StringView program) override;
+    void SetTitle(StringView title) override;
+    void SetAuthor(StringView author) override;
     void SetStrings(const Strings::Array& strings) override;
+    void SetComment(StringView comment) override;
+    void SetPicture(Binary::View picture) override;
 
   private:
     PropertiesHelper& Delegate;
+    std::size_t PictureSize = 0;
   };
-}
+}  // namespace Module

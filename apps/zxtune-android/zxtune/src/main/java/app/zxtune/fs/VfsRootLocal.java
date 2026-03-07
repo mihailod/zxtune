@@ -6,38 +6,35 @@
 
 package app.zxtune.fs;
 
-import android.annotation.TargetApi;
+import android.Manifest;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Environment;
-import android.os.storage.StorageManager;
-import android.os.storage.StorageVolume;
 import android.text.TextUtils;
-import android.text.format.Formatter;
 
 import androidx.annotation.Nullable;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Scanner;
 
-import app.zxtune.Log;
 import app.zxtune.R;
+import app.zxtune.ResultActivity;
+import app.zxtune.Util;
+import app.zxtune.coverart.AlbumArt;
+import app.zxtune.fs.local.Document;
+import app.zxtune.fs.local.StoragesSource;
 
-@Icon(R.drawable.ic_browser_vfs_local)
 final class VfsRootLocal extends StubObject implements VfsRoot {
 
   private static final String TAG = VfsRootLocal.class.getName();
   private static final String SCHEME = "file";
 
   private final Context context;
+  private final StoragesSource source;
 
   VfsRootLocal(Context context) {
     this.context = context;
+    this.source = StoragesSource.create(context);
   }
 
   @Override
@@ -61,98 +58,21 @@ final class VfsRootLocal extends StubObject implements VfsRoot {
     return null;
   }
 
+  @Nullable
+  @Override
+  public Object getExtension(String id) {
+    if (VfsExtensions.ICON.equals(id)) {
+      return R.drawable.ic_browser_vfs_local;
+    } else if (Build.VERSION.SDK_INT >= 23 && VfsExtensions.PERMISSION_QUERY_INTENT.equals(id)) {
+      return ResultActivity.Companion.createPermissionsRequestIntent(context, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+    } else {
+      return super.getExtension(id);
+    }
+  }
+
   @Override
   public void enumerate(Visitor visitor) {
-    if (Build.VERSION.SDK_INT < 24 || !listStorageVolumes(visitor)) {
-      listMountpoints(visitor);
-    }
-    listPlaces(visitor);
-  }
-
-  @TargetApi(24)
-  private boolean listStorageVolumes(Visitor visitor) {
-    final StorageManager mgr = (StorageManager)context.getSystemService(Context.STORAGE_SERVICE);
-    if (mgr == null) {
-      return false;
-    }
-    try {
-      final Method method = StorageVolume.class.getMethod("getPathFile");
-      for (StorageVolume vol : mgr.getStorageVolumes()) {
-        if (isGoodState(vol.getState())) {
-          feedGood((File) method.invoke(vol), vol.getDescription(context), visitor);
-        }
-      }
-      return true;
-    } catch (IllegalAccessException e) {
-      Log.w(TAG, e, "Failed to get path");
-    } catch (InvocationTargetException e) {
-      Log.w(TAG, e, "Failed to get path");
-    } catch (NoSuchMethodException e) {
-      Log.w(TAG, e, getStorageVolumeMethods());
-    }
-    return false;
-  }
-
-  private boolean isGoodState(String state) {
-    return Environment.MEDIA_MOUNTED.equals(state) || Environment.MEDIA_MOUNTED_READ_ONLY.equals(state);
-  }
-
-  @TargetApi(24)
-  private static String getStorageVolumeMethods() {
-    final StringBuilder builder = new StringBuilder();
-    builder.append("Available get methods:");
-    for (Method m : StorageVolume.class.getMethods()) {
-      final String name = m.getName();
-      if (name.startsWith("get")) {
-        builder.append(' ');
-        builder.append(name);
-      }
-    }
-    return builder.toString();
-  }
-
-  private void listMountpoints(Visitor visitor) {
-    final File mounts = new File("/proc/mounts");
-    ArrayList<File> result = new ArrayList<>(1);
-    try {
-      final Scanner scan = new Scanner(mounts);
-      while (scan.hasNext()) {
-        //assume no comments in file
-        final String line = scan.nextLine();
-        final String[] fields = line.split(" ");
-        final String device = fields[0];
-        if (device.startsWith("/dev/block/vold")
-                || device.equals("/dev/fuse")) {
-          final String mountpoint = fields[1];
-          final File point = new File(mountpoint);
-          if (!result.contains(point)) {
-            result.add(point);
-          }
-        }
-      }
-    } catch (IOException e) {
-      Log.w(TAG, e, "Failed to get external storages");
-    }
-    if (result.isEmpty()) {
-      if (isGoodState(Environment.getExternalStorageState())) {
-        feedGood(Environment.getExternalStorageDirectory(), "External storage", visitor);
-      } else {
-        for (File root : File.listRoots()) {
-          feedGood(root, "Root filesystem", visitor);
-        }
-      }
-    } else {
-      for (File dir : result) {
-        feedGood(dir, visitor);
-      }
-    }
-  }
-
-  private void listPlaces(Visitor visitor) {
-    final String[] types = {Environment.DIRECTORY_MUSIC, Environment.DIRECTORY_PODCASTS};
-    for (String type : types) {
-      feedGood(Environment.getExternalStoragePublicDirectory(type), visitor);
-    }
+    source.getStorages((obj, description) -> visitor.onDir(buildDir(obj, description)));
   }
 
   @Override
@@ -166,7 +86,7 @@ final class VfsRootLocal extends StubObject implements VfsRoot {
         return resolvePath(path);
       }
     } else {
-      return null;
+      return Document.tryResolve(context, uri);
     }
   }
 
@@ -195,19 +115,6 @@ final class VfsRootLocal extends StubObject implements VfsRoot {
 
   private VfsFile buildFile(File obj) {
     return new LocalFile(obj);
-  }
-
-  private void feedGood(@Nullable File dir, Visitor visitor) {
-    if (dir != null) {
-      visitor.onDir(buildDir(dir));
-    }
-  }
-
-  private void feedGood(@Nullable File dir, String description, Visitor visitor) {
-    //dir.canRead sometimes returns false while dir is really readable
-    if (dir != null) {
-      visitor.onDir(buildDir(dir, description));
-    }
   }
 
   @Nullable
@@ -239,9 +146,7 @@ final class VfsRootLocal extends StubObject implements VfsRoot {
     @Override
     public VfsObject getParent() {
       final File parent = object.getParentFile();
-      return parent != null
-              ? new LocalDir(parent)
-              : VfsRootLocal.this;
+      return parent != null ? new LocalDir(parent) : VfsRootLocal.this;
     }
   }
 
@@ -275,13 +180,22 @@ final class VfsRootLocal extends StubObject implements VfsRoot {
       if (files == null) {
         throw new IOException("Failed to enumerate files at " + object.getAbsolutePath());
       }
-      visitor.onItemsCount(files.length);
       for (File file : files) {
         if (file.isDirectory()) {
           visitor.onDir(buildDir(file));
         } else if (file.isFile()) {
           visitor.onFile(buildFile(file));
         }
+      }
+    }
+
+    @Nullable
+    @Override
+    public Object getExtension(String id) {
+      if (VfsExtensions.COVER_ART_URI.equals(id)) {
+        return AlbumArt.forDir(this);
+      } else {
+        return super.getExtension(id);
       }
     }
   }
@@ -294,7 +208,7 @@ final class VfsRootLocal extends StubObject implements VfsRoot {
 
     @Override
     public String getSize() {
-      return Formatter.formatShortFileSize(context, object.length());
+      return Util.formatSize(object.length());
     }
 
     @Nullable

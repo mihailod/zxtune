@@ -1,18 +1,17 @@
 /**
-* 
-* @file
-*
-* @brief Single channel mixer widget interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Single channel mixer widget interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <parameters/container.h>
-//qt includes
+#include "parameters/container.h"
+
 #include <QtWidgets/QWidget>
 
 namespace UI
@@ -22,6 +21,7 @@ namespace UI
     Q_OBJECT
   protected:
     explicit MixerWidget(QWidget& parent);
+
   public:
     enum Channel
     {
@@ -30,12 +30,12 @@ namespace UI
     };
 
     static MixerWidget* Create(QWidget& parent, Channel chan);
-  public slots:
+
     virtual void setValue(int val) = 0;
   signals:
     void valueChanged(int val);
   };
-}
+}  // namespace UI
 
 namespace Parameters
 {
@@ -44,9 +44,8 @@ namespace Parameters
     Q_OBJECT
   protected:
     explicit MixerValue(QObject& parent);
+
   public:
-    static void Bind(UI::MixerWidget& mix, Container& ctr, const NameType& name, int defValue);
-  private slots:
-    virtual void SetValue(int value) = 0;
+    static void Bind(UI::MixerWidget& mix, Container& ctr, Identifier name, int defValue);
   };
-}
+}  // namespace Parameters

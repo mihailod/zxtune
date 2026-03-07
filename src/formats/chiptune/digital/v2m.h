@@ -1,40 +1,33 @@
 /**
-* 
-* @file
-*
-* @brief  V2M parser interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  V2M parser interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
 #include "formats/chiptune/builder_meta.h"
-//library includes
-#include <formats/chiptune.h>
-#include <time/duration.h>
 
-namespace Formats
+#include "formats/chiptune.h"
+#include "time/duration.h"
+
+namespace Formats::Chiptune::V2m
 {
-  namespace Chiptune
+  // Use simplified parsing due to thirdparty library used
+  class Builder
   {
-    namespace V2m
-    {
-      //Use simplified parsing due to thirdparty library used
-      class Builder
-      {
-      public:
-        virtual ~Builder() = default;
+  public:
+    virtual ~Builder() = default;
 
-        virtual MetaBuilder& GetMetaBuilder() = 0;
+    virtual MetaBuilder& GetMetaBuilder() = 0;
 
-        virtual void SetTotalDuration(Time::Milliseconds duration) = 0;
-      };
+    virtual void SetTotalDuration(Time::Milliseconds duration) = 0;
+  };
 
-      Formats::Chiptune::Container::Ptr Parse(const Binary::Container& data, Builder& target);
-      Builder& GetStubBuilder();
-    }
-  }
-}
+  Formats::Chiptune::Container::Ptr Parse(const Binary::Container& data, Builder& target);
+  Builder& GetStubBuilder();
+}  // namespace Formats::Chiptune::V2m

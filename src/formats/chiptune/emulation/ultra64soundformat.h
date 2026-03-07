@@ -1,39 +1,35 @@
 /**
-* 
-* @file
-*
-* @brief  USF parser interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  USF parser interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/view.h>
-#include <formats/chiptune.h>
+#include "binary/view.h"
+#include "formats/chiptune.h"
 
-namespace Formats
+namespace Formats::Chiptune
 {
-  namespace Chiptune
+  namespace Ultra64SoundFormat
   {
-    namespace Ultra64SoundFormat
+    const uint_t VERSION_ID = 0x21;
+
+    class Builder
     {
-      const uint_t VERSION_ID = 0x21;
-      
-      class Builder
-      {
-      public:
-        virtual ~Builder() = default;
-        
-        virtual void SetRom(uint32_t offset, Binary::View content) = 0;
-        virtual void SetSaveState(uint32_t offset, Binary::View content) = 0;
-      };
+    public:
+      virtual ~Builder() = default;
 
-      void ParseSection(Binary::View data, Builder& target);
-    }
+      virtual void SetRom(uint32_t offset, Binary::View content) = 0;
+      virtual void SetSaveState(uint32_t offset, Binary::View content) = 0;
+    };
 
-    Decoder::Ptr CreateUSFDecoder();
-  }
-}
+    void ParseSection(Binary::View data, Builder& target);
+  }  // namespace Ultra64SoundFormat
+
+  Decoder::Ptr CreateUSFDecoder();
+}  // namespace Formats::Chiptune

@@ -1,14 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief Different compiler-dependend stubs
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Different compiler-dependend stubs
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-namespace __gnu_cxx
+#include <stddef.h>
+
+extern "C" char __cxa_demangle(const char*, char*, size_t*, int* status)
 {
-  void __verbose_terminate_handler() {}
+  if (status)
+  {
+    *status = -1;
+  }
+  return 0;
 }

@@ -1,14 +1,14 @@
 /**
-*
-* @file
-*
-* @brief  LZH test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  LZH test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../utils.h"
+#include "formats/test/utils.h"
 
 namespace
 {
@@ -16,7 +16,7 @@ namespace
   {
     const Formats::Packed::Decoder::Ptr decoder = Formats::Packed::CreateLZH1Decoder();
     std::vector<std::string> tests;
-    tests.push_back("packed1.bin");
+    tests.emplace_back("packed1.bin");
     Test::TestPacked(*decoder, "etalon.bin", tests);
   }
 
@@ -24,11 +24,10 @@ namespace
   {
     const Formats::Packed::Decoder::Ptr decoder = Formats::Packed::CreateLZH2Decoder();
     std::vector<std::string> tests;
-    tests.push_back("packed2.bin");
+    tests.emplace_back("packed2.bin");
     Test::TestPacked(*decoder, "etalon.bin", tests);
   }
-}
-
+}  // namespace
 
 int main()
 {

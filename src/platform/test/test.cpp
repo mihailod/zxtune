@@ -1,15 +1,17 @@
 /**
-*
-* @file
-*
-* @brief  Platform test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Platform test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <contract.h>
-#include <platform/tools.h>
+#include "platform/tools.h"
+
+#include "contract.h"
+
 #include <iostream>
 
 int main()

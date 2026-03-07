@@ -1,33 +1,27 @@
 /**
-* 
-* @file
-*
-* @brief  ProTracker v2.40 Phantom Family compiled modules support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ProTracker v2.40 Phantom Family compiled modules support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "formats/packed/container.h"
-#include "formats/chiptune/metainfo.h"
 #include "formats/chiptune/aym/protracker2.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-//std includes
-#include <array>
-#include <functional>
-//text includes
-#include <formats/text/chiptune.h>
-#include <formats/text/packed.h>
+#include "formats/chiptune/metainfo.h"
+#include "formats/packed/container.h"
 
-namespace Formats
-{
-namespace Packed
+#include "binary/format_factories.h"
+#include "debug/log.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+
+#include <algorithm>
+#include <array>
+
+namespace Formats::Packed
 {
   namespace CompiledPT24
   {
@@ -39,68 +33,64 @@ namespace Packed
     const std::size_t MAX_SAMPLES_COUNT = 32;
     const std::size_t MAX_ORNAMENTS_COUNT = 16;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawPlayer
+    struct RawPlayer
     {
       uint8_t Padding1;
-      uint16_t DataAddr;
-    } PACK_POST;
+      le_uint16_t DataAddr;
+    };
 
-    PACK_PRE struct RawHeader
+    struct RawHeader
     {
       uint8_t Tempo;
       uint8_t Length;
       uint8_t Loop;
-      std::array<uint16_t, MAX_SAMPLES_COUNT> SamplesOffsets;
-      std::array<uint16_t, MAX_ORNAMENTS_COUNT> OrnamentsOffsets;
-      uint16_t PatternsOffset;
+      std::array<le_uint16_t, MAX_SAMPLES_COUNT> SamplesOffsets;
+      std::array<le_uint16_t, MAX_ORNAMENTS_COUNT> OrnamentsOffsets;
+      le_uint16_t PatternsOffset;
       char Name[30];
       uint8_t Positions[1];
-    } PACK_POST;
+    };
+
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 132, "Wrong layout");
 
     const uint8_t POS_END_MARKER = 0xff;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
 
-    const String DESCRIPTION = String(Text::PROTRACKER24_DECODER_DESCRIPTION) + Text::PLAYER_SUFFIX;
+    const auto DESCRIPTION = "Pro Tracker v2.40 Phantom Family player"sv;
 
-    const std::string FORMAT(
-      "21??"  //ld hl,xxxx
-      "1803"  //jr xx
-      "c3??"  //jp xxxx
-      "f3"    //di
-      "e5"    //push hl
-      "7e"    //ld a,(hl)
-      "32??"  //ld (xxxx),a
-      "32??"  //ld (xxxx),a
-      "23"    //inc hl
-      "23"    //inc hl
-      "7e"    //ld a,(hl)
-      "23"    //inc hl
-      "11??"  //ld de,xxxx
-      "22??"  //ld (xxxx),hl
-      "22??"  //ld (xxxx),hl
-      "22??"  //ld (xxxx),hl
-      "19"    //add hl,de
-      "19"    //add hl,de
-    );
+    const auto FORMAT =
+        "21??"  // ld hl,xxxx
+        "1803"  // jr xx
+        "c3??"  // jp xxxx
+        "f3"    // di
+        "e5"    // push hl
+        "7e"    // ld a,(hl)
+        "32??"  // ld (xxxx),a
+        "32??"  // ld (xxxx),a
+        "23"    // inc hl
+        "23"    // inc hl
+        "7e"    // ld a,(hl)
+        "23"    // inc hl
+        "11??"  // ld de,xxxx
+        "22??"  // ld (xxxx),hl
+        "22??"  // ld (xxxx),hl
+        "22??"  // ld (xxxx),hl
+        "19"    // add hl,de
+        "19"    // add hl,de
+        ""sv;
 
     uint_t GetPatternsCount(const RawHeader& hdr, std::size_t maxSize)
     {
       const uint8_t* const dataBegin = &hdr.Tempo;
       const uint8_t* const dataEnd = dataBegin + maxSize;
       const uint8_t* const lastPosition = std::find(hdr.Positions, dataEnd, POS_END_MARKER);
-      if (lastPosition != dataEnd && 
-          lastPosition == std::find_if(hdr.Positions, lastPosition, std::bind2nd(std::greater_equal<std::size_t>(), MAX_PATTERNS_COUNT)))
+      if (lastPosition != dataEnd
+          && std::none_of(hdr.Positions, lastPosition, [](auto b) { return b >= MAX_PATTERNS_COUNT; }))
       {
         return 1 + *std::max_element(hdr.Positions, lastPosition);
       }
       return 0;
     }
-  }//CompiledPT24
+  }  // namespace CompiledPT24
 
   class CompiledPT24Decoder : public Decoder
   {
@@ -108,10 +98,9 @@ namespace Packed
     CompiledPT24Decoder()
       : Player(Binary::CreateFormat(CompiledPT24::FORMAT, CompiledPT24::PLAYER_SIZE + sizeof(CompiledPT24::RawHeader)))
       , Decoder(Formats::Chiptune::CreateProTracker2Decoder())
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return CompiledPT24::DESCRIPTION;
     }
@@ -127,14 +116,14 @@ namespace Packed
       const Binary::View data(rawData);
       if (!Player->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       const auto& rawPlayer = *data.As<RawPlayer>();
-      const uint_t dataAddr = fromLE(rawPlayer.DataAddr);
+      const uint_t dataAddr = rawPlayer.DataAddr;
       if (dataAddr < PLAYER_SIZE)
       {
         Dbg("Invalid compile addr");
-        return Container::Ptr();
+        return {};
       }
       const auto modData = data.SubView(PLAYER_SIZE, MAX_MODULE_SIZE);
       const auto& rawHeader = *modData.As<RawHeader>();
@@ -142,18 +131,18 @@ namespace Packed
       if (!patternsCount)
       {
         Dbg("Invalid patterns count");
-        return Container::Ptr();
+        return {};
       }
       const uint_t compileAddr = dataAddr - PLAYER_SIZE;
-      Dbg("Detected player compiled at %1% (#%1$04x) with %2% patterns", compileAddr, patternsCount);
+      Dbg("Detected player compiled at #{:04x} with {} patterns", compileAddr, patternsCount);
       const auto builder = Formats::Chiptune::PatchedDataBuilder::Create(modData);
-      //fix samples/ornaments offsets
+      // fix samples/ornaments offsets
       for (uint_t idx = offsetof(RawHeader, SamplesOffsets); idx != offsetof(RawHeader, PatternsOffset); idx += 2)
       {
         builder->FixLEWord(idx, -int_t(dataAddr));
       }
-      //fix patterns offsets
-      for (uint_t idx = fromLE(rawHeader.PatternsOffset), lim = idx + 6 * patternsCount; idx != lim; idx += 2)
+      // fix patterns offsets
+      for (uint_t idx = rawHeader.PatternsOffset, lim = idx + 6 * patternsCount; idx != lim; idx += 2)
       {
         builder->FixLEWord(idx, -int_t(dataAddr));
       }
@@ -164,8 +153,9 @@ namespace Packed
         return CreateContainer(std::move(fixedParsed), totalSize);
       }
       Dbg("Failed to parse fixed module");
-      return Container::Ptr();
+      return {};
     }
+
   private:
     const Binary::Format::Ptr Player;
     const Formats::Chiptune::Decoder::Ptr Decoder;
@@ -175,5 +165,4 @@ namespace Packed
   {
     return MakePtr<CompiledPT24Decoder>();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

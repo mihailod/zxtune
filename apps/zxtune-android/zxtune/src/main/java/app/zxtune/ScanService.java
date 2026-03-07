@@ -11,6 +11,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Parcelable;
 import android.os.PowerManager;
@@ -51,10 +52,10 @@ public class ScanService extends IntentService {
   //TODO: remove C&P
   public static void add(Context ctx, app.zxtune.playback.Item source) {
     try {
-      final ProviderClient client = new ProviderClient(ctx);
+      final ProviderClient client = ProviderClient.create(ctx);
       client.addItem(new app.zxtune.playlist.Item(source));
       client.notifyChanges();
-      Analytics.sendPlaylistEvent(Analytics.PLAYLIST_ACTION_ADD, 1);
+      Analytics.sendPlaylistEvent(Analytics.PlaylistAction.ADD, 1);
     } catch (Exception error) {
       Log.w(TAG, error, "Failed to add item to playlist");
     }
@@ -65,7 +66,7 @@ public class ScanService extends IntentService {
     intent.setAction(ScanService.ACTION_START);
     intent.putExtra(ScanService.EXTRA_PATHS, uris);
     context.startService(intent);
-    Analytics.sendPlaylistEvent(Analytics.PLAYLIST_ACTION_ADD, uris.length);
+    Analytics.sendPlaylistEvent(Analytics.PlaylistAction.ADD, uris.length);
   }
 
   /**
@@ -81,10 +82,17 @@ public class ScanService extends IntentService {
     setIntentRedelivery(false);
   }
 
+  private static PendingIntent createCancelPendingIntent(Context ctx) {
+    final Intent cancelIntent = new Intent(ctx, ScanService.class).setAction(ACTION_CANCEL);
+    final int flags = PendingIntent.FLAG_UPDATE_CURRENT |
+        (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
+    return PendingIntent.getService(ctx, 0, cancelIntent, flags);
+  }
+
   @Override
   public void onCreate() {
     super.onCreate();
-    this.client = new ProviderClient(this);
+    this.client = ProviderClient.create(this);
     makeToast(R.string.scanning_started, Toast.LENGTH_SHORT);
   }
 
@@ -114,12 +122,7 @@ public class ScanService extends IntentService {
   }
 
   private void makeToast(final String text, final int duration) {
-    handler.post(new Runnable() {
-      @Override
-      public void run() {
-        Toast.makeText(ScanService.this, text, duration).show();
-      }
-    });
+    handler.post(() -> Toast.makeText(ScanService.this, text, duration).show());
   }
 
   @Override
@@ -152,6 +155,7 @@ public class ScanService extends IntentService {
         public void onModule(Identifier id, Module module) {
           signal.throwIfCanceled();
           client.addItem(new Item(id, module));
+          module.release();
           addedItems.incrementAndGet();
           error = null;
         }
@@ -216,14 +220,12 @@ public class ScanService extends IntentService {
       StatusNotification() {
         this.titlePrefix = getText(R.string.scanning_title);
         this.delegate = Notifications.createForService(ScanService.this, R.drawable.ic_stat_notify_scan);
-        final Intent cancelIntent = new Intent(ScanService.this, ScanService.class);
-        cancelIntent.setAction(ACTION_CANCEL);
         delegate.getBuilder()
-            .setContentIntent(
-                PendingIntent.getService(ScanService.this, 0, cancelIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT)).setOngoing(true).setProgress(0, 0, true)
+            .addAction(0, getText(R.string.scanning_text), createCancelPendingIntent(ScanService.this))
+            .setOngoing(true)
+            .setProgress(0, 0, true)
             .setContentTitle(titlePrefix)
-            .setContentText(getText(R.string.scanning_text));
+        ;
       }
 
       final void show() {

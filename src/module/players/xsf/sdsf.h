@@ -1,22 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  SSF/DSF chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SSF/DSF chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <module/players/factory.h>
+#include "module/players/xsf/xsf_factory.h"
 
-namespace Module
+namespace Module::SDSF
 {
-  namespace SDSF
-  {
-    Factory::Ptr CreateFactory();
-  }
-}
+  XSF::Factory::Ptr CreateFactory();
+}  // namespace Module::SDSF

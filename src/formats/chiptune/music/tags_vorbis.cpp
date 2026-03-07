@@ -1,105 +1,81 @@
 /**
-*
-* @file
-*
-* @brief  Vorbis tags parser implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Vorbis tags parser implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/chiptune/music/tags_vorbis.h"
-//common includes
-#include <byteorder.h>
-//library includes
-#include <strings/encoding.h>
-#include <strings/trim.h>
-//std includes
+
+#include "binary/base64.h"
+#include "strings/casing.h"
+#include "strings/sanitize.h"
+
+#include "byteorder.h"
+#include "string_view.h"
+
 #include <array>
-#include <cctype>
 
-namespace Formats
+namespace Formats::Chiptune::Vorbis
 {
-namespace Chiptune
-{
-  namespace Vorbis
+  StringView ReadString(Binary::DataInputStream& payload)
   {
-    StringView ReadString(Binary::DataInputStream& payload)
-    {
-      const auto size = payload.ReadLE<uint32_t>();
-      const auto utf8 = safe_ptr_cast<const char*>(payload.ReadData(size).Start());
-      return StringView(utf8, size);
-    }
+    const std::size_t size = payload.Read<le_uint32_t>();
+    const auto* const utf8 = safe_ptr_cast<const char*>(payload.ReadData(size).Start());
+    return {utf8, size};
+  }
 
-    String Decode(StringView str)
+  void ParseCommentField(StringView field, MetaBuilder& target)
+  {
+    const auto eqPos = field.find('=');
+    if (eqPos == StringView::npos)
     {
-      //do not trim before- it may break some encodings
-      auto decoded = Strings::ToAutoUtf8(str);
-      auto trimmed = Strings::TrimSpaces(decoded);
-      return decoded.size() == trimmed.size() ? decoded : trimmed.to_string();
+      target.SetComment(Strings::SanitizeMultiline(field));
+      return;
     }
-
-    bool CompareTag(StringView str, StringView tag)
+    const auto name = field.substr(0, eqPos);
+    const auto value = field.substr(eqPos + 1);
+    if (Strings::EqualNoCaseAscii(name, "TITLE"sv))
     {
-      if (str.size() != tag.size())
-      {
-        return false;
-      }
-      for (std::size_t idx = 0, lim = str.size(); idx != lim; ++idx)
-      {
-        if (std::toupper(str[idx]) != tag[idx])
-        {
-          return false;
-        }
-      }
-      return true;
+      target.SetTitle(Strings::Sanitize(value));
     }
-
-    void ParseCommentField(StringView field, MetaBuilder& target)
+    else if (Strings::EqualNoCaseAscii(name, "ARTIST"sv) || Strings::EqualNoCaseAscii(name, "PERFORMER"sv))
     {
-      const auto eqPos = field.find('=');
-      Require(eqPos != StringView::npos);
-      const auto name = field.substr(0, eqPos);
-      const auto value = field.substr(eqPos + 1);
-      Strings::Array strings;
-      if (CompareTag(name, "TITLE"))
-      {
-        target.SetTitle(Decode(value));
-      }
-      else if (CompareTag(name, "ARTIST") || CompareTag(name, "PERFORMER"))
-      {
-        target.SetAuthor(Decode(value));
-      }
-      else if (CompareTag(name, "COPYRIGHT") || CompareTag(name, "DESCRIPTION"))
-      {
-        strings.emplace_back(Decode(value));
-      }
-      //TODO: meta.SetComment
-      if (!strings.empty())
-      {
-        target.SetStrings(strings);
-      }
+      target.SetAuthor(Strings::Sanitize(value));
     }
-
-    void ParseComment(Binary::DataInputStream& payload, MetaBuilder& target)
+    else if (Strings::EqualNoCaseAscii(name, "COPYRIGHT"sv) || Strings::EqualNoCaseAscii(name, "DESCRIPTION"sv))
+    {
+      target.SetComment(Strings::SanitizeMultiline(value));
+    }
+    else if (Strings::EqualNoCaseAscii(name, "COVERART"sv))
     {
       try
       {
-        /*const auto vendor = */ReadString(payload);
-        if (auto items = payload.ReadLE<uint32_t>())
-        {
-          while (items--)
-          {
-            ParseCommentField(ReadString(payload), target);
-          }
-        }
-        Require(1 == payload.ReadByte());
+        target.SetPicture(Binary::Base64::Decode(value));
       }
       catch (const std::exception&)
-      {
-      }
+      {}
     }
-  } //namespace Vorbis
-}
-}
+  }
+
+  void ParseComment(Binary::DataInputStream& payload, MetaBuilder& target)
+  {
+    try
+    {
+      /*const auto vendor = */ ReadString(payload);
+      if (uint_t items = payload.Read<le_uint32_t>())
+      {
+        while (items--)
+        {
+          ParseCommentField(ReadString(payload), target);
+        }
+      }
+      Require(1 == payload.ReadByte());
+    }
+    catch (const std::exception&)
+    {}
+  }
+}  // namespace Formats::Chiptune::Vorbis

@@ -1,25 +1,24 @@
 /**
-* 
-* @file
-*
-* @brief  Beeper support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Beeper support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
-#include <make_ptr.h>
-//local includes
-#include <devices/beeper.h>
-#include <devices/details/renderers.h>
-#include <parameters/tracking_helper.h>
-//std includes
+#include "devices/beeper.h"
+
+#include "devices/details/renderers.h"
+
+#include "parameters/tracking_helper.h"
+
+#include "make_ptr.h"
+
 #include <utility>
 
-namespace Devices
-{
-namespace Beeper
+namespace Devices::Beeper
 {
   class BeeperPSG
   {
@@ -28,20 +27,19 @@ namespace Beeper
     {
       Levels = level ? Sound::Sample(Sound::Sample::MAX / 4, Sound::Sample::MAX / 4) : Sound::Sample();
     }
-    
-    void Tick(uint_t /*ticks*/)
-    {
-    }
+
+    void Tick(uint_t /*ticks*/) {}
 
     Sound::Sample GetLevels() const
     {
       return Levels;
     }
-    
+
     void Reset()
     {
       Levels = Sound::Sample();
     }
+
   private:
     Sound::Sample Levels;
   };
@@ -49,15 +47,13 @@ namespace Beeper
   class ChipImpl : public Chip
   {
   public:
-    ChipImpl(ChipParameters::Ptr params, Sound::Receiver::Ptr target)
+    explicit ChipImpl(ChipParameters::Ptr params)
       : Params(std::move(params))
-      , Target(std::move(target))
       , Renderer(Clock, PSG)
-      , ClockFreq()
-      , SoundFreq()
     {
+      SynchronizeParameters();
     }
-    
+
     void RenderData(const std::vector<DataChunk>& src) override
     {
       if (src.empty())
@@ -67,17 +63,12 @@ namespace Beeper
       const Stamp end = src.back().TimeStamp;
       if (Clock.HasSamplesBefore(end))
       {
-        SynchronizeParameters();
-        const uint_t samples = Clock.SamplesTill(end);
-        Sound::ChunkBuilder builder;
-        builder.Reserve(samples);
+        RenderedData.reserve(RenderedData.size() + Clock.SamplesTill(end));
         for (const auto& chunk : src)
         {
-          Renderer.Render(chunk.TimeStamp, builder);
+          Renderer.Render(chunk.TimeStamp, &RenderedData);
           PSG.SetNewData(chunk.Level);
         }
-        Target->ApplyData(builder.CaptureResult());
-        Target->Flush();
       }
       else
       {
@@ -95,7 +86,26 @@ namespace Beeper
       Clock.Reset();
       ClockFreq = 0;
       SoundFreq = 0;
+      SynchronizeParameters();
     }
+
+    Sound::Chunk RenderTill(Stamp stamp) override
+    {
+      Sound::Chunk result;
+      if (RenderedData.empty())
+      {
+        result = Renderer.Render(stamp, Clock.SamplesTill(stamp));
+      }
+      else
+      {
+        Renderer.Render(stamp, &RenderedData);
+        result.swap(RenderedData);
+        RenderedData.reserve(result.size());
+      }
+      SynchronizeParameters();
+      return result;
+    }
+
   private:
     void SynchronizeParameters()
     {
@@ -110,19 +120,19 @@ namespace Beeper
         }
       }
     }
+
   private:
     Parameters::TrackingHelper<ChipParameters> Params;
-    const Sound::Receiver::Ptr Target;
     BeeperPSG PSG;
     Details::ClockSource<Stamp> Clock;
     Details::HQRenderer<Stamp, BeeperPSG> Renderer;
-    uint64_t ClockFreq;
-    uint_t SoundFreq;
+    uint64_t ClockFreq = 0;
+    uint_t SoundFreq = 0;
+    Sound::Chunk RenderedData;
   };
 
-  Chip::Ptr CreateChip(ChipParameters::Ptr params, Sound::Receiver::Ptr target)
+  Chip::Ptr CreateChip(ChipParameters::Ptr params)
   {
-    return MakePtr<ChipImpl>(params, target);
+    return MakePtr<ChipImpl>(std::move(params));
   }
-}
-}
+}  // namespace Devices::Beeper

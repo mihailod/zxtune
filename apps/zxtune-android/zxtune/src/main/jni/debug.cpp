@@ -1,15 +1,13 @@
 /**
-* 
-* @file
-*
-* @brief Debug functionality implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Debug functionality implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-
-//local includes
-#include "debug.h"
+#include "apps/zxtune-android/zxtune/src/main/jni/debug.h"
 
 const Debug::Stream Dbg("");

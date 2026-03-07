@@ -1,17 +1,16 @@
 /**
-*
-* @file
-*
-* @brief  CRC calculating functions
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  CRC calculating functions
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/view.h>
+#include "binary/view.h"
 
 namespace Binary
 {

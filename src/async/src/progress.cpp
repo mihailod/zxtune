@@ -1,18 +1,17 @@
 /**
-* 
-* @file
-*
-* @brief Progress implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Progress implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <async/progress.h>
-//std includes
+#include "async/progress.h"
+
+#include "make_ptr.h"
+
 #include <condition_variable>
 #include <mutex>
 
@@ -21,11 +20,7 @@ namespace Async
   class SynchronizedProgress : public Progress
   {
   public:
-    SynchronizedProgress()
-      : Produced()
-      , Consumed()
-    {
-    }
+    SynchronizedProgress() = default;
 
     void Produce(uint_t items) override
     {
@@ -43,8 +38,9 @@ namespace Async
     void WaitForComplete() const override
     {
       std::unique_lock<std::mutex> lock(Mutex);
-      Complete.wait(lock, [this] () {return IsComplete();});
+      Complete.wait(lock, [this]() { return IsComplete(); });
     }
+
   private:
     void NotifyIfComplete()
     {
@@ -58,13 +54,14 @@ namespace Async
     {
       return Produced == Consumed;
     }
+
   private:
-    uint_t Produced;
-    uint_t Consumed;
+    uint_t Produced = 0;
+    uint_t Consumed = 0;
     mutable std::mutex Mutex;
     mutable std::condition_variable Complete;
   };
-}
+}  // namespace Async
 
 namespace Async
 {
@@ -72,4 +69,4 @@ namespace Async
   {
     return MakePtr<SynchronizedProgress>();
   }
-}
+}  // namespace Async

@@ -1,20 +1,24 @@
 /**
-*
-* @file
-*
-* @brief  Resource test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Resource test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <resource/api.h>
-#include <error.h>
-#include <pointers.h>
+#include "binary/data_builder.h"
+#include "resource/api.h"
+#include "strings/map.h"
+
+#include "error.h"
+#include "pointers.h"
+#include "string_view.h"
+
+#include <cstring>
 #include <fstream>
 #include <iostream>
-#include <map>
-#include <cstring>
 #include <stdexcept>
 
 namespace
@@ -34,16 +38,16 @@ namespace
     std::cout << msg;
     if (ref == res)
     {
-       std::cout << " passed" << std::endl;
+      std::cout << " passed" << std::endl;
     }
     else
     {
-       std::cout << " failed (ref=" << ref << " res=" << res << ")" << std::endl;
-       throw 1;
+      std::cout << " failed (ref=" << ref << " res=" << res << ")" << std::endl;
+      throw 1;
     }
   }
 
-  Dump OpenFile(const std::string& name)
+  Binary::Data::Ptr OpenFile(const std::string& name)
   {
     std::ifstream stream(name.c_str(), std::ios::binary);
     if (!stream)
@@ -53,9 +57,9 @@ namespace
     stream.seekg(0, std::ios_base::end);
     const std::size_t size = stream.tellg();
     stream.seekg(0);
-    Dump tmp(size);
-    stream.read(safe_ptr_cast<char*>(tmp.data()), tmp.size());
-    return tmp;
+    Binary::DataBuilder tmp(size);
+    stream.read(static_cast<char*>(tmp.Allocate(size)), size);
+    return tmp.CaptureResult();
   }
 
   class LoadEachFileVisitor : public Resource::Visitor
@@ -67,14 +71,14 @@ namespace
       LoadFile("nested/dir/file");
     }
 
-    void OnResource(const String& name) override
+    void OnResource(StringView name) override
     {
       std::cout << "Found resource file " << name << std::endl;
       Test("Test file exists", 1 == Etalons.count(name));
-      const Binary::Container::Ptr data = Resource::Load(name);
-      const Dump& ref = Etalons[name];
-      TestEq("Test file is expected size", ref.size(), data->Size());
-      Test("Test file is expected content", 0 == std::memcmp(ref.data(), data->Start(), ref.size()));
+      const auto data = Resource::Load(name);
+      const auto& ref = Etalons[name];
+      TestEq("Test file is expected size", ref->Size(), data->Size());
+      Test("Test file is expected content", 0 == std::memcmp(ref->Start(), data->Start(), ref->Size()));
       Etalons.erase(name);
     }
 
@@ -82,15 +86,17 @@ namespace
     {
       Test("All files visited", Etalons.empty());
     }
+
   private:
     void LoadFile(const String& name)
     {
       Etalons[name] = OpenFile(name);
     }
+
   private:
-    std::map<String, Dump> Etalons;
+    Strings::ValueMap<Binary::Data::Ptr> Etalons;
   };
-}
+}  // namespace
 
 int main()
 {

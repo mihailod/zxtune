@@ -1,19 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief FLAC settings widget factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief FLAC settings widget factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "backend_settings.h"
+class QWidget;
 
 namespace UI
 {
-  BackendSettingsWidget* CreateFLACSettingsWidget(QWidget& parent);
+  class BackendSettingsWidget* CreateFLACSettingsWidget(QWidget& parent);
 }

@@ -1,31 +1,28 @@
 /**
-* 
-* @file
-*
-* @brief  ProDigiTracker chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ProDigiTracker chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/dac/prodigitracker.h"
+
+#include "devices/dac/sample_factories.h"
+#include "formats/chiptune/digital/prodigitracker.h"
 #include "module/players/dac/dac_properties_helper.h"
 #include "module/players/dac/dac_simple.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <devices/dac/sample_factories.h>
-#include <formats/chiptune/digital/prodigitracker.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
-#include <module/players/tracking.h>
-//text includes
-#include <module/text/platforms.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
+#include "module/players/tracking.h"
 
-namespace Module
-{
-namespace ProDigiTracker
+#include "make_ptr.h"
+
+#include <array>
+
+namespace Module::ProDigiTracker
 {
   const uint_t CHANNELS_COUNT = 4;
 
@@ -33,14 +30,18 @@ namespace ProDigiTracker
   const uint_t TICKS_PER_CYCLE = 374;
   const uint_t C_1_STEP = 46;
   const uint_t SAMPLES_FREQ = Z80_FREQ * C_1_STEP / TICKS_PER_CYCLE / 256;
-  
+
   using Formats::Chiptune::ProDigiTracker::Ornament;
 
   class ModuleData : public DAC::SimpleModuleData
   {
   public:
-    typedef std::shared_ptr<const ModuleData> Ptr;
-    typedef std::shared_ptr<ModuleData> RWPtr;
+    using Ptr = std::shared_ptr<const ModuleData>;
+    using RWPtr = std::shared_ptr<ModuleData>;
+
+    ModuleData()
+      : DAC::SimpleModuleData(CHANNELS_COUNT)
+    {}
 
     SparsedObjectsStorage<Ornament> Ornaments;
   };
@@ -119,6 +120,7 @@ namespace ProDigiTracker
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     DAC::PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -128,11 +130,9 @@ namespace ProDigiTracker
 
   struct OrnamentState
   {
-    OrnamentState() : Object(), Position()
-    {
-    }
-    const Ornament* Object;
-    std::size_t Position;
+    OrnamentState() = default;
+    const Ornament* Object = nullptr;
+    std::size_t Position = 0;
 
     int_t GetOffset() const
     {
@@ -169,7 +169,8 @@ namespace ProDigiTracker
       {
         GetNewLineState(state, track);
       }
-    }  
+    }
+
   private:
     void SynthesizeChannelsData(DAC::TrackBuilder& track)
     {
@@ -184,11 +185,11 @@ namespace ProDigiTracker
 
     void GetNewLineState(const TrackModelState& state, DAC::TrackBuilder& track)
     {
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
         for (uint_t chan = 0; chan != CHANNELS_COUNT; ++chan)
         {
-          if (const auto src = line->GetChannel(chan))
+          if (const auto* const src = line->GetChannel(chan))
           {
             DAC::ChannelDataBuilder builder = track.GetChannel(chan);
             GetNewChannelState(*src, Ornaments[chan], builder);
@@ -224,6 +225,7 @@ namespace ProDigiTracker
         builder.SetPosInSample(0);
       }
     }
+
   private:
     const ModuleData::Ptr Data;
     std::array<OrnamentState, CHANNELS_COUNT> Ornaments;
@@ -235,13 +237,11 @@ namespace ProDigiTracker
     Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
       : Data(std::move(data))
       , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, CHANNELS_COUNT))
-    {
-    }
+    {}
 
-    Information::Ptr GetInformation() const override
+    TrackModel::Ptr GetTrackModel() const override
     {
-      return Info;
+      return Data;
     }
 
     Parameters::Accessor::Ptr GetProperties() const override
@@ -251,47 +251,43 @@ namespace ProDigiTracker
 
     DAC::DataIterator::Ptr CreateDataIterator() const override
     {
-      auto iterator = CreateTrackStateIterator(Data);
+      auto iterator = CreateTrackStateIterator(GetFrameDuration(), Data);
       auto renderer = MakePtr<DataRenderer>(Data);
       return DAC::CreateDataIterator(std::move(iterator), std::move(renderer));
     }
 
-    void GetSamples(Devices::DAC::Chip::Ptr chip) const override
+    void GetSamples(Devices::DAC::Chip& chip) const override
     {
-      for (uint_t idx = 0, lim = Data->Samples.Size(); idx != lim; ++idx)
-      {
-        chip->SetSample(idx, Data->Samples.Get(idx));
-      }
+      Data->SetupSamples(chip);
     }
+
   private:
     const ModuleData::Ptr Data;
     const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
   };
 
   class Factory : public DAC::Factory
   {
   public:
-    DAC::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    DAC::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
-      DAC::PropertiesHelper props(*properties);
+      DAC::PropertiesHelper props(*properties, CHANNELS_COUNT);
       DataBuilder dataBuilder(props);
       if (const auto container = Formats::Chiptune::ProDigiTracker::Parse(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
         return MakePtr<Chiptune>(dataBuilder.CaptureResult(), std::move(properties));
       }
       else
       {
-        return DAC::Chiptune::Ptr();
+        return {};
       }
     }
   };
-  
+
   Factory::Ptr CreateFactory()
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::ProDigiTracker

@@ -1,42 +1,43 @@
 /**
-*
-* @file
-*
-* @brief  Base64 functions
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Base64 functions
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
+#include "binary/dump.h"
+#include "binary/view.h"
 
-namespace Binary
+#include "string_type.h"
+#include "string_view.h"
+#include "types.h"
+
+namespace Binary::Base64
 {
-  namespace Base64
+  std::size_t CalculateConvertedSize(std::size_t size);
+
+  //! @throws std::exception in case of error
+  //! @return End of encoded data
+  char* Encode(const uint8_t* inBegin, const uint8_t* inEnd, char* outBegin, const char* outEnd);
+
+  //! @throws std::exception in case of error
+  //! @return End of decoded data
+  uint8_t* Decode(const char* inBegin, const char* inEnd, uint8_t* outBegin, const uint8_t* outEnd);
+
+  // easy-to-use wrappers
+  inline String Encode(View input)
   {
-    std::size_t CalculateConvertedSize(std::size_t size);
-
-    //! @throws std::exception in case of error
-    //! @return End of encoded data
-    char* Encode(const uint8_t* inBegin, const uint8_t* inEnd, char* outBegin, char* outEnd);
-
-    //! @throws std::exception in case of error
-    //! @return End of decoded data
-    uint8_t* Decode(const char* inBegin, const char* inEnd, uint8_t* outBegin, uint8_t* outEnd);
-
-    //easy-to-use wrappers
-    inline std::string Encode(const Dump& input)
-    {
-      std::vector<char> result(CalculateConvertedSize(input.size()));
-      const uint8_t* const in = input.data();
-      char* const out = result.data();
-      char* const outEnd = Encode(in, in + input.size(), out, out + result.size());
-      return std::string(out, outEnd);
-    }
-
-    Dump Decode(const std::string& input);
+    String result(CalculateConvertedSize(input.Size()), ' ');
+    const auto* const in = input.As<uint8_t>();
+    char* const out = result.data();
+    Encode(in, in + input.Size(), out, out + result.size());
+    return result;
   }
-}
+
+  Dump Decode(StringView input);
+}  // namespace Binary::Base64

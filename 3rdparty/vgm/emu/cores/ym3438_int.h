@@ -1,34 +1,41 @@
-//
-// Copyright (C) 2017-2018 Alexey Khokholov (Nuke.YKT)
-// 
-// This program is free software; you can redistribute it and/or
-// modify it under the terms of the GNU General Public License
-// as published by the Free Software Foundation; either version 2
-// of the License, or (at your option) any later version.
-// 
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-// 
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-//
-//
-//  Nuked OPN2(Yamaha YM3438) emulator.
-//  Thanks:
-//      Silicon Pr0n:
-//          Yamaha YM3438 decap and die shot(digshadow).
-//      OPLx decapsulated(Matthew Gambrell, Olli Niemitalo):
-//          OPL2 ROMs.
-//
-// version: 1.0.9
-//
+// license:LGPL-2.1+
+// copyright-holders:Nuke.YKT
+/*
+ * Copyright (C) 2017-2021 Alexey Khokholov (Nuke.YKT)
+ *
+ * This file is part of Nuked OPN2.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ *  Nuked OPN2(Yamaha YM3438) emulator.
+ *  Thanks:
+ *      Silicon Pr0n:
+ *          Yamaha YM3438 decap and die shot(digshadow).
+ *      OPLx decapsulated(Matthew Gambrell, Olli Niemitalo):
+ *          OPL2 ROMs.
+ *
+ * version: 1.0.9
+ */
 
 // Nuked OPN2 internal structures/functions
-#ifndef __YM3438_INT_H__
-#define __YM3438_INT_H__
+#ifndef YM3438_INT_H
+#define YM3438_INT_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #include "../../stdtype.h"
 #include "../snddef.h"
@@ -152,7 +159,7 @@ typedef struct
     Bit8u timer_a_load_latch;
     Bit8u timer_a_overflow_flag;
     Bit8u timer_a_overflow;
-    
+
     Bit16u timer_b_cnt;
     Bit8u timer_b_subcnt;
     Bit16u timer_b_reg;
@@ -163,7 +170,7 @@ typedef struct
     Bit8u timer_b_load_latch;
     Bit8u timer_b_overflow_flag;
     Bit8u timer_b_overflow;
-    
+
     /* Register set */
     Bit8u mode_test_21[8];
     Bit8u mode_test_2c[8];
@@ -175,7 +182,7 @@ typedef struct
     Bit8u mode_kon_csm;
     Bit8u dacen;
     Bit16s dacdata;
-    
+
     Bit8u ks[24];
     Bit8u ar[24];
     Bit8u sr[24];
@@ -187,7 +194,7 @@ typedef struct
     Bit8u am[24];
     Bit8u tl[24];
     Bit8u ssg_eg[24];
-    
+
     Bit16u fnum[6];
     Bit8u block[6];
     Bit8u kcode[6];
@@ -203,8 +210,9 @@ typedef struct
     Bit8u pms[6];
     Bit8u status;
     Bit32u status_time;
-    
+
     Bit32u chip_type;
+    Bit32u use_filter;
     Bit32u mute[7];
     Bit32s rateratio;
     Bit32s samplecnt;
@@ -225,6 +233,10 @@ void NOPN2_Write(ym3438_t *chip, Bit32u port, Bit8u data);
 void NOPN2_SetTestPin(ym3438_t *chip, Bit32u value);
 Bit32u NOPN2_ReadTestPin(ym3438_t *chip);
 Bit32u NOPN2_ReadIRQPin(ym3438_t *chip);
-UINT8 NOPN2_Read(ym3438_t *chip, Bit32u port);
+Bit8u NOPN2_Read(ym3438_t *chip, Bit32u port);
 
-#endif	// __YM3438_INT_H__
+#ifdef __cplusplus
+}
+#endif
+
+#endif	// YM3438_INT_H

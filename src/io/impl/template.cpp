@@ -1,24 +1,21 @@
 /**
-*
-* @file
-*
-* @brief  Filename template implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Filename template implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "io/impl/boost_filesystem_path.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <io/template.h>
-#include <strings/array.h>
-#include <strings/fields.h>
-//boost includes
-#include <boost/filesystem/path.hpp>
-#include <boost/algorithm/string/join.hpp>
+#include "io/template.h"
+
+#include "io/impl/filesystem_path.h"
+
+#include "strings/fields.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
 
 namespace IO
 {
@@ -27,36 +24,44 @@ namespace IO
   public:
     explicit FilenameFieldsFilter(const Strings::FieldsSource& delegate)
       : Delegate(delegate)
+    {}
+
+    String GetFieldValue(StringView fieldName) const override
     {
+      auto res = Delegate.GetFieldValue(fieldName);
+      return res.empty() ? res : FilterPath(res);
     }
 
-    String GetFieldValue(const String& fieldName) const override
-    {
-      const String res = Delegate.GetFieldValue(fieldName);
-      return res.empty()
-        ? res
-        : FilterPath(res);
-    }
   private:
-    static String FilterPath(const String& val)
+    static String FilterPath(StringView val)
     {
-      static const Char DELIMITER[] = {'_', 0};
-
-      const boost::filesystem::path path = Details::FromString(val);
-      const boost::filesystem::path root(path.root_directory());
-      const boost::filesystem::path thisDir(".");
-      const boost::filesystem::path parentDir("..");
-      Strings::Array res;
-      for (boost::filesystem::path::const_iterator it = path.begin(), lim = path.end(); it != lim; ++it)
+      const auto path = Details::FromString(val);
+      const auto root = path.root_directory();
+      const auto thisDir = "."sv;
+      const auto parentDir = ".."sv;
+      String res;
+      for (const auto& it : path)
       {
-        //root directory is usually mentioned while iterations. For windows-based platforms it can be placed not on the first position
-        if (*it != root && *it != thisDir && *it != parentDir)
+        // root directory is usually mentioned while iterations. For windows-based platforms it can be placed not on the
+        // first position
+        if (it == root)
         {
-          res.push_back(Details::ToString(*it));
+          continue;
         }
+        const auto elem = Details::ToString(it);
+        if (elem == thisDir || elem == parentDir)
+        {
+          continue;
+        }
+        if (!res.empty())
+        {
+          res += '_';
+        }
+        res += elem;
       }
-      return boost::algorithm::join(res, DELIMITER);
+      return res;
     }
+
   private:
     const Strings::FieldsSource& Delegate;
   };
@@ -66,21 +71,21 @@ namespace IO
   public:
     explicit FilenameTemplate(Strings::Template::Ptr delegate)
       : Delegate(std::move(delegate))
-    {
-    }
+    {}
 
     String Instantiate(const Strings::FieldsSource& source) const override
     {
       const FilenameFieldsFilter filter(source);
       return Delegate->Instantiate(filter);
     }
+
   private:
     const Strings::Template::Ptr Delegate;
   };
 
-  Strings::Template::Ptr CreateFilenameTemplate(const String& notation)
+  Strings::Template::Ptr CreateFilenameTemplate(StringView notation)
   {
-    Strings::Template::Ptr delegate = Strings::Template::Create(notation);
+    auto delegate = Strings::Template::Create(notation);
     return MakePtr<FilenameTemplate>(std::move(delegate));
   }
-}
+}  // namespace IO

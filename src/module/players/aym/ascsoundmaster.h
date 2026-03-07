@@ -1,24 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief  ASCSoundMaster chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ASCSoundMaster chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
+#include "formats/chiptune/aym/ascsoundmaster.h"
 #include "module/players/aym/aym_factory.h"
-//library includes
-#include <formats/chiptune/aym/ascsoundmaster.h>
 
-namespace Module
+namespace Module::ASCSoundMaster
 {
-  namespace ASCSoundMaster
-  {
-    AYM::Factory::Ptr CreateFactory(Formats::Chiptune::ASCSoundMaster::Decoder::Ptr decoder);
-  }
-}
+  AYM::Factory::Ptr CreateFactory(Formats::Chiptune::ASCSoundMaster::Decoder::Ptr decoder);
+}  // namespace Module::ASCSoundMaster

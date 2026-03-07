@@ -1,18 +1,17 @@
 /**
-*
-* @file
-*
-* @brief  Binary data format interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Binary data format interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/view.h>
-//std includes
+#include "binary/view.h"
+
 #include <memory>
 
 namespace Binary
@@ -21,7 +20,7 @@ namespace Binary
   class Format
   {
   public:
-    typedef std::shared_ptr<const Format> Ptr;
+    using Ptr = std::shared_ptr<const Format>;
     virtual ~Format() = default;
 
     //! @brief Check if input data is data format
@@ -34,4 +33,4 @@ namespace Binary
     //! @invariant return value is always > 0
     virtual std::size_t NextMatchOffset(View data) const = 0;
   };
-}
+}  // namespace Binary

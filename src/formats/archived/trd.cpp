@@ -1,80 +1,73 @@
 /**
-* 
-* @file
-*
-* @brief  TRD images support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TRD images support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/archived/trdos_catalogue.h"
 #include "formats/archived/trdos_utils.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-//library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-//std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <cstring>
 #include <numeric>
-#include <functional>
-//text include
-#include <formats/text/archived.h>
 
-namespace Formats
-{
-namespace Archived
+namespace Formats::Archived
 {
   namespace TRD
   {
     const Debug::Stream Dbg("Formats::Archived::TRD");
 
-    const std::string FORMAT(
-      "(00|01|20-7f??????? ??? ?? ? 0x 00-a0){128}"
-      //service sector
-      "00"     //zero
-      "?{224}" //reserved
-      "?"      //free sector
-      "?"      //free track
-      "16"     //type DS_DD
-      "01-7f"  //files
-      "?00-09" //free sectors
-      "10"     //ID
-      "0000?????????00"//reserved
-      "?"      //deleted files
-      "20-7f{8}"//title
-      "000000"  //reserved
-    );
+    const auto DESCRIPTION = "TRD (TR-DOS)"sv;
+    const auto FORMAT =
+        "(00|01|20-7f??????? ??? ?? ? 0x 00-a0){128}"
+        // service sector
+        "00"               // zero
+        "?{224}"           // reserved
+        "?"                // free sector
+        "?"                // free track
+        "16"               // type DS_DD
+        "01-7f"            // files
+        "?00-09"           // free sectors
+        "10"               // ID
+        "0000?????????00"  // reserved
+        "?"                // deleted files
+        "20-7f{8}"         // title
+        "000000"           // reserved
+        ""sv;
 
-    //hints
+    // hints
     const std::size_t MODULE_SIZE = 655360;
     const uint_t BYTES_PER_SECTOR = 256;
     const uint_t SECTORS_IN_TRACK = 16;
     const uint_t MAX_FILES_COUNT = 128;
     const std::size_t MIN_SIZE = (SECTORS_IN_TRACK + 1) * BYTES_PER_SECTOR;
 
-  #ifdef USE_PRAGMA_PACK
-  #pragma pack(push,1)
-  #endif
-
     enum
     {
       NOENTRY = 0,
       DELETED = 1
     };
-    PACK_PRE struct CatEntry
+
+    struct CatEntry
     {
       char Name[8];
       char Type[3];
-      uint16_t Length;
+      le_uint16_t Length;
       uint8_t SizeInSectors;
       uint8_t Sector;
       uint8_t Track;
-    } PACK_POST;
+    };
 
     enum
     {
@@ -86,7 +79,7 @@ namespace Archived
       SS_SD = 0x19
     };
 
-    PACK_PRE struct ServiceSector
+    struct ServiceSector
     {
       uint8_t Zero;
       uint8_t Reserved1[224];
@@ -94,13 +87,13 @@ namespace Archived
       uint8_t FreeSpaceTrack;
       uint8_t Type;
       uint8_t Files;
-      uint16_t FreeSectors;
-      uint8_t ID;//0x10
+      le_uint16_t FreeSectors;
+      uint8_t ID;  // 0x10
       uint8_t Reserved2[12];
       uint8_t DeletedFiles;
       uint8_t Title[8];
       uint8_t Reserved3[3];
-    } PACK_POST;
+    };
 
     struct Sector
     {
@@ -108,55 +101,48 @@ namespace Archived
 
       bool IsEmpty() const
       {
-        return std::none_of(Content, std::end(Content), std::bind2nd(std::not_equal_to<uint8_t>(), 0));
+        return std::all_of(Content, std::end(Content), [](auto b) { return b == 0; });
       }
     };
 
-    PACK_PRE struct Catalog
+    struct Catalog
     {
       CatEntry Entries[MAX_FILES_COUNT];
-      //8
+      // 8
       ServiceSector Meta;
-      //9
+      // 9
       Sector Empty;
-      //10,11
+      // 10,11
       Sector CorruptedByMagic[2];
-      //12..15
+      // 12..15
       Sector Empty1[4];
-    } PACK_POST;
+    };
 
-  #ifdef USE_PRAGMA_PACK
-  #pragma pack(pop)
-  #endif
+    static_assert(sizeof(CatEntry) * alignof(CatEntry) == 16, "Invalid layout");
+    static_assert(sizeof(ServiceSector) * alignof(ServiceSector) == BYTES_PER_SECTOR, "Invalid layout");
+    static_assert(sizeof(Sector) * alignof(Sector) == BYTES_PER_SECTOR, "Invalid layout");
+    static_assert(sizeof(Catalog) * alignof(Catalog) == BYTES_PER_SECTOR * SECTORS_IN_TRACK, "Invalid layout");
 
-    static_assert(sizeof(CatEntry) == 16, "Invalid layout");
-    static_assert(sizeof(ServiceSector) == BYTES_PER_SECTOR, "Invalid layout");
-    static_assert(sizeof(Sector) == BYTES_PER_SECTOR, "Invalid layout");
-    static_assert(sizeof(Catalog) == BYTES_PER_SECTOR * SECTORS_IN_TRACK, "Invalid layout");
-
-    const Char UNALLOCATED_FILENAME[] = {'$', 'U', 'n', 'a', 'l', 'l', 'o', 'c', 'a', 't', 'e', 'd', 0};
+    const auto UNALLOCATED_FILENAME = "$Unallocated"sv;
 
     class Visitor
     {
     public:
       virtual ~Visitor() = default;
 
-      virtual void OnFile(const String& name, std::size_t offset, std::size_t size) = 0;
+      virtual void OnFile(StringView name, std::size_t offset, std::size_t size) = 0;
     };
 
     std::size_t Parse(Binary::View data, Visitor& visitor)
     {
       const std::size_t dataSize = data.Size();
-      if (dataSize < sizeof(Catalog) + BYTES_PER_SECTOR)//first track + 1 sector for file at least
+      if (dataSize < sizeof(Catalog) + BYTES_PER_SECTOR)  // first track + 1 sector for file at least
       {
         return 0;
       }
       const auto* catalog = data.As<Catalog>();
-      if (!(catalog->Empty.IsEmpty() && 
-            catalog->Empty1[0].IsEmpty() &&
-            catalog->Empty1[1].IsEmpty() &&
-            catalog->Empty1[2].IsEmpty() && 
-            catalog->Empty1[3].IsEmpty()))
+      if (!(catalog->Empty.IsEmpty() && catalog->Empty1[0].IsEmpty() && catalog->Empty1[1].IsEmpty()
+            && catalog->Empty1[2].IsEmpty() && catalog->Empty1[3].IsEmpty()))
       {
         Dbg("Invalid track 0 reserved blocks content");
         return 0;
@@ -167,7 +153,8 @@ namespace Archived
       std::vector<bool> usedSectors(totalSectors);
       std::fill_n(usedSectors.begin(), SECTORS_IN_TRACK, true);
       uint_t files = 0;
-      for (const auto* catEntry = catalog->Entries; catEntry != std::end(catalog->Entries) && NOENTRY != catEntry->Name[0]; ++catEntry)
+      for (const auto* catEntry = catalog->Entries;
+           catEntry != std::end(catalog->Entries) && NOENTRY != catEntry->Name[0]; ++catEntry)
       {
         if (!catEntry->SizeInSectors)
         {
@@ -182,20 +169,20 @@ namespace Archived
         const uint_t size = catEntry->SizeInSectors;
         if (offset + size > totalSectors)
         {
-          Dbg("File '%1%' is out of bounds", entryName);
-          return 0;//out of bounds
+          Dbg("File '{}' is out of bounds", entryName);
+          return 0;  // out of bounds
         }
         const auto begin = usedSectors.begin() + offset;
         const auto end = begin + size;
         if (end != std::find(begin, end, true))
         {
-          Dbg("File '%1%' is overlapped with some other", entryName);
-          return 0;//overlap
+          Dbg("File '{}' is overlapped with some other", entryName);
+          return 0;  // overlap
         }
         if (!*(begin - 1))
         {
-          Dbg("File '%1%' has a gap before", entryName);
-          return 0;//gap
+          Dbg("File '{}' has a gap before", entryName);
+          return 0;  // gap
         }
         std::fill(begin, end, true);
         visitor.OnFile(entryName, offset * BYTES_PER_SECTOR, size * BYTES_PER_SECTOR);
@@ -204,7 +191,7 @@ namespace Archived
       if (!files)
       {
         Dbg("No files in image");
-        //no files
+        // no files
         return 0;
       }
 
@@ -213,8 +200,8 @@ namespace Archived
       const auto limit = validSize ? usedSectors.end() : firstFree;
       if (validSize && firstFree != limit)
       {
-        //do not pay attention to free sector info in service sector
-        //std::fill(firstFree, limit, true);
+        // do not pay attention to free sector info in service sector
+        // std::fill(firstFree, limit, true);
         const std::size_t freeArea = std::distance(begin, firstFree);
         visitor.OnFile(UNALLOCATED_FILENAME, freeArea * BYTES_PER_SECTOR, (totalSectors - freeArea) * BYTES_PER_SECTOR);
       }
@@ -226,30 +213,29 @@ namespace Archived
     public:
       explicit BuildVisitorAdapter(TRDos::CatalogueBuilder& builder)
         : Builder(builder)
+      {}
+
+      void OnFile(StringView filename, std::size_t offset, std::size_t size) override
       {
+        auto file = TRDos::File::CreateReference(filename, offset, size);
+        Builder.AddFile(std::move(file));
       }
 
-      void OnFile(const String& filename, std::size_t offset, std::size_t size) override
-      {
-        const TRDos::File::Ptr file = TRDos::File::CreateReference(filename, offset, size);
-        Builder.AddFile(file);
-      }
     private:
       TRDos::CatalogueBuilder& Builder;
     };
-  }//namespace TRD
+  }  // namespace TRD
 
   class TRDDecoder : public Decoder
   {
   public:
     TRDDecoder()
       : Format(Binary::CreateFormat(TRD::FORMAT, TRD::MIN_SIZE))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Text::TRD_DECODER_DESCRIPTION;
+      return TRD::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -262,7 +248,7 @@ namespace Archived
       const Binary::View data(rawData);
       if (!Format->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       const auto builder = TRDos::CatalogueBuilder::CreateFlat();
       TRD::BuildVisitorAdapter visitor(*builder);
@@ -271,8 +257,9 @@ namespace Archived
         builder->SetRawData(rawData.GetSubcontainer(0, size));
         return builder->GetResult();
       }
-      return Container::Ptr();
+      return {};
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -281,5 +268,4 @@ namespace Archived
   {
     return MakePtr<TRDDecoder>();
   }
-}//namespace Archived
-}//namespace Formats
+}  // namespace Formats::Archived

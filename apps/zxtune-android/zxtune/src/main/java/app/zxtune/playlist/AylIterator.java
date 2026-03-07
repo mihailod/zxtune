@@ -16,7 +16,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
 
@@ -26,8 +25,8 @@ public final class AylIterator {
   private static final String PARAMETERS_BEGIN = "<";
   private static final String PARAMETERS_END = ">";
   
-  public static ReferencesIterator create(ByteBuffer buf) throws IOException {
-    return new ReferencesArrayIterator(parse(buf));
+  public static ReferencesIterator create(InputStream stream) throws IOException {
+    return new ReferencesArrayIterator(parse(stream));
   }
 
   private static class Properties {
@@ -52,8 +51,7 @@ public final class AylIterator {
     */
   }
   
-  public static ArrayList<ReferencesIterator.Entry> parse(ByteBuffer buf) throws IOException {
-    final InputStream stream = XspfIterator.newInputStream(buf);
+  public static ArrayList<ReferencesIterator.Entry> parse(InputStream stream) throws IOException {
     final BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
     /*final Properties props = */new Properties(reader.readLine());
     //TODO: apply encoding
@@ -79,6 +77,7 @@ public final class AylIterator {
     while ((line = reader.readLine()) != null) {
       res.add(line.trim());
     }
+    reader.close();
     return res;
   }
 

@@ -1,62 +1,58 @@
 /**
-* 
-* @file
-*
-* @brief  TurboSound support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TurboSound support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <devices/aym/chip.h>
+#include "devices/aym/chip.h"
 
-namespace Devices
+#include <array>
+
+namespace Devices::TurboSound
 {
-  namespace TurboSound
+  const uint_t CHIPS = 2;
+  const uint_t VOICES = AYM::VOICES * CHIPS;
+
+  using AYM::TimeUnit;
+  using AYM::Stamp;
+
+  using Registers = std::array<AYM::Registers, CHIPS>;
+
+  struct DataChunk
   {
-    const uint_t CHIPS = 2;
-    const uint_t VOICES = AYM::VOICES * CHIPS;
+    DataChunk() = default;
 
-    using AYM::TimeUnit;
-    using AYM::Stamp;
+    Stamp TimeStamp;
+    Registers Data;
+  };
 
-    typedef std::array<AYM::Registers, CHIPS> Registers;
+  class Device
+  {
+  public:
+    using Ptr = std::unique_ptr<Device>;
+    virtual ~Device() = default;
 
-    struct DataChunk
-    {
-      DataChunk()
-        : TimeStamp()
-        , Data()
-      {
-      }
+    virtual void RenderData(const DataChunk& src) = 0;
+    virtual void RenderData(const std::vector<DataChunk>& src) = 0;
+    virtual void Reset() = 0;
+  };
 
-      Stamp TimeStamp;
-      Registers Data;
-    };
+  class Chip : public Device
+  {
+  public:
+    using Ptr = std::unique_ptr<Chip>;
 
-    class Device
-    {
-    public:
-      typedef std::shared_ptr<Device> Ptr;
-      virtual ~Device() = default;
+    virtual Sound::Chunk RenderTill(Stamp till) = 0;
+  };
 
-      virtual void RenderData(const DataChunk& src) = 0;
-      virtual void RenderData(const std::vector<DataChunk>& src) = 0;
-      virtual void Reset() = 0;
-    };
+  using AYM::ChipParameters;
+  using AYM::MixerType;
 
-    class Chip : public Device, public StateSource
-    {
-    public:
-      typedef std::shared_ptr<Chip> Ptr;
-    };
-
-    using AYM::ChipParameters;
-    using AYM::MixerType;
-
-    Chip::Ptr CreateChip(ChipParameters::Ptr params, MixerType::Ptr mixer, Sound::Receiver::Ptr target);
-  }
-}
+  Chip::Ptr CreateChip(ChipParameters::Ptr params, MixerType::Ptr mixer);
+}  // namespace Devices::TurboSound

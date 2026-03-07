@@ -1,85 +1,51 @@
 /**
-* 
-* @file
-*
-* @brief  ProSoundMaker chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ProSoundMaker chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/aym/prosoundmaker.h"
+
+#include "formats/chiptune/aym/prosoundmaker.h"
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
-//common includes
-#include <contract.h>
-#include <make_ptr.h>
-//library includes
-#include <formats/chiptune/aym/prosoundmaker.h>
-#include <math/numeric.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
-//boost includes
-#include <boost/optional.hpp>
-//text includes
-#include <module/text/platforms.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
 
-namespace Module
+#include "math/numeric.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
+#include <array>
+#include <optional>
+
+namespace Module::ProSoundMaker
 {
-namespace ProSoundMaker
-{
-  //supported commands and parameters
+  // supported commands and parameters
   enum CmdType
   {
-    //no parameters
+    // no parameters
     EMPTY,
-    //r13,period,note delta
+    // r13,period,note delta
     ENVELOPE,
-    //disable ornament
+    // disable ornament
     NOORNAMENT,
-    //envelope reinit on every note,true/false
+    // envelope reinit on every note,true/false
     ENVELOPE_REINIT
   };
 
   using Formats::Chiptune::ProSoundMaker::Sample;
   using Formats::Chiptune::ProSoundMaker::Ornament;
 
-  typedef SimpleOrderListWithTransposition<Formats::Chiptune::ProSoundMaker::PositionEntry> OrderListWithTransposition;
+  using OrderListWithTransposition = SimpleOrderListWithTransposition<Formats::Chiptune::ProSoundMaker::PositionEntry>;
 
-  class ModuleData : public TrackModel
-  {
-  public:
-    typedef std::shared_ptr<const ModuleData> Ptr;
-    typedef std::shared_ptr<ModuleData> RWPtr;
-
-    ModuleData()
-      : InitialTempo()
-    {
-    }
-
-    uint_t GetInitialTempo() const override
-    {
-      return InitialTempo;
-    }
-
-    const OrderList& GetOrder() const override
-    {
-      return *Order;
-    }
-
-    const PatternsSet& GetPatterns() const override
-    {
-      return *Patterns;
-    }
-
-    uint_t InitialTempo;
-    OrderListWithTransposition::Ptr Order;
-    PatternsSet::Ptr Patterns;
-    SparsedObjectsStorage<Sample> Samples;
-    SparsedObjectsStorage<Ornament> Ornaments;
-  };
+  using ModuleData = AYM::ModuleData<OrderListWithTransposition, Sample, Ornament>;
 
   class DataBuilder : public Formats::Chiptune::ProSoundMaker::Builder
   {
@@ -179,6 +145,7 @@ namespace ProSoundMaker
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     AYM::PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -188,48 +155,32 @@ namespace ProSoundMaker
 
   struct SampleState
   {
-    SampleState()
-      : Current(nullptr)
-      , Position(0)
-      , LoopsCount(0)
-      , Finished(false)
-    {
-    }
+    SampleState() = default;
 
-    const Sample* Current;
-    uint_t Position;
-    uint_t LoopsCount;
-    bool Finished;
+    const Sample* Current = nullptr;
+    uint_t Position = 0;
+    uint_t LoopsCount = 0;
+    bool Finished = false;
   };
 
   struct OrnamentState
   {
-    OrnamentState()
-      : Current(nullptr)
-      , Position(0)
-      , Finished()
-      , KeepFinished()
-    {
-    }
+    OrnamentState() = default;
 
-    const Ornament* Current;
-    uint_t Position;
-    bool Finished;
-    bool KeepFinished;
+    const Ornament* Current = nullptr;
+    uint_t Position = 0;
+    bool Finished = false;
+    bool KeepFinished = false;
   };
 
   struct EnvelopeState
   {
-    EnvelopeState()
-      : Reinit(false)
-      , Type()
-    {
-    }
+    EnvelopeState() = default;
 
-    bool Reinit;
-    uint_t Type;
-    boost::optional<uint_t> Note;
-    boost::optional<uint_t> Tone;
+    bool Reinit = false;
+    uint_t Type = 0;
+    std::optional<uint_t> Note;
+    std::optional<uint_t> Tone;
 
     bool Enabled() const
     {
@@ -258,37 +209,30 @@ namespace ProSoundMaker
 
   struct ChannelState
   {
-    ChannelState()
-      : Enabled(false)
-      , Note()
-      , VolumeDelta(), BaseVolumeDelta()
-      , Slide()
-    {
-    }
-    bool Enabled;
+    ChannelState() = default;
+    bool Enabled = false;
     EnvelopeState Envelope;
-    uint_t Note;
+    uint_t Note = 0;
     SampleState Smp;
     OrnamentState Orn;
-    uint_t VolumeDelta;
-    uint_t BaseVolumeDelta;
-    int_t Slide;
+    uint_t VolumeDelta = 0;
+    uint_t BaseVolumeDelta = 0;
+    int_t Slide = 0;
   };
 
   class DataRenderer : public AYM::DataRenderer
   {
   public:
     explicit DataRenderer(ModuleData::Ptr data)
-       : Data(std::move(data))
+      : Data(std::move(data))
     {
       Reset();
     }
 
     void Reset() override
     {
-      for (uint_t chan = 0; chan != PlayerState.size(); ++chan)
+      for (auto& state : PlayerState)
       {
-        ChannelState& state = PlayerState[chan];
         state = ChannelState();
         state.Smp.Current = &Data->Samples.Get(0);
         state.Orn.Current = &Data->Ornaments.Get(0);
@@ -303,16 +247,17 @@ namespace ProSoundMaker
       }
       SynthesizeChannelsData(track);
     }
+
   private:
     void GetNewLineState(const TrackModelState& state, AYM::TrackBuilder& track)
     {
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
         const auto transposition = Data->Order->GetTransposition(state.Position());
         const auto newPattern = 0 == state.Line();
         for (uint_t chan = 0; chan != PlayerState.size(); ++chan)
         {
-          if (const auto src = line->GetChannel(chan))
+          if (const auto* const src = line->GetChannel(chan))
           {
             auto& dst = PlayerState[chan];
             if (newPattern)
@@ -422,7 +367,7 @@ namespace ProSoundMaker
       }
     }
 
-    void SynthesizeChannel(ChannelState& dst, AYM::ChannelBuilder& channel, AYM::TrackBuilder& track)
+    static void SynthesizeChannel(ChannelState& dst, AYM::ChannelBuilder& channel, AYM::TrackBuilder& track)
     {
       const bool hasEnvelope = dst.Envelope.Enabled();
       const Ornament& curOrnament = *dst.Orn.Current;
@@ -431,11 +376,11 @@ namespace ProSoundMaker
       const Sample::Line& curSampleLine = curSample.GetLine(dst.Smp.Position);
 
       dst.Slide += curSampleLine.Gliss;
-      const int_t halftones = Math::Clamp<int_t>(int_t(dst.Note) + ornamentLine, 0, 95);
-      const int_t tone = Math::Clamp<int_t>(track.GetFrequency(halftones) + dst.Slide, 0, 4095);
+      const auto halftones = Math::Clamp<int_t>(int_t(dst.Note) + ornamentLine, 0, 95);
+      const auto tone = Math::Clamp<int_t>(track.GetFrequency(halftones) + dst.Slide, 0, 4095);
       channel.SetTone(tone);
-      
-      //emulate level construction due to possibility of envelope bit reset
+
+      // emulate level construction due to possibility of envelope bit reset
       int_t level = int_t(curSampleLine.Level | (hasEnvelope ? 16 : 0)) + dst.VolumeDelta - 15;
       if (!dst.Enabled || level < 0)
       {
@@ -494,59 +439,28 @@ namespace ProSoundMaker
         }
       }
     }
+
   private:
     const ModuleData::Ptr Data;
     std::array<ChannelState, AYM::TRACK_CHANNELS> PlayerState;
   };
 
-  class Chiptune : public AYM::Chiptune
-  {
-  public:
-    Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
-      : Data(std::move(data))
-      , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, AYM::TRACK_CHANNELS))
-    {
-    }
-
-    Information::Ptr GetInformation() const override
-    {
-      return Info;
-    }
-
-    Parameters::Accessor::Ptr GetProperties() const override
-    {
-      return Properties;
-    }
-
-    AYM::DataIterator::Ptr CreateDataIterator(AYM::TrackParameters::Ptr trackParams) const override
-    {
-      auto iterator = CreateTrackStateIterator(Data);
-      auto renderer = MakePtr<DataRenderer>(Data);
-      return AYM::CreateDataIterator(std::move(trackParams), std::move(iterator), std::move(renderer));
-    }
-  private:
-    const ModuleData::Ptr Data;
-    const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
-  };
-
   class Factory : public AYM::Factory
   {
   public:
-    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       AYM::PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
-      if (const Formats::Chiptune::Container::Ptr container = Formats::Chiptune::ProSoundMaker::ParseCompiled(rawData, dataBuilder))
+      if (const auto container = Formats::Chiptune::ProSoundMaker::ParseCompiled(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
-        return MakePtr<Chiptune>(dataBuilder.CaptureResult(), properties);
+        return MakePtr<AYM::TrackingChiptune<ModuleData, DataRenderer>>(dataBuilder.CaptureResult(), properties);
       }
       else
       {
-        return AYM::Chiptune::Ptr();
+        return {};
       }
     }
   };
@@ -555,5 +469,4 @@ namespace ProSoundMaker
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::ProSoundMaker

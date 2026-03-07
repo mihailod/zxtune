@@ -1,22 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  ExtremeTracker v1 chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ExtremeTracker v1 chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
 #include "module/players/dac/dac_factory.h"
 
-namespace Module
+namespace Module::ExtremeTracker1
 {
-  namespace ExtremeTracker1
-  {
-    DAC::Factory::Ptr CreateFactory();
-  }
-}
+  DAC::Factory::Ptr CreateFactory();
+}  // namespace Module::ExtremeTracker1

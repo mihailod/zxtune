@@ -13,23 +13,11 @@ libraries.common = analysis \
                    sound strings \
                    tools
 
-libraries.3rdparty = asap ffmpeg FLAC gme he ht hvl lazyusf2 lhasa lzma mgba sidplayfp snesspc unrar v2m vgm vio2sf xmp z80ex zlib
+libraries.3rdparty = asap atrac9 ffmpeg FLAC gme he ht hvl lazyusf2 lhasa lzma mpg123 ogg openmpt opus mgba sidplayfp snesspc sseqplayer unrar v2m vgm vgmstream vio2sf vorbis xmp z80ex zlib
 
 ld_flags += -Wl,--version-script=libzxtune.version
 
 include $(dirs.root)/makefile.mak
-
-jni_plugin.h: ../java/app/zxtune/core/jni/Plugins.java
-	javah -classpath ../java -o $@ app.zxtune.core.jni.Plugins
-
-jni_global_options.h: ../java/app/zxtune/core/jni/GlobalOptions.java
-	javah -classpath ../java -o $@ app.zxtune.core.jni.GlobalOptions
-
-jni_module.h: ../java/app/zxtune/core/jni/JniModule.java
-	javah -classpath ../java -o $@ app.zxtune.core.jni.JniModule
-
-jni_player.h: ../java/app/zxtune/core/jni/JniPlayer.java
-	javah -classpath ../java -o $@ app.zxtune.core.jni.JniPlayer
 
 install_$(platform):
 	$(call copyfile_cmd,$(target),$(DESTDIR))

@@ -44,9 +44,10 @@ CXX_MODE_FLAGS += --coverage
 LD_MODE_FLAGS += --coverage
 endif
 
-DEFINES = $(defines) $(defines.$(platform)) $(defines.$(platform).$(arch))
-INCLUDES_DIRS = $(sort $(includes.dirs) $(includes.dirs.$(platform)) $(includes.dirs.$(notdir $1)))
-INCLUDES_FILES = $(includes.files) $(includes.files.$(platform))
+ifneq ($(dir.sysroot),)
+CXX_MODE_FLAGS += --sysroot=$(dir.sysroot)
+LD_MODE_FLAGS += --sysroot=$(dir.sysroot)
+endif
 
 #setup flags
 CCFLAGS = -g $(CXX_MODE_FLAGS) $(cxx_flags) $($(platform).cxx.flags) $($(platform).$(arch).cxx.flags) \
@@ -55,25 +56,26 @@ CCFLAGS = -g $(CXX_MODE_FLAGS) $(cxx_flags) $($(platform).cxx.flags) $($(platfor
 	-W -Wall -Wextra -pipe \
 	$(addprefix -I,$(INCLUDES_DIRS)) $(addprefix -include ,$(INCLUDES_FILES))
 
-CXXFLAGS = $(CCFLAGS) -std=c++11 -fvisibility-inlines-hidden
+CXXFLAGS = $(CCFLAGS) -std=c++20 -Wno-gnu-string-literal-operator-template -fvisibility-inlines-hidden
 
 ARFLAGS := crus
 LDFLAGS = $(LD_MODE_FLAGS) $($(platform).ld.flags) $($(platform).$(arch).ld.flags) $(ld_flags)
 
 #specify endpoint commands
-build_obj_cmd_nodeps = $(tools.cxx) $(CXXFLAGS) -c $1 -o $2
+build_obj_cmd_nodeps = $(tools.cxx) $(CXXFLAGS) -c $$(realpath $1) -o $2
 build_obj_cmd = $(build_obj_cmd_nodeps) -MMD
-build_obj_cmd_cc = $(tools.cc) $(CCFLAGS) -std=c99 -c $1 -o $2 -MMD
+build_obj_cmd_cc = $(tools.cc) $(CCFLAGS) -c $$(realpath $1) -o $2 -MMD
 build_lib_cmd = $(tools.ar) $(ARFLAGS) $2 $1
 link_cmd = $(tools.ld) $(LDFLAGS) -o $@ $(OBJECTS) $(RESOURCES) \
         -L$(libraries.dir) $(LINKER_BEGIN_GROUP) $(addprefix -l,$(libraries)) $(LINKER_END_GROUP) \
+        $(if $(libraries.static),$(LINKER_BEGIN_GROUP) $(addprefix -l:,$(foreach l,$(libraries.static),$(call makelib_name,$(l)))) $(LINKER_END_GROUP)) \
         $(addprefix -L,$(libraries.dirs.$(platform)))\
         $(LINKER_BEGIN_GROUP) $(addprefix -l,$(sort $(libraries.$(platform)))) $(LINKER_END_GROUP)\
 	$(if $(libraries.dynamic),-L$(output_dir) $(addprefix -l,$(libraries.dynamic)),)
 
 #specify postlink command- generate pdb file
-postlink_cmd = $(tools.objcopy) --only-keep-debug $@ $@.pdb && $(sleep_cmd) && \
-	$(tools.objcopy) --strip-all $@ && $(sleep_cmd) && \
+postlink_cmd = $(tools.objcopy) --only-keep-debug $@ $@.pdb && \
+	$(tools.objcopy) --strip-all $@ && \
 	$(tools.objcopy) --add-gnu-debuglink=$@.pdb $@
 
 #include generated dependensies

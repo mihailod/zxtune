@@ -1,38 +1,36 @@
 /**
-* 
-* @file
-*
-* @brief Playlist search dialog interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playlist search dialog interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "playlist/ui/search.h"
-#include "playlist/supp/model.h"
-#include "playlist/supp/operations_search.h"
-//qt includes
+#include "apps/zxtune-qt/playlist/supp/model.h"
+#include "apps/zxtune-qt/playlist/supp/operations_search.h"
+#include "apps/zxtune-qt/playlist/ui/search.h"
+
 #include <QtWidgets/QDialog>
 
-namespace Playlist
+namespace Playlist::UI
 {
-  namespace UI
+  class SearchDialog : public QDialog
   {
-    class SearchDialog : public QDialog
-    {
-      Q_OBJECT
-    protected:
-      explicit SearchDialog(QWidget& parent);
-    public:
-      typedef std::shared_ptr<SearchDialog> Ptr;
-      static Ptr Create(QWidget& parent);
+    Q_OBJECT
+  protected:
+    explicit SearchDialog(QWidget& parent);
 
-      virtual bool Execute(Playlist::Item::Search::Data& res) = 0;
-    };
+  public:
+    using Ptr = std::shared_ptr<SearchDialog>;
+    static Ptr Create(QWidget& parent);
 
-    Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent, Playlist::Model::IndexSet::Ptr scope);
-  }
-}
+    virtual bool Execute(Playlist::Item::Search::Data& res) = 0;
+  };
+
+  Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent,
+                                                              const Playlist::Model::IndexSet::Ptr& scope);
+}  // namespace Playlist::UI

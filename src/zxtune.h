@@ -1,23 +1,19 @@
 /**
-*
-* @file
-*
-* @brief  Common library definitions
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Common library definitions
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <parameters/types.h>
+#include "parameters/identifier.h"
 
-namespace Parameters
+namespace Parameters::ZXTune
 {
-  namespace ZXTune
-  {
-    //! @brief Parameters#ZXTune namespace prefix
-    const NameType PREFIX("zxtune");
-  }
-}
+  //! @brief Parameters#ZXTune namespace prefix
+  const auto PREFIX = "zxtune"_id;
+}  // namespace Parameters::ZXTune

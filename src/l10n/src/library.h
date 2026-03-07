@@ -1,18 +1,20 @@
 /**
-*
-* @file
-*
-* @brief    Localization support API
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief    Localization support API
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//std includes
+#include "binary/data.h"
+
+#include "string_type.h"
+#include "string_view.h"
+
 #include <memory>
 
 namespace L10n
@@ -23,7 +25,7 @@ namespace L10n
   class Vocabulary
   {
   public:
-    typedef std::shared_ptr<const Vocabulary> Ptr;
+    using Ptr = std::shared_ptr<const Vocabulary>;
     virtual ~Vocabulary() = default;
 
     //! @brief Retreiving translated or converted text message
@@ -46,10 +48,14 @@ namespace L10n
 
   struct Translation
   {
-    std::string Domain;
-    std::string Language;
-    std::string Type;
-    Dump Data;
+    Translation() = default;
+    Translation(Translation&&) = default;
+    Translation(const Translation&) = delete;
+    Translation& operator=(const Translation&) = delete;
+    String Domain;
+    String Language;
+    String Type;
+    Binary::Data::Ptr Data;
   };
 
   class Library
@@ -57,12 +63,12 @@ namespace L10n
   public:
     virtual ~Library() = default;
 
-    virtual void AddTranslation(const Translation& trans) = 0;
+    virtual void AddTranslation(Translation trans) = 0;
 
-    virtual void SelectTranslation(const std::string& translation) = 0;
+    virtual void SelectTranslation(StringView translation) = 0;
 
-    virtual Vocabulary::Ptr GetVocabulary(const std::string& domain) const = 0;
+    virtual Vocabulary::Ptr GetVocabulary(StringView domain) const = 0;
 
     static Library& Instance();
   };
-}
+}  // namespace L10n

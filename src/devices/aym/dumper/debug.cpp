@@ -1,19 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief  Debug stream dumper implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Debug stream dumper implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "devices/aym/dumper/dump_builder.h"
-//common includes
-#include <make_ptr.h>
-//std includes
-#include <algorithm>
+
+#include "binary/data_builder.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
 
 namespace
 {
@@ -21,30 +21,23 @@ namespace
   {
     return sym >= 10 ? 'A' + sym - 10 : '0' + sym;
   }
-}
+}  // namespace
 
-namespace Devices
-{
-namespace AYM
+namespace Devices::AYM
 {
   class DebugDumpBuilder : public FramedDumpBuilder
   {
   public:
-    DebugDumpBuilder()
-      : FrameNumber()
-    {
-    }
-    
     void Initialize() override
     {
-      static const std::string HEADER("000102030405060708090a0b0c0d\n");
-      Data.assign(HEADER.begin(), HEADER.end());
+      static const char HEADER[] = "000102030405060708090a0b0c0d";
+      AddLine(HEADER);
       FrameNumber = 0;
     }
 
-    void GetResult(Dump& data) const override
+    Binary::Data::Ptr GetResult() override
     {
-      data = Data;
+      return Data.CaptureResult();
     }
 
     void WriteFrame(uint_t framesPassed, const Registers& /*state*/, const Registers& update) override
@@ -54,42 +47,37 @@ namespace AYM
       {
         AddNochangesMessage();
       }
-      Dump str(Registers::TOTAL * 2, ' ');
+      String str(Registers::TOTAL * 2, ' ');
       for (Registers::IndicesIterator it(update); it; ++it)
       {
         const uint8_t val = update[*it];
         str[*it * 2 + 0] = HexSymbol(val >> 4);
         str[*it * 2 + 1] = HexSymbol(val & 15);
       }
-      AddData(str);
-      AddEndOfFrame();
+      AddLine(str);
     }
+
   private:
     void AddNochangesMessage()
     {
-      Data.push_back('=');
-      AddEndOfFrame();
+      AddLine("=");
     }
 
-    void AddData(const Dump& str)
+    void AddLine(StringView str)
     {
-      std::copy(str.begin(), str.end(), std::back_inserter(Data));
-    }
-
-    void AddEndOfFrame()
-    {
-      Data.push_back('\n');
+      Data.AddCString(str);
+      Data.Get<char>(Data.Size() - 1) = '\n';
       ++FrameNumber;
     }
+
   private:
-    Dump Data;
-    uint_t FrameNumber;
+    Binary::DataBuilder Data;
+    uint_t FrameNumber = 0;
   };
 
-  Dumper::Ptr CreateDebugDumper(DumperParameters::Ptr params)
+  Dumper::Ptr CreateDebugDumper(const DumperParameters& params)
   {
-    const FramedDumpBuilder::Ptr builder = MakePtr<DebugDumpBuilder>();
-    return CreateDumper(params, builder);
+    auto builder = MakePtr<DebugDumpBuilder>();
+    return CreateDumper(params, std::move(builder));
   }
-}
-}
+}  // namespace Devices::AYM

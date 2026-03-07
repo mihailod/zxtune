@@ -1,54 +1,59 @@
 /**
-* 
-* @file
-*
-* @brief Playlist view implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playlist view implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "scanner_view.h"
-#include "table_view.h"
-#include "contextmenu.h"
-#include "playlist_view.h"
-#include "search.h"
-#include "playlist/parameters.h"
-#include "playlist/io/export.h"
-#include "playlist/supp/container.h"
-#include "playlist/supp/controller.h"
-#include "playlist/supp/model.h"
-#include "playlist/supp/scanner.h"
-#include "playlist/supp/storage.h"
-#include "supp/options.h"
-#include "ui/state.h"
-#include "ui/utils.h"
-#include "ui/controls/overlay_progress.h"
-#include "ui/tools/errorswidget.h"
-#include "ui/tools/filedialog.h"
-//local includes
-#include <contract.h>
-#include <error.h>
-//library includes
-#include <debug/log.h>
-#include <parameters/template.h>
-#include <strings/template.h>
-//boost includes
-#include <boost/algorithm/string/find.hpp>
-#include <boost/algorithm/string/replace.hpp>
-//qt includes
-#include <QtCore/QUrl>
+#include "apps/zxtune-qt/playlist/ui/playlist_view.h"
+
+#include "apps/zxtune-qt/playlist/io/export.h"
+#include "apps/zxtune-qt/playlist/parameters.h"
+#include "apps/zxtune-qt/playlist/supp/container.h"
+#include "apps/zxtune-qt/playlist/supp/controller.h"
+#include "apps/zxtune-qt/playlist/supp/model.h"
+#include "apps/zxtune-qt/playlist/supp/scanner.h"
+#include "apps/zxtune-qt/playlist/supp/storage.h"
+#include "apps/zxtune-qt/playlist/ui/contextmenu.h"
+#include "apps/zxtune-qt/playlist/ui/scanner_view.h"
+#include "apps/zxtune-qt/playlist/ui/search.h"
+#include "apps/zxtune-qt/playlist/ui/table_view.h"
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/controls/overlay_progress.h"
+#include "apps/zxtune-qt/ui/state.h"
+#include "apps/zxtune-qt/ui/tools/errorswidget.h"
+#include "apps/zxtune-qt/ui/tools/filedialog.h"
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "binary/base64.h"
+#include "debug/log.h"
+#include "module/attributes.h"
+#include "parameters/template.h"
+#include "strings/join.h"
+#include "strings/split.h"
+#include "strings/template.h"
+
+#include "contract.h"
+#include "error.h"
+#include "string_view.h"
+
+#include <QtCore/QBuffer>
+#include <QtCore/QIdentityProxyModel>
 #include <QtCore/QMimeData>
-#include <QtWidgets/QApplication>
+#include <QtCore/QUrl>
 #include <QtGui/QClipboard>
 #include <QtGui/QDragEnterEvent>
+#include <QtGui/QKeyEvent>
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QHeaderView>
 #include <QtWidgets/QInputDialog>
-#include <QtGui/QKeyEvent>
 #include <QtWidgets/QProgressBar>
-#include "uiproxymodel.h"
 #include <QtWidgets/QVBoxLayout>
+
+#include <utility>
 
 namespace
 {
@@ -60,8 +65,7 @@ namespace
     PlayitemStateCallbackImpl(Playlist::Model& model, Playlist::Item::Iterator& iter)
       : Model(model)
       , Iterator(iter)
-    {
-    }
+    {}
 
     Playlist::Item::State GetState(const QModelIndex& index) const override
     {
@@ -73,15 +77,19 @@ namespace
         {
           return Iterator.GetState();
         }
-        //TODO: do not access item
-        const Playlist::Item::Data::Ptr item = Model.GetItem(row);
-        if (item && !item->GetState())
+        // TODO: do not access item
+        if (const auto item = Model.GetItem(row))
         {
-          return Playlist::Item::STOPPED;
+          const auto& state = item->GetState();
+          if (state.IsReady() && !state.GetIfError())
+          {
+            return Playlist::Item::STOPPED;
+          }
         }
       }
       return Playlist::Item::ERROR;
     }
+
   private:
     const Playlist::Model& Model;
     const Playlist::Item::Iterator& Iterator;
@@ -92,65 +100,147 @@ namespace
   public:
     explicit PlaylistOptionsWrapper(Parameters::Accessor::Ptr params)
       : Params(std::move(params))
-    {
-    }
+    {}
 
     unsigned GetPlayorderMode() const
     {
-      Parameters::IntType isLooped = Parameters::ZXTuneQT::Playlist::LOOPED_DEFAULT;
-      Params->FindValue(Parameters::ZXTuneQT::Playlist::LOOPED, isLooped);
-      Parameters::IntType isRandom = Parameters::ZXTuneQT::Playlist::RANDOMIZED_DEFAULT;
-      Params->FindValue(Parameters::ZXTuneQT::Playlist::RANDOMIZED, isRandom);
-      return
-        (isLooped ? Playlist::Item::LOOPED : 0) |
-        (isRandom ? Playlist::Item::RANDOMIZED: 0)
-      ;
+      using namespace Parameters::ZXTuneQT::Playlist;
+      const auto isLooped = Parameters::GetInteger(*Params, LOOPED, LOOPED_DEFAULT);
+      const auto isRandom = Parameters::GetInteger(*Params, RANDOMIZED, RANDOMIZED_DEFAULT);
+      return (isLooped ? Playlist::Item::LOOPED : 0) | (isRandom ? Playlist::Item::RANDOMIZED : 0);
     }
+
   private:
     const Parameters::Accessor::Ptr Params;
   };
 
   class TooltipFieldsSourceAdapter : public Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource>
   {
-    typedef Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource> Parent;
+    using Parent = Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource>;
+
   public:
     explicit TooltipFieldsSourceAdapter(const Parameters::Accessor& props)
       : Parent(props)
-    {
-    }
+      , Props(props)
+    {}
 
-    String GetFieldValue(const String& fieldName) const override
+    String GetFieldValue(StringView fieldName) const override
     {
-      static const Char AMPERSAND[] = {'&', 0};
-      static const Char AMPERSAND_ESCAPED[] = {'&', 'a', 'm', 'p', ';', 0};
-      static const Char LBRACKET[] = {'<', 0};
-      static const Char LBRACKET_ESCAPED[] = {'&', 'l', 't', ';', 0};
-      static const Char RBRACKET[] = {'>', 0};
-      static const Char RBRACKET_ESCAPED[] = {'&', 'g', 't', ';', 0};
-      static const Char NEWLINE[] = {'\n', 0};
-      static const Char NEWLINE_ESCAPED[] = {'<', 'b', 'r', '/', '>', 0};
-      static const int MAX_LINES = 16;
-      String result = Parent::GetFieldValue(fieldName);
+      if (fieldName == Module::ATTR_PICTURE)
+      {
+        return GetPicture();
+      }
+      const auto MAX_LINES = 16;
+      auto result = Parent::GetFieldValue(fieldName);
       TrimLongMultiline(result, MAX_LINES);
-      boost::algorithm::replace_all(result, AMPERSAND, AMPERSAND_ESCAPED);
-      boost::algorithm::replace_all(result, LBRACKET, LBRACKET_ESCAPED);
-      boost::algorithm::replace_all(result, RBRACKET, RBRACKET_ESCAPED);
-      boost::algorithm::replace_all(result, NEWLINE, NEWLINE_ESCAPED);
+      EscapeHtml(result);
       return result;
     }
+
   private:
+    String GetPicture() const
+    {
+      if (const auto pic = Props.FindData(Module::ATTR_PICTURE))
+      {
+        return CreateThumbnail(*pic);
+      }
+      return "";
+    }
+
+    static String CreateThumbnail(Binary::View pic)
+    {
+      // TODO: move load/resize/convert to another thread
+      QPixmap image;
+      if (!image.loadFromData(pic.As<uchar>(), pic.Size()))
+      {
+        Dbg("Failed to load image!");
+        return "";
+      }
+      const auto originalSize = image.size();
+      image = image.scaled(200, 200, Qt::KeepAspectRatio);
+      QByteArray bytes;
+      {
+        QBuffer buffer(&bytes);
+        buffer.open(QIODevice::WriteOnly);
+        if (!image.save(&buffer, "PNG"))
+        {
+          Dbg("Failed to convert resized image!");
+          return "";
+        }
+      }
+      const auto scaledSize = image.size();
+      Dbg("Resized image {}x{} ({} bytes) -> {}x{} ({} bytes)", originalSize.width(), originalSize.height(), pic.Size(),
+          scaledSize.width(), scaledSize.height(), bytes.size());
+      return CreateImageTag({bytes.constData(), static_cast<std::size_t>(bytes.size())});
+    }
+
+    static String CreateImageTag(Binary::View val)
+    {
+      static const char PREFIX[] = R"(<br/><img src="data:image/png;base64,)";
+      static const char SUFFIX[] = R"("/>)";
+      const auto encodedSize = Binary::Base64::CalculateConvertedSize(val.Size());
+      String res;
+      res.reserve(std::size(PREFIX) + encodedSize + std::size(SUFFIX));
+      res += PREFIX;
+      const auto* in = val.As<uint8_t>();
+      auto* out = res.data() + res.size();
+      res.resize(res.size() + encodedSize);
+      Binary::Base64::Encode(in, in + val.Size(), out, out + encodedSize);
+      res += SUFFIX;
+      return res;
+    }
+
     static void TrimLongMultiline(String& result, int maxLines)
     {
-      static const Char NEWLINE[] = {'\n', 0};
-      static const Char ELLIPSIS[] = {'\n', '<', '.', '.', '.', '>', 0};
-      typedef boost::iterator_range<String::iterator> Range;
-      const Range head = boost::algorithm::find_nth(result, NEWLINE, maxLines / 2 - 1);
-      const Range tail = boost::algorithm::find_nth(result, NEWLINE, -maxLines / 2);
-      if (head.begin() < tail.begin())
+      const auto SEPARATOR = "\n"sv;
+      const auto ELLIPSIS = "<...>"sv;
+      auto lines = Strings::Split(result, SEPARATOR);
+      if (lines.size() <= maxLines)
       {
-        boost::algorithm::replace_range(result, Range(head.begin(), tail.begin()), ELLIPSIS);
+        return;
       }
+      auto tgt = lines.begin() + maxLines / 2 - 1;
+      *tgt++ = ELLIPSIS;
+      tgt = std::copy(lines.end() - maxLines / 2, lines.end(), tgt);
+      lines.erase(tgt, lines.end());
+      result = Strings::Join(lines, SEPARATOR);
     }
+
+    // TODO: get rid of template, build tooltip one-by-one and escape html with Qt
+    static void EscapeHtml(String& result)
+    {
+      if (result.size() == Strings::Find::First(result, "&<>\n"sv))
+      {
+        return;
+      }
+      String escaped;
+      escaped.reserve(result.size() * 11 / 10);
+      for (auto c : result)
+      {
+        switch (c)
+        {
+        case '&':
+          escaped += "&amp;"sv;
+          break;
+        case '<':
+          escaped += "&lt;"sv;
+          break;
+        case '>':
+          escaped += "&gt;"sv;
+          break;
+        case '\n':
+          escaped += "<br/>"sv;
+          break;
+        default:
+          escaped += c;
+          break;
+        }
+      }
+      result.swap(escaped);
+    }
+
+  private:
+    const Parameters::Accessor& Props;
   };
 
   class TooltipSource
@@ -159,23 +249,24 @@ namespace
     QString Get(const Parameters::Accessor& properties) const
     {
       const TooltipFieldsSourceAdapter adapter(properties);
-      const String& result = GetTemplate().Instantiate(adapter);
+      const auto& result = GetTemplate().Instantiate(adapter);
       return ToQString(result);
     }
+
   private:
     const Strings::Template& GetTemplate() const
     {
       const QString view = Playlist::UI::View::tr(
-        "<html>"
-        "[Fullpath]<br/>"
-        "[Container]&nbsp;([Size] bytes)<br/><br/>"
-        "<b>Title:</b> [Title]<br/>"
-        "<b>Author:</b> [Author]<br/>"
-        "<b>Program:</b> [Program]<br/>"
-        "[Comment]"
-        "<pre>[Strings]</pre>"
-        "</html>"
-      );
+          "<html>"
+          "[Fullpath]<br/>"
+          "[Container]&nbsp;([Size] bytes)<br/><br/>"
+          "<b>Title:</b> [Title]<br/>"
+          "<b>Author:</b> [Author]<br/>"
+          "<b>Program:</b> [Program]<br/>"
+          "[Comment]"
+          "<pre>[Strings]</pre>"
+          "[Picture]"
+          "</html>");
       return GetTemplate(view);
     }
 
@@ -188,42 +279,42 @@ namespace
       }
       return *TemplateData;
     }
+
   private:
     mutable QString TemplateView;
     mutable Strings::Template::Ptr TemplateData;
   };
 
-  class RetranslateModel : public UiHelpers::UIProxyModel
+  class RetranslateModel : public QIdentityProxyModel
   {
   public:
     explicit RetranslateModel(Playlist::Model& model)
-	  : UIProxyModel(&model)
+      : QIdentityProxyModel(&model)
       , Delegate(model)
     {
-      setModel(&model);
-      Dbg("Created retranslation model at %1% for %2%", this, &model);
+      setSourceModel(&model);
+      Dbg("Created retranslation model at {} for {}", Self(), static_cast<const void*>(&model));
     }
 
     ~RetranslateModel() override
     {
-      Dbg("Destroyed retranslation model at %1%", this);
+      Dbg("Destroyed retranslation model at {}", Self());
     }
 
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override
     {
-      if (Qt::Horizontal == orientation  &&
-          Qt::DisplayRole == role)
+      if (Qt::Horizontal == orientation && Qt::DisplayRole == role)
       {
         return GetHeaderText(section);
       }
-	  return UIProxyModel::headerData(section, orientation, role);
+      return QIdentityProxyModel::headerData(section, orientation, role);
     }
 
     QVariant data(const QModelIndex& index, int role) const override
     {
       if (!index.isValid())
       {
-        return QVariant();
+        return {};
       }
       else if (Qt::ToolTipRole == role)
       {
@@ -232,7 +323,7 @@ namespace
       }
       else
       {
-		return UIProxyModel::data(index, role);
+        return QIdentityProxyModel::data(index, role);
       }
     }
 
@@ -240,31 +331,38 @@ namespace
     {
       return Delegate.canFetchMore(index);
     }
+
   private:
+    const void* Self() const
+    {
+      return this;
+    }
+
     QVariant GetTooltip(int_t itemNum) const
     {
-      if (const Playlist::Item::Data::Ptr item = Delegate.GetItem(itemNum))
+      if (const auto item = Delegate.GetItem(itemNum))
       {
-        return GetTooltip(*item);
+        const auto& state = item->GetState();
+        if (const auto* err = state.GetIfError())
+        {
+          return ToQString(err->ToString());
+        }
+        else if (state.IsReady())
+        {
+          const auto properties = item->GetModuleProperties();
+          return Tooltip.Get(*properties);
+        }
+        else
+        {
+          // force prefetch
+          QIdentityProxyModel::data(index(itemNum, 0), Qt::DisplayRole);
+          return Playlist::UI::View::tr("Loading...");
+        }
       }
-      return QVariant();
+      return {};
     }
 
-    QVariant GetTooltip(const Playlist::Item::Data& item) const
-    {
-      if (const Error& err = item.GetState())
-      {
-        return ToQString(err.ToString());
-      }
-      else
-      {
-        const Module::Holder::Ptr holder = item.GetModule();
-        const Parameters::Accessor::Ptr properties = holder->GetModuleProperties();
-        return Tooltip.Get(*properties);
-      }
-    }
-
-    QVariant GetHeaderText(unsigned column) const
+    static QVariant GetHeaderText(unsigned column)
     {
       switch (column)
       {
@@ -289,9 +387,10 @@ namespace
       case Playlist::Model::COLUMN_FIXEDCRC:
         return Playlist::UI::View::tr("FixedCRC");
       default:
-        return QVariant();
+        return {};
       };
     }
+
   private:
     Playlist::Model& Delegate;
     TooltipSource Tooltip;
@@ -318,51 +417,57 @@ namespace
       : Playlist::UI::View(parent)
       , LayoutState(UI::State::Create(Parameters::ZXTuneQT::Playlist::NAMESPACE_NAME))
       , Controller(std::move(playlist))
-      , Options(PlaylistOptionsWrapper(params))
+      , Options(PlaylistOptionsWrapper(std::move(params)))
       , State(*Controller->GetModel(), *Controller->GetIterator())
       , View(Playlist::UI::TableView::Create(*this, State, *new RetranslateModel(*Controller->GetModel())))
       , OperationProgress(OverlayProgress::Create(*this))
     {
-      //setup ui
+      // setup ui
       setAcceptDrops(true);
-      if (const auto layout = new QVBoxLayout(this))
+      if (auto* const layout = new QVBoxLayout(this))
       {
         layout->setSpacing(1);
-        layout->setMargin(1);
+        layout->setContentsMargins(1, 1, 1, 1);
         layout->addWidget(View);
         OperationProgress->setVisible(false);
         if (UI::ErrorsWidget* const errors = UI::ErrorsWidget::Create(*this))
         {
           layout->addWidget(errors);
-          Require(errors->connect(Controller->GetScanner(), SIGNAL(ErrorOccurred(const Error&)), SLOT(AddError(const Error&))));
+          Require(connect(Controller->GetScanner(), &Playlist::Scanner::ErrorOccurred, errors,
+                          &UI::ErrorsWidget::AddError));
         }
-        if (Playlist::UI::ScannerView* const scannerView = Playlist::UI::ScannerView::Create(*this, Controller->GetScanner()))
+        if (Playlist::UI::ScannerView* const scannerView =
+                Playlist::UI::ScannerView::Create(*this, Controller->GetScanner()))
         {
           layout->addWidget(scannerView);
         }
       }
-      //setup connections
+      // setup connections
       const Playlist::Item::Iterator::Ptr iter = Controller->GetIterator();
-      Require(iter->connect(View, SIGNAL(TableRowActivated(unsigned)), SLOT(Reset(unsigned))));
-      Require(View->connect(iter, SIGNAL(ItemActivated(unsigned)), SLOT(MoveToTableRow(unsigned))));
+      Require(connect(View, &Playlist::UI::TableView::TableRowActivated, iter,
+                      qOverload<unsigned>(&Playlist::Item::Iterator::Reset)));
+      Require(connect(iter, qOverload<unsigned>(&Playlist::Item::Iterator::ItemActivated), View,
+                      &Playlist::UI::TableView::MoveToTableRow));
 
-      //redirect signals to self 
-      Require(connect(Controller.get(), SIGNAL(Renamed(const QString&)), SIGNAL(Renamed(const QString&))));
-      Require(connect(iter, SIGNAL(ItemActivated(Playlist::Item::Data::Ptr)), SIGNAL(ItemActivated(Playlist::Item::Data::Ptr))));
+      // redirect signals to self
+      Require(connect(Controller.get(), &Playlist::Controller::Renamed, this, &Playlist::UI::View::Renamed));
+      Require(connect(iter, qOverload<Playlist::Item::Data::Ptr>(&Playlist::Item::Iterator::ItemActivated), this,
+                      &Playlist::UI::View::ItemActivated));
 
       const Playlist::Model::Ptr model = Controller->GetModel();
-      Require(connect(model, SIGNAL(OperationStarted()), SLOT(LongOperationStart())));
-      Require(OperationProgress->connect(model, SIGNAL(OperationProgressChanged(int)), SLOT(UpdateProgress(int))));
-      Require(connect(model, SIGNAL(OperationStopped()), SLOT(LongOperationStop())));
-      Require(connect(OperationProgress, SIGNAL(Canceled()), SLOT(LongOperationCancel())));
+      Require(connect(model, &Playlist::Model::OperationStarted, this, &ViewImpl::LongOperationStart));
+      Require(connect(model, &Playlist::Model::OperationProgressChanged, OperationProgress,
+                      &OverlayProgress::UpdateProgress));
+      Require(connect(model, &Playlist::Model::OperationStopped, this, &ViewImpl::LongOperationStop));
+      Require(connect(OperationProgress, &OverlayProgress::Canceled, this, &ViewImpl::LongOperationCancel));
 
       LayoutState->AddWidget(*View->horizontalHeader());
-      Dbg("Created at %1%", this);
+      Dbg("Created at {}", Self());
     }
 
     ~ViewImpl() override
     {
-      Dbg("Destroyed at %1%", this);
+      Dbg("Destroyed at {}", Self());
     }
 
     Playlist::Controller::Ptr GetPlaylist() const override
@@ -370,7 +475,7 @@ namespace
       return Controller;
     }
 
-    //modifiers
+    // modifiers
     void AddItems(const QStringList& items) override
     {
       const Playlist::Scanner::Ptr scanner = Controller->GetScanner();
@@ -397,8 +502,7 @@ namespace
       const Playlist::Item::Iterator::Ptr iter = Controller->GetIterator();
       bool hasMoreItems = false;
       const unsigned playorderMode = Options.GetPlayorderMode();
-      while (iter->Next(playorderMode) &&
-             Playlist::Item::ERROR == iter->GetState())
+      while (iter->Next(playorderMode) && Playlist::Item::ERROR == iter->GetState())
       {
         hasMoreItems = true;
       }
@@ -411,23 +515,19 @@ namespace
     void Next() override
     {
       const Playlist::Item::Iterator::Ptr iter = Controller->GetIterator();
-      //skip invalid ones
+      // skip invalid ones
       const unsigned playorderMode = Options.GetPlayorderMode();
-      while (iter->Next(playorderMode) &&
-             Playlist::Item::ERROR == iter->GetState())
-      {
-      }
+      while (iter->Next(playorderMode) && Playlist::Item::ERROR == iter->GetState())
+      {}
     }
 
     void Prev() override
     {
       const Playlist::Item::Iterator::Ptr iter = Controller->GetIterator();
-      //skip invalid ones
+      // skip invalid ones
       const unsigned playorderMode = Options.GetPlayorderMode();
-      while (iter->Prev(playorderMode) &&
-             Playlist::Item::ERROR == iter->GetState())
-      {
-      }
+      while (iter->Prev(playorderMode) && Playlist::Item::ERROR == iter->GetState())
+      {}
     }
 
     void Clear() override
@@ -440,9 +540,8 @@ namespace
     void AddFiles() override
     {
       QStringList files;
-      if (UI::OpenMultipleFilesDialog(
-        Playlist::UI::View::tr("Add files"),
-        Playlist::UI::View::tr("All files (*)"), files))
+      if (UI::OpenMultipleFilesDialog(Playlist::UI::View::tr("Add files"), Playlist::UI::View::tr("All files (*)"),
+                                      files))
       {
         AddItems(files);
       }
@@ -462,7 +561,8 @@ namespace
     {
       const QString oldName = Controller->GetName();
       bool ok = false;
-      const QString newName = QInputDialog::getText(this, Playlist::UI::View::tr("Rename playlist"), QString(), QLineEdit::Normal, oldName, &ok);
+      const QString newName = QInputDialog::getText(this, Playlist::UI::View::tr("Rename playlist"), QString(),
+                                                    QLineEdit::Normal, oldName, &ok);
       if (ok && !newName.isEmpty())
       {
         Controller->SetName(newName);
@@ -478,35 +578,15 @@ namespace
 
       QString filename = Controller->GetName();
       int saveCase = 0;
-      if (UI::SaveFileDialog(Playlist::UI::View::tr("Save playlist"),
-        QLatin1String("xspf"), filters, filename, &saveCase))
+      if (UI::SaveFileDialog(Playlist::UI::View::tr("Save playlist"), QLatin1String("xspf"), filters, filename,
+                             &saveCase))
       {
         const Playlist::IO::ExportFlags flags = GetSavePlaylistFlags(saveCase);
-        Playlist::Save(Controller, filename, flags);
+        Playlist::Save(*Controller, filename, flags);
       }
     }
 
-    void LongOperationStart() override
-    {
-      View->setEnabled(false);
-      OperationProgress->UpdateProgress(0);
-      OperationProgress->setVisible(true);
-      OperationProgress->setEnabled(true);
-    }
-
-    void LongOperationStop() override
-    {
-      OperationProgress->setVisible(false);
-      View->setEnabled(true);
-    }
-
-    void LongOperationCancel() override
-    {
-      OperationProgress->setEnabled(false);
-      Controller->GetModel()->CancelLongOperation();
-    }
-
-    //qwidget virtuals
+    // qwidget virtuals
     void keyPressEvent(QKeyEvent* event) override
     {
       if (event->matches(QKeySequence::Delete) || event->key() == Qt::Key_Backspace)
@@ -565,18 +645,44 @@ namespace
 
     void showEvent(QShowEvent* event) override
     {
-      Dbg("Layout load for %1%", this);
+      Dbg("Layout load for {}", Self());
       LayoutState->Load();
       event->accept();
     }
 
     void hideEvent(QHideEvent* event) override
     {
-      Dbg("Layout save for %1%", this);
+      Dbg("Layout save for {}", Self());
       LayoutState->Save();
       event->accept();
     }
+
   private:
+    void LongOperationStart()
+    {
+      View->setEnabled(false);
+      OperationProgress->UpdateProgress(0);
+      OperationProgress->setVisible(true);
+      OperationProgress->setEnabled(true);
+    }
+
+    void LongOperationStop()
+    {
+      OperationProgress->setVisible(false);
+      View->setEnabled(true);
+    }
+
+    void LongOperationCancel()
+    {
+      OperationProgress->setEnabled(false);
+      Controller->GetModel()->CancelLongOperation();
+    }
+
+    const void* Self() const
+    {
+      return this;
+    }
+
     void UpdateState(Playlist::Item::State state)
     {
       const Playlist::Item::Iterator::Ptr iter = Controller->GetIterator();
@@ -598,9 +704,9 @@ namespace
         model->RemoveItems(items);
         if (1 == items->size())
         {
-          View->SelectItems(items);
           const Playlist::Model::IndexType itemToSelect = *items->begin();
-          //not last
+          View->SelectItems(std::move(items));
+          // not last
           if (itemToSelect != itemsCount - 1)
           {
             View->selectRow(itemToSelect);
@@ -660,7 +766,7 @@ namespace
           QDataStream stream(encodedData);
           stream >> items;
         }
-        //pasting is done immediately, so update UI right here
+        // pasting is done immediately, so update UI right here
         const Playlist::Scanner::Ptr scanner = Controller->GetScanner();
         scanner->PasteItems(items);
       }
@@ -679,21 +785,21 @@ namespace
     {
       if (const Playlist::Item::SelectionOperation::Ptr op = Playlist::UI::ExecuteSearchDialog(*View))
       {
-        //TODO: extract
+        // TODO: extract
         const Playlist::Model::Ptr model = Controller->GetModel();
         op->setParent(model);
-        Require(View->connect(op.get(), SIGNAL(ResultAcquired(Playlist::Model::IndexSet::Ptr)), SLOT(SelectItems(Playlist::Model::IndexSet::Ptr))));
+        Require(connect(op.get(), &Playlist::Item::SelectionOperation::ResultAcquired, View,
+                        &Playlist::UI::TableView::SelectItems));
         model->PerformOperation(op);
       }
     }
 
-    Playlist::IO::ExportFlags GetSavePlaylistFlags(int saveCase) const
+    static Playlist::IO::ExportFlags GetSavePlaylistFlags(int saveCase)
     {
-      const Parameters::Accessor::Ptr options = GlobalOptions::Instance().Get();
-      Parameters::IntType val = Parameters::ZXTuneQT::Playlist::Store::PROPERTIES_DEFAULT;
-      options->FindValue(Parameters::ZXTuneQT::Playlist::Store::PROPERTIES, val);
+      const auto options = GlobalOptions::Instance().Get();
+      using namespace Parameters::ZXTuneQT::Playlist::Store;
       Playlist::IO::ExportFlags res = 0;
-      if (val)
+      if (0 != Parameters::GetInteger(*options, PROPERTIES, PROPERTIES_DEFAULT))
       {
         res |= Playlist::IO::SAVE_ATTRIBUTES;
       }
@@ -708,28 +814,26 @@ namespace
       }
       return res;
     }
+
   private:
     const UI::State::Ptr LayoutState;
     const Playlist::Controller::Ptr Controller;
     const PlaylistOptionsWrapper Options;
-    //state
+    // state
     PlayitemStateCallbackImpl State;
     Playlist::UI::TableView* const View;
     OverlayProgress* const OperationProgress;
   };
-}
+}  // namespace
 
-namespace Playlist
+namespace Playlist::UI
 {
-  namespace UI
-  {
-    View::View(QWidget& parent) : QWidget(&parent)
-    {
-    }
+  View::View(QWidget& parent)
+    : QWidget(&parent)
+  {}
 
-    View* View::Create(QWidget& parent, Playlist::Controller::Ptr playlist, Parameters::Accessor::Ptr params)
-    {
-      return new ViewImpl(parent, playlist, params);
-    }
+  View* View::Create(QWidget& parent, Playlist::Controller::Ptr playlist, Parameters::Accessor::Ptr params)
+  {
+    return new ViewImpl(parent, std::move(playlist), std::move(params));
   }
-}
+}  // namespace Playlist::UI

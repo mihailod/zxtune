@@ -1,32 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief Export parameters declaration
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Export parameters declaration
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "ui/parameters.h"
+#include "apps/zxtune-qt/ui/parameters.h"
 
-namespace Parameters
+namespace Parameters::ZXTuneQT::UI::Export
 {
-  namespace ZXTuneQT
-  {
-    namespace UI
-    {
-      namespace Export
-      {
-        const std::string NAMESPACE_NAME("Export");
+  const auto PREFIX = UI::PREFIX + "Export"_id;
+  const auto NAMESPACE_NAME = static_cast<Identifier>(PREFIX).Name();
 
-        const NameType PREFIX = UI::PREFIX + NAMESPACE_NAME;
-
-        const NameType TYPE = PREFIX + "Type";
-      }
-    }
-  }
-}
+  const auto TYPE = PREFIX + "Type"_id;
+}  // namespace Parameters::ZXTuneQT::UI::Export

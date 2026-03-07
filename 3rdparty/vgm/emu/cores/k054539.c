@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:Aaron Giles
+// copyright-holders:Olivier Galibert
 /*********************************************************
 
     Konami 054539 (TOP) PCM Sound Chip
@@ -19,6 +19,7 @@
 #include "../EmuCores.h"
 #include "../snddef.h"
 #include "../EmuHelper.h"
+#include "../logging.h"
 #include "k054539.h"
 
 static void k054539_update(void *param, UINT32 samples, DEV_SMPL **outputs);
@@ -36,6 +37,7 @@ static void k054539_alloc_rom(void* chip, UINT32 memsize);
 static void k054539_write_rom(void *chip, UINT32 offset, UINT32 length, const UINT8* data);
 
 static void k054539_set_mute_mask(void *chip, UINT32 MuteMask);
+static void k054539_set_log_cb(void* chip, DEVCB_LOG func, void* param);
 
 
 static DEVDEF_RWFUNC devFunc[] =
@@ -44,11 +46,13 @@ static DEVDEF_RWFUNC devFunc[] =
 	{RWF_REGISTER | RWF_READ, DEVRW_A16D8, 0, k054539_r},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_BLOCK, 0, k054539_write_rom},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_MEMSIZE, 0, k054539_alloc_rom},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, k054539_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef =
 {
 	"K054539", "MAME", FCC_MAME,
+	8,  // Channels
 	
 	device_start_k054539,
 	device_stop_k054539,
@@ -59,6 +63,7 @@ static DEV_DEF devDef =
 	k054539_set_mute_mask,
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	k054539_set_log_cb,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs
@@ -69,9 +74,6 @@ const DEV_DEF* devDefList_K054539[] =
 	NULL
 };
 
-
-#define VERBOSE 0
-#define LOG(x) do { if (VERBOSE) logerror x; } while (0)
 
 /* Registers:
    00..ff: 20 bytes/channel, 8 channels
@@ -123,6 +125,7 @@ struct _k054539_channel {
 typedef struct _k054539_state k054539_state;
 struct _k054539_state {
 	DEV_DATA _devData;
+	DEV_LOGGER logger;
 	
 	double voltab[256];
 	double pantab[0xf];
@@ -190,14 +193,14 @@ static void k054539_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 #define VOL_CAP 1.80
 
 	static const INT16 dpcm[16] = {
-		0 * 0x100,     1 * 0x100,   4 * 0x100,   9 * 0x100,  16 * 0x100, 25 * 0x100, 36 * 0x100, 49 * 0x100,
-		-64 * 0x100, -49 * 0x100, -36 * 0x100, -25 * 0x100, -16 * 0x100, -9 * 0x100, -4 * 0x100, -1 * 0x100
+		0 * 0x100,   1 * 0x100,   2 * 0x100,   4 * 0x100,  8 * 0x100, 16 * 0x100, 32 * 0x100, 64 * 0x100,
+		0 * 0x100, -64 * 0x100, -32 * 0x100, -16 * 0x100, -8 * 0x100, -4 * 0x100, -2 * 0x100, -1 * 0x100
 	};
 
 	INT16 *rbase = (INT16 *)info->ram;
 	UINT32 sample, ch;
 
-	if(!(info->regs[0x22f] & 1))
+	if(info->rom == NULL || !(info->regs[0x22f] & 1))
 	{
 		memset(outputs[0], 0, samples*sizeof(*outputs[0]));
 		memset(outputs[1], 0, samples*sizeof(*outputs[1]));
@@ -205,7 +208,7 @@ static void k054539_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 	}
 
 	for(sample = 0; sample != samples; sample++) {
-		double lval, rval;
+		float lval, rval;
 		if(!(info->flags & K054539_DISABLE_REVERB))
 			lval = rval = rbase[info->reverb_pos];
 		else
@@ -292,6 +295,7 @@ static void k054539_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 							cur_pos = base1[0x08] | (base1[0x09] << 8) | (base1[0x0a] << 16);
 							cur_val = (INT16)(info->rom[cur_pos & info->rom_mask] << 8);
 						}
+
 						if(cur_val == (INT16)0x8000) {
 							k054539_keyoff(info, ch);
 							cur_val = 0;
@@ -315,6 +319,7 @@ static void k054539_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 							cur_pos = base1[0x08] | (base1[0x09] << 8) | (base1[0x0a] << 16);
 							cur_val = (INT16)(info->rom[cur_pos & info->rom_mask] | info->rom[(cur_pos+1) & info->rom_mask]<<8);
 						}
+
 						if(cur_val == (INT16)0x8000) {
 							k054539_keyoff(info, ch);
 							cur_val = 0;
@@ -366,11 +371,13 @@ static void k054539_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 					break;
 				}
 				default:
-					LOG(("Unknown sample type %x for channel %d\n", base2[0] & 0xc, ch));
+					emu_logf(&info->logger, DEVLOG_DEBUG, "Unknown sample type %x for channel %d\n", base2[0] & 0xc, ch);
+					info->regs[0x22c] &= ~(1<<ch);	// turn off channel to prevent spamming log messages
 					break;
 				}
-				lval += cur_val * lvol;
-				rval += cur_val * rvol;
+
+				lval += cur_val * (float)lvol;
+				rval += cur_val * (float)rvol;
 				rbase[(rdelta + info->reverb_pos) & 0x1fff] += (INT16)(cur_val*rbvol);
 
 				chan->pos = cur_pos;
@@ -385,8 +392,8 @@ static void k054539_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 				}
 			}
 		info->reverb_pos = (info->reverb_pos + 1) & 0x1fff;
-		outputs[0][sample] = (DEV_SMPL)lval;
-		outputs[1][sample] = (DEV_SMPL)rval;
+		outputs[0][sample] = (DEV_SMPL)(lval);
+		outputs[1][sample] = (DEV_SMPL)(rval);
 	}
 }
 
@@ -528,7 +535,7 @@ static void k054539_w(void *chip, UINT16 offset, UINT8 data)
 				}
 				if(1 || ((offset >= 0x200) && (offset <= 0x210)))
 					break;
-				logerror("K054539 %03x = %02x\n", offset, data);
+				emu_logf(&info->logger, DEVLOG_TRACE, "%03x = %02x\n", offset, data);
 			}
 #endif
 		break;
@@ -560,7 +567,7 @@ static UINT8 k054539_r(void *chip, UINT16 offset)
 	case 0x22c:
 		break;
 	default:
-		LOG(("K054539 read %03x\n", offset));
+		emu_logf(&info->logger, DEVLOG_TRACE, "read %03x\n", offset);
 		break;
 	}
 	return info->regs[offset];
@@ -691,5 +698,12 @@ static void k054539_set_mute_mask(void *chip, UINT32 MuteMask)
 	for (CurChn = 0; CurChn < 8; CurChn ++)
 		info->Muted[CurChn] = (MuteMask >> CurChn) & 0x01;
 	
+	return;
+}
+
+static void k054539_set_log_cb(void* chip, DEVCB_LOG func, void* param)
+{
+	k054539_state *info = (k054539_state *)chip;
+	dev_logger_set(&info->logger, info, func, param);
 	return;
 }

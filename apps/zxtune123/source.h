@@ -1,39 +1,40 @@
 /**
-* 
-* @file
-*
-* @brief Source data provider interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Source data provider interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <module/holder.h>
-#include <parameters/container.h>
-//std includes
+#include "binary/data.h"
+#include "module/holder.h"
+#include "parameters/container.h"
+
+#include "string_view.h"
+
 #include <memory>
 #include <stdexcept>
 
-//forward declarations
-namespace boost
+// forward declarations
+namespace boost::program_options
 {
-  namespace program_options
-  {
-    class options_description;
-  }
-}
+  class options_description;
+}  // namespace boost::program_options
 
-class CancelError : public std::exception {};
+class CancelError : public std::exception
+{};
 
 class OnItemCallback
 {
 public:
   virtual ~OnItemCallback() = default;
-  
+
   virtual void ProcessItem(Binary::Data::Ptr data, Module::Holder::Ptr holder) = 0;
+  virtual void ProcessUnknownData(StringView path, StringView container, Binary::Data::Ptr data){};
 };
 
 class SourceComponent

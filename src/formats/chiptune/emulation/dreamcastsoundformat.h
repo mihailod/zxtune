@@ -1,27 +1,23 @@
 /**
-* 
-* @file
-*
-* @brief  DSF parser interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  DSF parser interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <formats/chiptune.h>
+#include "formats/chiptune.h"
 
-namespace Formats
+namespace Formats::Chiptune
 {
-  namespace Chiptune
+  namespace DreamcastSoundFormat
   {
-    namespace DreamcastSoundFormat
-    {
-      const uint_t VERSION_ID = 0x12;
-    }
-
-    Decoder::Ptr CreateDSFDecoder();
+    const uint_t VERSION_ID = 0x12;
   }
-}
+
+  Decoder::Ptr CreateDSFDecoder();
+}  // namespace Formats::Chiptune

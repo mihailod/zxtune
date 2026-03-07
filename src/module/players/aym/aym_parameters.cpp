@@ -1,110 +1,101 @@
 /**
-* 
-* @file
-*
-* @brief  AYM parameters helpers implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AYM parameters helpers implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/aym/aym_parameters.h"
+
 #include "core/plugins/players/ay/freq_tables_internal.h"
-//common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-//library includes
-#include <core/core_parameters.h>
-#include <devices/aym/chip.h>
-#include <l10n/api.h>
-#include <math/numeric.h>
-#include <sound/render_params.h>
-//std includes
+#include "devices/aym/chip.h"
+
+#include "core/core_parameters.h"
+#include "l10n/api.h"
+#include "math/numeric.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <cstring>
 #include <numeric>
-//text includes
-#include <core/text/core.h>
+#include <utility>
 
-#define FILE_TAG 6972CAAF
-
-namespace Module
-{
-namespace AYM
+namespace Module::AYM
 {
   const L10n::TranslateFunctor translate = L10n::TranslateFunctor("module_players");
 
-  //duty-cycle related parameter: accumulate letters to bitmask functor
-  inline uint_t LetterToMask(uint_t val, const Char letter)
+  // duty-cycle related parameter: accumulate letters to bitmask functor
+  inline uint_t LetterToMask(uint_t val, const char letter)
   {
-    static const Char LETTERS[] = {'A', 'B', 'C'};
-    static const uint_t MASKS[] =
-    {
-      Devices::AYM::CHANNEL_MASK_A,
-      Devices::AYM::CHANNEL_MASK_B,
-      Devices::AYM::CHANNEL_MASK_C,
+    constexpr auto LETTERS = "ABC"sv;
+    constexpr uint_t MASKS[] = {
+        Devices::AYM::CHANNEL_MASK_A,
+        Devices::AYM::CHANNEL_MASK_B,
+        Devices::AYM::CHANNEL_MASK_C,
     };
-    static_assert(sizeof(LETTERS) / sizeof(*LETTERS) == sizeof(MASKS) / sizeof(*MASKS), "Invalid layout");
-    const Char* const pos = std::find(LETTERS, std::end(LETTERS), letter);
-    if (pos == std::end(LETTERS))
+    static_assert(LETTERS.size() == std::size(MASKS), "Invalid layout");
+    const auto pos = LETTERS.find(letter);
+    if (pos == LETTERS.npos)
     {
-      throw MakeFormattedError(THIS_LINE,
-        translate("Invalid duty cycle mask item: '%1%'."), String(1, letter));
+      throw MakeFormattedError(THIS_LINE, translate("Invalid duty cycle mask item: '{}'."), String(1, letter));
     }
-    return val | MASKS[pos - LETTERS];
+    return val | MASKS[pos];
   }
 
-  uint_t String2Mask(const String& str)
+  uint_t String2Mask(StringView str)
   {
     return std::accumulate(str.begin(), str.end(), uint_t(0), LetterToMask);
   }
 
-  Devices::AYM::LayoutType String2Layout(const String& str)
+  Devices::AYM::LayoutType String2Layout(StringView str)
   {
-    if (str == Text::MODULE_LAYOUT_ABC)
+    if (str == "ABC")
     {
       return Devices::AYM::LAYOUT_ABC;
     }
-    else if (str == Text::MODULE_LAYOUT_ACB)
+    else if (str == "ACB")
     {
       return Devices::AYM::LAYOUT_ACB;
     }
-    else if (str == Text::MODULE_LAYOUT_BAC)
+    else if (str == "BAC")
     {
       return Devices::AYM::LAYOUT_BAC;
     }
-    else if (str == Text::MODULE_LAYOUT_BCA)
+    else if (str == "BCA")
     {
       return Devices::AYM::LAYOUT_BCA;
     }
-    else if (str == Text::MODULE_LAYOUT_CBA)
+    else if (str == "CBA")
     {
       return Devices::AYM::LAYOUT_CBA;
     }
-    else if (str == Text::MODULE_LAYOUT_CAB)
+    else if (str == "CAB")
     {
       return Devices::AYM::LAYOUT_CAB;
     }
-    else if (str == Text::MODULE_LAYOUT_MONO)
+    else if (str == "MONO")
     {
       return Devices::AYM::LAYOUT_MONO;
     }
     else
     {
-      throw MakeFormattedError(THIS_LINE,
-        translate("Invalid layout value (%1%)."), str);
+      throw MakeFormattedError(THIS_LINE, translate("Invalid layout value ({})."), str);
     }
   }
 
   class ChipParametersImpl : public Devices::AYM::ChipParameters
   {
   public:
-    explicit ChipParametersImpl(Parameters::Accessor::Ptr params)
-      : Params(params)
-      , SoundParams(Sound::RenderParameters::Create(std::move(params)))
-    {
-    }
+    ChipParametersImpl(uint_t samplerate, Parameters::Accessor::Ptr params)
+      : Samplerate(samplerate)
+      , Params(std::move(params))
+    {}
 
     uint_t Version() const override
     {
@@ -113,86 +104,86 @@ namespace AYM
 
     uint64_t ClockFreq() const override
     {
-      Parameters::IntType val = Parameters::ZXTune::Core::AYM::CLOCKRATE_DEFAULT;
-      if (Params->FindValue(Parameters::ZXTune::Core::AYM::CLOCKRATE, val) &&
-          !Math::InRange(val, Parameters::ZXTune::Core::AYM::CLOCKRATE_MIN, Parameters::ZXTune::Core::AYM::CLOCKRATE_MAX))
+      using namespace Parameters::ZXTune::Core::AYM;
+      const auto val = Parameters::GetInteger(*Params, CLOCKRATE, CLOCKRATE_DEFAULT);
+      if (!Math::InRange(val, CLOCKRATE_MIN, CLOCKRATE_MAX))
       {
-        throw MakeFormattedError(THIS_LINE,
-          translate("Invalid clock frequency (%1%)."), val);
+        throw MakeFormattedError(THIS_LINE, translate("Invalid clock frequency ({})."), val);
       }
-      return val;
+      return static_cast<uint64_t>(val);
     }
 
     uint_t SoundFreq() const override
     {
-      return SoundParams->SoundFreq();
+      return Samplerate;
     }
 
     Devices::AYM::ChipType Type() const override
     {
-      Parameters::IntType intVal = Parameters::ZXTune::Core::AYM::TYPE_DEFAULT;
-      Params->FindValue(Parameters::ZXTune::Core::AYM::TYPE, intVal);
-      return static_cast<Devices::AYM::ChipType>(intVal);
+      using namespace Parameters::ZXTune::Core::AYM;
+      return Parameters::GetInteger<Devices::AYM::ChipType>(*Params, TYPE, TYPE_DEFAULT);
     }
 
     Devices::AYM::InterpolationType Interpolation() const override
     {
-      Parameters::IntType intVal = Parameters::ZXTune::Core::AYM::INTERPOLATION_DEFAULT;
-      Params->FindValue(Parameters::ZXTune::Core::AYM::INTERPOLATION, intVal);
-      return static_cast<Devices::AYM::InterpolationType>(intVal);
+      using namespace Parameters::ZXTune::Core::AYM;
+      return Parameters::GetInteger<Devices::AYM::InterpolationType>(*Params, INTERPOLATION, INTERPOLATION_DEFAULT);
     }
 
     uint_t DutyCycleValue() const override
     {
-      Parameters::IntType intVal = Parameters::ZXTune::Core::AYM::DUTY_CYCLE_DEFAULT;
-      const bool found = Params->FindValue(Parameters::ZXTune::Core::AYM::DUTY_CYCLE, intVal);
-      //duty cycle in percents should be in range 1..99 inc
-      if (found && (intVal < Parameters::ZXTune::Core::AYM::DUTY_CYCLE_MIN || intVal > Parameters::ZXTune::Core::AYM::DUTY_CYCLE_MAX))
+      using namespace Parameters::ZXTune::Core::AYM;
+      const auto val = Parameters::GetInteger(*Params, DUTY_CYCLE, DUTY_CYCLE_DEFAULT);
+      // duty cycle in percents should be in range 1..99 inc
+      if (!Math::InRange(val, DUTY_CYCLE_MIN, DUTY_CYCLE_MAX))
       {
-        throw MakeFormattedError(THIS_LINE,
-          translate("Invalid duty cycle value (%1%)."), intVal);
+        throw MakeFormattedError(THIS_LINE, translate("Invalid duty cycle value ({})."), val);
       }
-      return static_cast<uint_t>(intVal);
+      return static_cast<uint_t>(val);
     }
 
     uint_t DutyCycleMask() const override
     {
-      Parameters::IntType intVal = Parameters::ZXTune::Core::AYM::DUTY_CYCLE_MASK_DEFAULT;
-      if (Params->FindValue(Parameters::ZXTune::Core::AYM::DUTY_CYCLE_MASK, intVal))
+      using namespace Parameters::ZXTune::Core::AYM;
+      Parameters::IntType intVal = DUTY_CYCLE_MASK_DEFAULT;
+      if (Parameters::FindValue(*Params, DUTY_CYCLE_MASK, intVal))
       {
         return static_cast<uint_t>(intVal);
       }
-      Parameters::StringType strVal;
-      if (Params->FindValue(Parameters::ZXTune::Core::AYM::DUTY_CYCLE_MASK, strVal))
+      if (const auto strVal = Params->FindString(DUTY_CYCLE_MASK))
       {
-        return String2Mask(strVal);
+        return String2Mask(*strVal);
       }
       return 0;
     }
 
     Devices::AYM::LayoutType Layout() const override
     {
-      Parameters::IntType intVal = Parameters::ZXTune::Core::AYM::LAYOUT_DEFAULT;
-      if (Params->FindValue(Parameters::ZXTune::Core::AYM::LAYOUT, intVal))
+      using namespace Parameters::ZXTune::Core::AYM;
+      if (const auto val = Params->FindInteger(LAYOUT))
       {
-        if (intVal < static_cast<int_t>(Devices::AYM::LAYOUT_ABC) ||
-            intVal >= static_cast<int_t>(Devices::AYM::LAYOUT_LAST))
+        if (!Math::InRange<Parameters::IntType>(*val, Devices::AYM::LAYOUT_ABC, Devices::AYM::LAYOUT_LAST))
         {
-          throw MakeFormattedError(THIS_LINE,
-            translate("Invalid layout value (%1%)."), intVal);
+          throw MakeFormattedError(THIS_LINE, translate("Invalid layout value ({})."), *val);
         }
-        return static_cast<Devices::AYM::LayoutType>(intVal);
+        return static_cast<Devices::AYM::LayoutType>(*val);
       }
-      Parameters::StringType strVal;
-      if (Params->FindValue(Parameters::ZXTune::Core::AYM::LAYOUT, strVal))
+      if (const auto strVal = Params->FindString(LAYOUT))
       {
-        return String2Layout(strVal);
+        return String2Layout(*strVal);
       }
       return Devices::AYM::LAYOUT_ABC;
     }
+
+    uint_t MuteMask() const override
+    {
+      using namespace Parameters::ZXTune::Core;
+      return Parameters::GetInteger(*Params, CHANNELS_MASK, CHANNELS_MASK_DEFAULT);
+    }
+
   private:
+    const uint_t Samplerate;
     const Parameters::Accessor::Ptr Params;
-    const Sound::RenderParameters::Ptr SoundParams;
   };
 
   class AYTrackParameters : public TrackParameters
@@ -200,8 +191,7 @@ namespace AYM
   public:
     explicit AYTrackParameters(Parameters::Accessor::Ptr params)
       : Params(std::move(params))
-    {
-    }
+    {}
 
     uint_t Version() const override
     {
@@ -210,26 +200,25 @@ namespace AYM
 
     void FreqTable(FrequencyTable& table) const override
     {
-      Parameters::StringType newName;
-      if (Params->FindValue(Parameters::ZXTune::Core::AYM::TABLE, newName))
+      using namespace Parameters::ZXTune::Core::AYM;
+      if (const auto newName = Params->FindString(TABLE))
       {
-        GetFreqTable(newName, table);
+        GetFreqTable(*newName, table);
       }
       else
       {
-        Parameters::DataType newData;
-        if (Params->FindValue(Parameters::ZXTune::Core::AYM::TABLE, newData))
+        const auto newData = Params->FindData(TABLE);
+        // frequency table is mandatory!!!
+        Require(!!newData);
+        // as dump
+        if (newData->Size() != table.size() * sizeof(table.front()))
         {
-          // as dump
-          if (newData.size() != table.size() * sizeof(table.front()))
-          {
-            throw MakeFormattedError(THIS_LINE,
-              translate("Invalid frequency table size (%1%)."), newData.size());
-          }
-          std::memcpy(table.data(), newData.data(), newData.size());
+          throw MakeFormattedError(THIS_LINE, translate("Invalid frequency table size ({})."), newData->Size());
         }
+        std::memcpy(table.data(), newData->Start(), newData->Size());
       }
     }
+
   private:
     const Parameters::Accessor::Ptr Params;
   };
@@ -251,13 +240,13 @@ namespace AYM
 
     void FreqTable(FrequencyTable& table) const override
     {
-      Parameters::StringType newName;
-      if (Params->FindValue(Parameters::ZXTune::Core::AYM::TABLE, newName))
+      if (const auto newName = Params->FindString(Parameters::ZXTune::Core::AYM::TABLE))
       {
-        const String& subName = ExtractMergedValue(newName);
+        const auto& subName = ExtractMergedValue(*newName);
         GetFreqTable(subName, table);
       }
     }
+
   private:
     /*
       ('a', 0) => 'a'
@@ -265,12 +254,12 @@ namespace AYM
       ('a/b', 0) => 'a'
       ('a/b', 1) => 'b'
     */
-    String ExtractMergedValue(const String& val) const
+    StringView ExtractMergedValue(StringView val) const
     {
-      const String::size_type pos = val.find_first_of('/');
-      if (pos != String::npos)
+      const auto pos = val.find_first_of('/');
+      if (pos != val.npos)
       {
-        Require(String::npos == val.find_first_of('/', pos + 1));
+        Require(val.npos == val.find_first_of('/', pos + 1));
         return Index == 0 ? val.substr(0, pos) : val.substr(pos + 1);
       }
       else
@@ -278,14 +267,15 @@ namespace AYM
         return val;
       }
     }
+
   private:
     const Parameters::Accessor::Ptr Params;
     const uint_t Index;
   };
 
-  Devices::AYM::ChipParameters::Ptr CreateChipParameters(Parameters::Accessor::Ptr params)
+  Devices::AYM::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params)
   {
-    return MakePtr<ChipParametersImpl>(std::move(params));
+    return MakePtr<ChipParametersImpl>(samplerate, std::move(params));
   }
 
   TrackParameters::Ptr TrackParameters::Create(Parameters::Accessor::Ptr params)
@@ -297,7 +287,4 @@ namespace AYM
   {
     return MakePtr<TSTrackParameters>(std::move(params), idx);
   }
-}
-}
-
-#undef FILE_TAG
+}  // namespace Module::AYM

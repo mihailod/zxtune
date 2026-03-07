@@ -1,38 +1,41 @@
 /**
-* 
-* @file
-*
-* @brief Convert operation implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Convert operation implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "operations_convert.h"
-#include "operations_helpers.h"
-#include "storage.h"
-#include <apps/zxtune-qt/supp/playback_supp.h>
-#include <apps/zxtune-qt/ui/utils.h>
-//common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-//library includes
-#include <async/src/event.h>
-#include <io/api.h>
-#include <io/template.h>
-#include <parameters/merged_accessor.h>
-#include <parameters/template.h>
-#include <sound/backends_parameters.h>
-#include <sound/sound_parameters.h>
-#include <sound/backend.h>
-//std includes
+#include "apps/zxtune-qt/playlist/supp/operations_convert.h"
+
+#include "apps/zxtune-qt/playlist/supp/operations_helpers.h"
+#include "apps/zxtune-qt/playlist/supp/storage.h"
+#include "apps/zxtune-qt/supp/playback_supp.h"
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "async/src/event.h"
+
+#include "io/api.h"
+#include "io/template.h"
+#include "parameters/merged_accessor.h"
+#include "parameters/template.h"
+#include "sound/backend.h"
+#include "sound/backends_parameters.h"
+#include "sound/sound_parameters.h"
+#include "tools/progress_callback_helpers.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <numeric>
 
 namespace
 {
-  //TODO: rework
+  // TODO: rework
   class ConvertCallback : public Sound::BackendCallback
   {
     enum EventType
@@ -40,12 +43,11 @@ namespace
       STOPPED = 1,
       CANCELED = 2
     };
+
   public:
     explicit ConvertCallback(Log::ProgressCallback& callback)
       : Callback(callback)
-      , Event()
-    {
-    }
+    {}
 
     void OnStart() override
     {
@@ -56,7 +58,7 @@ namespace
     {
       try
       {
-        Callback.OnProgress(state.Frame());
+        Callback.OnProgress(state.At().Get());
       }
       catch (const std::exception&)
       {
@@ -69,17 +71,11 @@ namespace
       Event.Set(STOPPED);
     }
 
-    void OnPause() override
-    {
-    }
+    void OnPause() override {}
 
-    void OnResume() override
-    {
-    }
+    void OnResume() override {}
 
-    void OnFinish() override
-    {
-    }
+    void OnFinish() override {}
 
     void WaitForFinish()
     {
@@ -88,31 +84,31 @@ namespace
         throw std::exception();
       }
     }
+
   private:
     Log::ProgressCallback& Callback;
     Async::Event<uint_t> Event;
   };
 
-  //TODO: simplify
+  // TODO: simplify
   class ConvertVisitor : public Playlist::Item::Visitor
   {
   public:
-    ConvertVisitor(uint_t totalItems, String type, Sound::Service::Ptr service, Log::ProgressCallback& cb, Playlist::Item::ConversionResultNotification::Ptr result)
+    ConvertVisitor(uint_t totalItems, String type, Sound::Service::Ptr service, Log::ProgressCallback& cb,
+                   Playlist::Item::ConversionResultNotification::Ptr result)
       : TotalItems(totalItems)
-      , DoneItems(0)
       , Callback(cb)
       , Type(std::move(type))
       , Service(std::move(service))
       , Result(std::move(result))
-    {
-    }
+    {}
 
     void OnItem(Playlist::Model::IndexType /*index*/, Playlist::Item::Data::Ptr data) override
     {
       const String path = data->GetFullPath();
-      if (Module::Holder::Ptr holder = data->GetModule())
+      if (auto holder = data->GetModule())
       {
-        ConvertItem(path, holder);
+        ConvertItem(path, std::move(holder));
       }
       else
       {
@@ -120,21 +116,24 @@ namespace
       }
       ++DoneItems;
     }
+
   private:
-    void ConvertItem(const String& path, Module::Holder::Ptr item)
+    void ConvertItem(StringView path, Module::Holder::Ptr item)
     {
       try
       {
-        const Log::ProgressCallback::Ptr curItemProgress = Log::CreateNestedPercentProgressCallback(TotalItems, DoneItems, Callback);
-        const Module::Information::Ptr info = item->GetModuleInformation();
-        const Log::ProgressCallback::Ptr framesProgress = Log::CreatePercentProgressCallback(info->FramesCount(), *curItemProgress);
-        ConvertCallback cb(*framesProgress);
-        const Sound::Backend::Ptr backend = Service->CreateBackend(Type, item, Sound::BackendCallback::Ptr(&cb, NullDeleter<Sound::BackendCallback>()));
-        const Sound::PlaybackControl::Ptr control = backend->GetPlaybackControl();
+        Log::NestedProgressCallback curItemProgress(TotalItems, DoneItems, Callback);
+        const auto info = item->GetModuleInformation();
+        Log::PercentProgressCallback framesProgress(info->Duration().Get(), curItemProgress);
+        ConvertCallback cb(framesProgress);
+        const auto backend =
+            Service->CreateBackend(Sound::BackendId::FromString(Type), std::move(item),
+                                   Sound::BackendCallback::Ptr(&cb, NullDeleter<Sound::BackendCallback>()));
+        const auto control = backend->GetPlaybackControl();
         control->Play();
         cb.WaitForFinish();
         control->Stop();
-        curItemProgress->OnProgress(100);
+        curItemProgress.OnProgress(100);
         Result->AddSucceed();
       }
       catch (const Error& err)
@@ -142,9 +141,10 @@ namespace
         Result->AddFailedToConvert(path, err);
       }
     }
+
   private:
     const uint_t TotalItems;
-    uint_t DoneItems;
+    uint_t DoneItems = 0;
     Log::ProgressCallback& Callback;
     const String Type;
     const Sound::Service::Ptr Service;
@@ -154,14 +154,13 @@ namespace
   class SoundFormatConvertOperation : public Playlist::Item::TextResultOperation
   {
   public:
-    SoundFormatConvertOperation(Playlist::Model::IndexSet::Ptr items,
-      String type, Sound::Service::Ptr service, Playlist::Item::ConversionResultNotification::Ptr result)
+    SoundFormatConvertOperation(Playlist::Model::IndexSet::Ptr items, StringView type, Sound::Service::Ptr service,
+                                Playlist::Item::ConversionResultNotification::Ptr result)
       : SelectedItems(std::move(items))
-      , Type(std::move(type))
+      , Type(type)
       , Service(std::move(service))
       , Result(std::move(result))
-    {
-    }
+    {}
 
     void Execute(const Playlist::Item::Storage& stor, Log::ProgressCallback& cb) override
     {
@@ -177,6 +176,7 @@ namespace
       }
       emit ResultAcquired(Result);
     }
+
   private:
     const Playlist::Model::IndexSet::Ptr SelectedItems;
     const String Type;
@@ -185,31 +185,33 @@ namespace
   };
 
   // Exporting
-  class ExportOperation : public Playlist::Item::TextResultOperation
-                        , private Playlist::Item::Visitor
+  class ExportOperation
+    : public Playlist::Item::TextResultOperation
+    , private Playlist::Item::Visitor
   {
   public:
-    ExportOperation(const String& nameTemplate, Parameters::Accessor::Ptr params, Playlist::Item::ConversionResultNotification::Ptr result)
+    ExportOperation(StringView nameTemplate, Parameters::Accessor::Ptr params,
+                    Playlist::Item::ConversionResultNotification::Ptr result)
       : SelectedItems()
       , NameTemplate(IO::CreateFilenameTemplate(nameTemplate))
       , Params(std::move(params))
       , Result(std::move(result))
-    {
-    }
+    {}
 
-    ExportOperation(Playlist::Model::IndexSet::Ptr items, const String& nameTemplate, Parameters::Accessor::Ptr params, Playlist::Item::ConversionResultNotification::Ptr result)
+    ExportOperation(Playlist::Model::IndexSet::Ptr items, StringView nameTemplate, Parameters::Accessor::Ptr params,
+                    Playlist::Item::ConversionResultNotification::Ptr result)
       : SelectedItems(std::move(items))
       , NameTemplate(IO::CreateFilenameTemplate(nameTemplate))
       , Params(std::move(params))
       , Result(std::move(result))
-    {
-    }
+    {}
 
     void Execute(const Playlist::Item::Storage& stor, Log::ProgressCallback& cb) override
     {
       ExecuteOperation(stor, SelectedItems, *this, cb);
       emit ResultAcquired(Result);
     }
+
   private:
     void OnItem(Playlist::Model::IndexType /*index*/, Playlist::Item::Data::Ptr data) override
     {
@@ -224,12 +226,13 @@ namespace
       }
     }
 
-    void ExportItem(const String& path, const Module::Holder& item, Binary::View content)
+    void ExportItem(StringView path, const Module::Holder& item, Binary::View content)
     {
       try
       {
-        const Parameters::Accessor::Ptr props = item.GetModuleProperties();
-        const String filename = NameTemplate->Instantiate(Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource>(*props));
+        const auto props = item.GetModuleProperties();
+        const auto& filename =
+            NameTemplate->Instantiate(Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource>(*props));
         Save(content, filename);
         Result->AddSucceed();
       }
@@ -239,64 +242,68 @@ namespace
       }
     }
 
-    void Save(Binary::View data, const String& filename) const
+    void Save(Binary::View data, StringView filename) const
     {
-      const Binary::OutputStream::Ptr stream = IO::CreateStream(filename, *Params, Log::ProgressCallback::Stub());
+      const auto stream = IO::CreateStream(filename, *Params, Log::ProgressCallback::Stub());
       stream->ApplyData(data);
     }
+
   private:
     const Playlist::Model::IndexSet::Ptr SelectedItems;
     const Strings::Template::Ptr NameTemplate;
     const Parameters::Accessor::Ptr Params;
     const Playlist::Item::ConversionResultNotification::Ptr Result;
   };
-  
+
   Parameters::Accessor::Ptr CreateSoundParameters(const Playlist::Item::Conversion::Options& opts)
   {
-    const Parameters::Container::Ptr overriden = Parameters::Container::Create();
+    auto overriden = Parameters::Container::Create();
     overriden->SetValue(Parameters::ZXTune::Sound::Backends::File::FILENAME, opts.FilenameTemplate);
     overriden->SetValue(Parameters::ZXTune::Sound::LOOPED, 0);
-    return Parameters::CreateMergedAccessor(overriden, opts.Params);
+    return Parameters::CreateMergedAccessor(std::move(overriden), opts.Params);
   }
-}
+}  // namespace
 
-namespace Playlist
+namespace Playlist::Item
 {
-  namespace Item
+  TextResultOperation::Ptr CreateSoundFormatConvertOperation(Playlist::Model::IndexSet::Ptr items, StringView type,
+                                                             Sound::Service::Ptr service,
+                                                             ConversionResultNotification::Ptr result)
   {
-    TextResultOperation::Ptr CreateSoundFormatConvertOperation(Playlist::Model::IndexSet::Ptr items,
-      const String& type, Sound::Service::Ptr service, ConversionResultNotification::Ptr result)
-    {
-      return MakePtr<SoundFormatConvertOperation>(items, type, service, result);
-    }
+    return MakePtr<SoundFormatConvertOperation>(std::move(items), type, std::move(service), std::move(result));
+  }
 
-    TextResultOperation::Ptr CreateExportOperation(const String& nameTemplate, Parameters::Accessor::Ptr params, ConversionResultNotification::Ptr result)
-    {
-      return MakePtr<ExportOperation>(nameTemplate, params, result);
-    }
+  TextResultOperation::Ptr CreateExportOperation(StringView nameTemplate, Parameters::Accessor::Ptr params,
+                                                 ConversionResultNotification::Ptr result)
+  {
+    return MakePtr<ExportOperation>(nameTemplate, std::move(params), std::move(result));
+  }
 
-    TextResultOperation::Ptr CreateExportOperation(Playlist::Model::IndexSet::Ptr items, const String& nameTemplate, Parameters::Accessor::Ptr params, ConversionResultNotification::Ptr result)
-    {
-      return MakePtr<ExportOperation>(items, nameTemplate, params, result);
-    }
+  TextResultOperation::Ptr CreateExportOperation(Playlist::Model::IndexSet::Ptr items, StringView nameTemplate,
+                                                 Parameters::Accessor::Ptr params,
+                                                 ConversionResultNotification::Ptr result)
+  {
+    return MakePtr<ExportOperation>(std::move(items), nameTemplate, std::move(params), std::move(result));
+  }
 
-    TextResultOperation::Ptr CreateConvertOperation(Playlist::Model::IndexSet::Ptr items, const Conversion::Options& opts, ConversionResultNotification::Ptr result)
+  TextResultOperation::Ptr CreateConvertOperation(Playlist::Model::IndexSet::Ptr items, const Conversion::Options& opts,
+                                                  ConversionResultNotification::Ptr result)
+  {
+    if (opts.Type.empty())
     {
-      if (opts.Type.empty())
-      {
-        return CreateExportOperation(items, opts.FilenameTemplate, opts.Params, result);
-      }
-      else
-      {
-        const Parameters::Accessor::Ptr soundParams = CreateSoundParameters(opts);
-        const Sound::Service::Ptr service = Sound::CreateFileService(soundParams);
-        return CreateSoundFormatConvertOperation(items, opts.Type, service, result);
-      }
+      return CreateExportOperation(std::move(items), opts.FilenameTemplate, opts.Params, std::move(result));
     }
-
-    TextResultOperation::Ptr CreateConvertOperation(const Conversion::Options& opts, ConversionResultNotification::Ptr result)
+    else
     {
-      return CreateConvertOperation(Playlist::Model::IndexSet::Ptr(), opts, result);
+      auto soundParams = CreateSoundParameters(opts);
+      auto service = Sound::CreateFileService(std::move(soundParams));
+      return CreateSoundFormatConvertOperation(std::move(items), opts.Type, std::move(service), std::move(result));
     }
   }
-}
+
+  TextResultOperation::Ptr CreateConvertOperation(const Conversion::Options& opts,
+                                                  ConversionResultNotification::Ptr result)
+  {
+    return CreateConvertOperation({}, opts, std::move(result));
+  }
+}  // namespace Playlist::Item

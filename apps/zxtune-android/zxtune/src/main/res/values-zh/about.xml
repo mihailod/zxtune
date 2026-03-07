@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="about">关于我们</string>
   <string name="about_credits">致谢</string>
@@ -32,11 +32,16 @@
     \tASAP由<b>Piotr Fusik</b>\n
     \tjsoup由<b>Jonathan Hedley</b>\n
     \tminimp3由<b>lieff</b>\n
-    \tstb-vorbis由<b>Sean Barrett</b>\n
     \tlibFLAC\n
     \tv2m-player由<b>Farbrausch</b>和<b>Joakim L.Gilje</b>\n
     \tFFmpeg\n
     \tlibvgm由<b>Valley Bell</b>\n
+    \tlibopenmpt\n
+    \tsseqplayer由<b>Christopher Snowhill</b>\n
+    \tLibAtrac9由<b>Alex Barney</b>\n
+    \tmpg123由<b>Thomas Orgis</b>\n
+    \tOGG Vorbis\n
+    \tvgmstream\n
     \n
     献给<b>Lizzi</b>
   </string>
@@ -46,5 +51,6 @@
   <!-- containers -->
   <string name="plugin_multitrack">多轨容器</string>
   <string name="plugin_archive">解压工具</string>
+  <string name="plugin_compressor">数据打包机</string>
   <string name="plugin_decompiler">反编译器</string>
 </resources>

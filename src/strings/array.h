@@ -1,21 +1,20 @@
 /**
-*
-* @file
-*
-* @brief  Simple strings array typedef
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Simple strings array typedef
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//std includes
+#include "string_type.h"
+
 #include <vector>
 
 namespace Strings
 {
-  typedef std::vector<String> Array;
+  using Array = std::vector<String>;
 }

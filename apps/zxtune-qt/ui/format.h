@@ -1,21 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief Format tools interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Format tools interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
+#include "string_view.h"
+#include "types.h"
 
 namespace Parameters
 {
   class Accessor;
 }
 
-String GetModuleTitle(const String& format, const Parameters::Accessor& props);
+String GetModuleTitle(StringView format, const Parameters::Accessor& props);

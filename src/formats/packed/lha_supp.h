@@ -1,26 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief  LHA compressor support interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  LHA compressor support interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <formats/packed.h>
+#include "formats/packed.h"
 
-namespace Formats
+#include "string_type.h"
+
+namespace Formats::Packed::Lha
 {
-  namespace Packed
-  {
-    namespace Lha
-    {
-      Container::Ptr DecodeRawData(const Binary::Container& input, const std::string& method, std::size_t outputSize);
-      Container::Ptr DecodeRawDataAtLeast(const Binary::Container& input, const std::string& method, std::size_t sizeHint);
-    }
-  }
-}
+  Container::Ptr DecodeRawData(const Binary::Container& input, const String& method, std::size_t outputSize);
+  Container::Ptr DecodeRawDataAtLeast(const Binary::Container& input, const String& method, std::size_t sizeHint);
+}  // namespace Formats::Packed::Lha

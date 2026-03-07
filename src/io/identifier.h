@@ -1,30 +1,30 @@
 /**
-*
-* @file
-*
-* @brief  IO-specific data identifier interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  IO-specific data identifier interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//std includes
+#include "string_type.h"
+#include "string_view.h"
+
 #include <memory>
 
 namespace IO
 {
-  /* 
+  /*
     Common uri identifier is not suitable due to possible format violations
     (e.g. file path may contain '#' symbols and subpath may contain '/' symbols which are not allowed in uri's fragment)
   */
   class Identifier
   {
   public:
-    typedef std::shared_ptr<const Identifier> Ptr;
+    using Ptr = std::shared_ptr<const Identifier>;
 
     virtual ~Identifier() = default;
 
@@ -43,6 +43,6 @@ namespace IO
     virtual String Subpath() const = 0;
 
     //! Builders
-    virtual Ptr WithSubpath(const String& subpath) const = 0;
+    virtual Ptr WithSubpath(StringView subpath) const = 0;
   };
-}
+}  // namespace IO

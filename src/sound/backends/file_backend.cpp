@@ -1,50 +1,49 @@
 /**
-*
-* @file
-*
-* @brief  File-based backends implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  File-based backends implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "sound/backends/file_backend.h"
+
 #include "sound/backends/l10n.h"
-//common includes
-#include <make_ptr.h>
-#include <progress_callback.h>
-//library includes
-#include <async/data_receiver.h>
-#include <debug/log.h>
-#include <io/api.h>
-#include <io/providers_parameters.h>
-#include <io/template.h>
-#include <module/attributes.h>
-#include <module/track_state.h>
-#include <parameters/convert.h>
-#include <parameters/template.h>
-#include <sound/backends_parameters.h>
-//text includes
-#include <sound/backends/text/backends.h>
 
-#define FILE_TAG B4CB6B0C
+#include "async/data_receiver.h"
+#include "debug/log.h"
+#include "io/api.h"
+#include "io/providers_parameters.h"
+#include "io/template.h"
+#include "module/attributes.h"
+#include "module/track_state.h"
+#include "parameters/convert.h"
+#include "parameters/template.h"
+#include "sound/backends_parameters.h"
+#include "tools/progress_callback.h"
 
-namespace Sound
-{
-namespace File
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <memory>
+#include <utility>
+
+namespace Sound::File
 {
   const Debug::Stream Dbg("Sound::Backend::FileBase");
+
+  const auto DEFAULT_COMMENT = "Created using ZXTune toolkit"sv;
 
   class StateFieldsSource : public Strings::SkipFieldsSource
   {
   public:
     explicit StateFieldsSource(const Module::TrackState& state)
       : State(state)
-    {
-    }
+    {}
 
-    String GetFieldValue(const String& fieldName) const override
+    String GetFieldValue(StringView fieldName) const override
     {
       if (fieldName == Module::ATTR_CURRENT_POSITION)
       {
@@ -60,6 +59,7 @@ namespace File
       }
       return Strings::SkipFieldsSource::GetFieldValue(fieldName);
     }
+
   private:
     const Module::TrackState& State;
   };
@@ -67,22 +67,20 @@ namespace File
   class TrackStateTemplate
   {
   public:
-    explicit TrackStateTemplate(const String& templ)
+    explicit TrackStateTemplate(StringView templ)
       : Template(Strings::Template::Create(templ))
       , CurPosition(HasField(templ, Module::ATTR_CURRENT_POSITION))
       , CurPattern(HasField(templ, Module::ATTR_CURRENT_PATTERN))
       , CurLine(HasField(templ, Module::ATTR_CURRENT_LINE))
       , Result(Template->Instantiate(Strings::SkipFieldsSource()))
-    {
-    }
+    {}
 
     String Instantiate(const Module::State& state) const
     {
-      if (const auto track = dynamic_cast<const Module::TrackState*>(&state))
+      if (const auto* const track = dynamic_cast<const Module::TrackState*>(&state))
       {
-        if (CurPosition.Update(track->Position()) ||
-            CurPattern.Update(track->Pattern()) ||
-            CurLine.Update(track->Line()))
+        if (CurPosition.Update(track->Position()) || CurPattern.Update(track->Pattern())
+            || CurLine.Update(track->Line()))
         {
           const StateFieldsSource source(*track);
           Result = Template->Instantiate(source);
@@ -90,21 +88,22 @@ namespace File
       }
       return Result;
     }
+
   private:
-    static bool HasField(const String& templ, const String& name)
+    static bool HasField(StringView templ, StringView name)
     {
-      const String fullName = '[' + name + ']';
+      // TODO: Concat(StringView...)
+      const String fullName = String{Strings::Template::FIELD_START} + name + Strings::Template::FIELD_END;
       return String::npos != templ.find(fullName);
     }
+
   private:
     class TrackableValue
     {
     public:
       explicit TrackableValue(bool trackable)
         : Trackable(trackable)
-        , Value(-1)
-      {
-      }
+      {}
 
       bool Update(int_t newVal)
       {
@@ -115,10 +114,12 @@ namespace File
         }
         return false;
       }
+
     private:
       const bool Trackable;
-      int_t Value;
+      int_t Value = -1;
     };
+
   private:
     const Strings::Template::Ptr Template;
     mutable TrackableValue CurPosition;
@@ -130,22 +131,21 @@ namespace File
   class FileParameters
   {
   public:
-    FileParameters(Parameters::Accessor::Ptr params, String id)
+    FileParameters(Parameters::Accessor::Ptr params, BackendId id)
       : Params(std::move(params))
-      , Id(std::move(id))
-    {
-    }
+      , Id(id)
+    {}
 
     String GetFilenameTemplate() const
     {
-      Parameters::StringType nameTemplate = GetProperty<Parameters::StringType>(Parameters::ZXTune::Sound::Backends::File::FILENAME.Name());
+      auto nameTemplate = GetProperty<Parameters::StringType>(Parameters::ZXTune::Sound::Backends::File::FILENAME);
       if (nameTemplate.empty())
       {
         // Filename parameter is required
         throw Error(THIS_LINE, translate("Output filename template is not specified."));
       }
       // check if required to add extension
-      const String extension = Char('.') + Id;
+      const String extension = String(1, '.').append(Id);
       const String::size_type extPos = nameTemplate.find(extension);
       if (String::npos == extPos || extPos + extension.size() != nameTemplate.size())
       {
@@ -156,102 +156,107 @@ namespace File
 
     uint_t GetBuffersCount() const
     {
-      const Parameters::IntType intParam = GetProperty<Parameters::IntType>(Parameters::ZXTune::Sound::Backends::File::BUFFERS.Name());
+      const auto intParam = GetProperty<Parameters::IntType>(Parameters::ZXTune::Sound::Backends::File::BUFFERS);
       return static_cast<uint_t>(intParam);
     }
+
   private:
     template<class T>
-    T GetProperty(const std::string& name) const
+    T GetProperty(Parameters::Identifier property) const
     {
       T result = T();
-      if (!Params->FindValue(GetBackendPropertyName(name), result))
+      if (!Parameters::FindValue(*Params, ReplaceBackendId(property), result))
       {
-        Params->FindValue(GetComonPropertyName(name), result);
+        Parameters::FindValue(*Params, property, result);
       }
       return result;
     }
 
-    Parameters::NameType GetBackendPropertyName(const std::string& name) const
+    String ReplaceBackendId(StringView property) const
     {
-      return Parameters::ZXTune::Sound::Backends::PREFIX + ToStdString(Id) + name;
+      // TODO: think about better solution
+      static const auto GENERIC_ID = ".file."sv;
+      const auto pos = property.find(GENERIC_ID);
+      Require(pos != property.npos);
+      auto result = String{property};
+      result.replace(pos + 1, GENERIC_ID.size() - 2, Id);
+      return result;
     }
 
-    Parameters::NameType GetComonPropertyName(const std::string& name) const
-    {
-      return Parameters::ZXTune::Sound::Backends::File::PREFIX + name;
-    }
   private:
     const Parameters::Accessor::Ptr Params;
-    const String Id;
+    const BackendId Id;
   };
 
-  String InstantiateModuleFields(const String& nameTemplate, const Parameters::Accessor& props)
+  String InstantiateModuleFields(StringView nameTemplate, const Parameters::Accessor& props)
   {
-    Dbg("Original filename template: '%1%'", nameTemplate);
+    Dbg("Original filename template: '{}'", nameTemplate);
     const Parameters::FieldsSourceAdapter<Strings::KeepFieldsSource> moduleFields(props);
-    const Strings::Template::Ptr templ = IO::CreateFilenameTemplate(nameTemplate);
-    const String nameTemplateWithRuntimeFields = templ->Instantiate(moduleFields);
-    Dbg("Fixed filename template: '%1%'", nameTemplateWithRuntimeFields);
+    const auto templ = IO::CreateFilenameTemplate(nameTemplate);
+    auto nameTemplateWithRuntimeFields = templ->Instantiate(moduleFields);
+    Dbg("Fixed filename template: '{}'", nameTemplateWithRuntimeFields);
     return nameTemplateWithRuntimeFields;
   }
 
   class StreamSource
   {
   public:
-    StreamSource(Parameters::Accessor::Ptr params, FileStreamFactory::Ptr factory)
-      : Params(params)
-      , FileParams(params, factory->GetId())
-      , Factory(factory)
-      , FilenameTemplate(InstantiateModuleFields(FileParams.GetFilenameTemplate(), *Params))
-    {
-    }
+    StreamSource(Parameters::Accessor::Ptr params, Parameters::Accessor::Ptr properties, FileStreamFactory::Ptr factory)
+      : Params(std::move(params))
+      , Properties(std::move(properties))
+      , Factory(std::move(factory))
+      , FileParams(Params, Factory->GetId())
+      , FilenameTemplate(InstantiateModuleFields(FileParams.GetFilenameTemplate(), *Properties))
+    {}
 
     Receiver::Ptr GetStream(const Module::State& state) const
     {
-      const String& newFilename = FilenameTemplate.Instantiate(state);
+      const auto& newFilename = FilenameTemplate.Instantiate(state);
       if (Filename != newFilename)
       {
-        const Binary::OutputStream::Ptr stream = IO::CreateStream(newFilename, *Params, Log::ProgressCallback::Stub());
+        auto stream = IO::CreateStream(newFilename, *Params, Log::ProgressCallback::Stub());
         Filename = newFilename;
-        const FileStream::Ptr result = Factory->CreateStream(stream);
+        auto result = Factory->CreateStream(std::move(stream));
         SetProperties(*result);
         if (const uint_t buffers = FileParams.GetBuffersCount())
         {
-          return Async::DataReceiver<Chunk>::Create(1, buffers, result);
+          return Async::DataReceiver<Chunk>::Create(1, buffers, std::move(result));
         }
         else
         {
           return result;
         }
       }
-      return Receiver::Ptr();
+      return {};
     }
+
   private:
     void SetProperties(FileStream& stream) const
     {
-      Parameters::StringType str;
-      if (Params->FindValue(Module::ATTR_TITLE, str) && !str.empty())
+      if (const auto str = Parameters::GetString(*Properties, Module::ATTR_TITLE); !str.empty())
       {
         stream.SetTitle(str);
       }
-      if (Params->FindValue(Module::ATTR_AUTHOR, str) && !str.empty())
+      if (const auto str = Parameters::GetString(*Properties, Module::ATTR_AUTHOR); !str.empty())
       {
         stream.SetAuthor(str);
       }
-      if (Params->FindValue(Module::ATTR_COMMENT, str) && !str.empty())
+      if (const auto str = Parameters::GetString(*Properties, Module::ATTR_COMMENT); !str.empty())
       {
         stream.SetComment(str);
       }
       else
       {
-        stream.SetComment(Text::FILE_BACKEND_DEFAULT_COMMENT);
+        stream.SetComment(String{DEFAULT_COMMENT});
       }
       stream.FlushMetadata();
     }
+
   private:
     const Parameters::Accessor::Ptr Params;
-    const FileParameters FileParams;
+    const Parameters::Accessor::Ptr Properties;
     const FileStreamFactory::Ptr Factory;
+    const FileParameters FileParams;
     const TrackStateTemplate FilenameTemplate;
     mutable String Filename;
   };
@@ -259,17 +264,18 @@ namespace File
   class BackendWorker : public Sound::BackendWorker
   {
   public:
-    BackendWorker(Parameters::Accessor::Ptr params, FileStreamFactory::Ptr factory)
+    BackendWorker(Parameters::Accessor::Ptr params, Parameters::Accessor::Ptr properties,
+                  FileStreamFactory::Ptr factory)
       : Params(std::move(params))
+      , Properties(std::move(properties))
       , Factory(std::move(factory))
       , Stream(Receiver::CreateStub())
-    {
-    }
+    {}
 
-    //BackendWorker
+    // BackendWorker
     void Startup() override
     {
-      Source.reset(new StreamSource(Params, Factory));
+      Source = std::make_unique<StreamSource>(Params, Properties, Factory);
     }
 
     void Shutdown() override
@@ -278,13 +284,9 @@ namespace File
       Source.reset();
     }
 
-    void Pause() override
-    {
-    }
+    void Pause() override {}
 
-    void Resume() override
-    {
-    }
+    void Resume() override {}
 
     void FrameStart(const Module::State& state) override
     {
@@ -303,29 +305,30 @@ namespace File
     VolumeControl::Ptr GetVolumeControl() const override
     {
       // Does not support volume control
-      return VolumeControl::Ptr();
+      return {};
     }
+
   private:
     void SetStream(Receiver::Ptr str)
     {
       Stream->Flush();
-      Stream = str;
+      Stream = std::move(str);
     }
+
   private:
     const Parameters::Accessor::Ptr Params;
+    const Parameters::Accessor::Ptr Properties;
     const FileStreamFactory::Ptr Factory;
     std::unique_ptr<StreamSource> Source;
     Receiver::Ptr Stream;
   };
-}//File
-}//Sound
+}  // namespace Sound::File
 
 namespace Sound
 {
-  BackendWorker::Ptr CreateFileBackendWorker(Parameters::Accessor::Ptr params, FileStreamFactory::Ptr factory)
+  BackendWorker::Ptr CreateFileBackendWorker(Parameters::Accessor::Ptr params, Parameters::Accessor::Ptr properties,
+                                             FileStreamFactory::Ptr factory)
   {
-    return MakePtr<File::BackendWorker>(params, factory);
+    return MakePtr<File::BackendWorker>(std::move(params), std::move(properties), std::move(factory));
   }
-}
-
-#undef FILE_TAG
+}  // namespace Sound

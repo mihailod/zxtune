@@ -1,17 +1,16 @@
 /**
-* 
-* @file
-*
-* @brief Interface of coroutine and job factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Interface of coroutine and job factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <async/job.h>
+#include "async/job.h"
 
 namespace Async
 {
@@ -26,7 +25,7 @@ namespace Async
   class Coroutine
   {
   public:
-    typedef std::shared_ptr<Coroutine> Ptr;
+    using Ptr = std::shared_ptr<Coroutine>;
     virtual ~Coroutine() = default;
 
     virtual void Initialize() = 0;
@@ -39,4 +38,4 @@ namespace Async
   };
 
   Job::Ptr CreateJob(Coroutine::Ptr routine);
-}
+}  // namespace Async

@@ -50,11 +50,13 @@ static DEVDEF_RWFUNC devFunc[] =
 	{RWF_REGISTER | RWF_READ, DEVRW_A16D16, 0, c352_r},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_BLOCK, 0, c352_write_rom},
 	{RWF_MEMORY | RWF_WRITE, DEVRW_MEMSIZE, 0, c352_alloc_rom},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, c352_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef =
 {
 	"C352", "MAME", FCC_MAME,
+	32,  // Channels
 	
 	device_start_c352,
 	device_stop_c352,
@@ -65,6 +67,7 @@ static DEV_DEF devDef =
 	c352_set_mute_mask,
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	NULL,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs
@@ -223,6 +226,8 @@ static void c352_update(void *chip, UINT32 samples, DEV_SMPL **outputs)
 
 	memset(outputs[0], 0, samples * sizeof(DEV_SMPL));
 	memset(outputs[1], 0, samples * sizeof(DEV_SMPL));
+	if (c->wave == NULL)
+		return;
 
 	for(i=0;i<samples;i++)
 	{

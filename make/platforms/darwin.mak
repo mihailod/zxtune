@@ -11,5 +11,17 @@ compiler=clang
 host=macos
 LINKER_BEGIN_GROUP=
 LINKER_END_GROUP=
+BUILD_ID_FLAG=
+# Disable stripping for MacOSX - this breaks diginal signature
+# See:
+# - https://github.com/thefloweringash/sigtool
+# - https://github.com/tpoechtrager/osxcross/issues/198
+# - https://github.com/tpoechtrager/cctools-port/pull/114
+postlink_cmd = touch $@.pdb
 
 darwin.ld.flags += $(foreach file,$(embedded_files),-sectcreate __TEXT __emb_$(basename $(notdir $(file))) $(file))
+ifndef profile
+ifdef release
+darwin.ld.flags += -Wl,-dead_strip
+endif
+endif

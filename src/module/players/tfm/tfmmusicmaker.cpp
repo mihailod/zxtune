@@ -1,92 +1,88 @@
 /**
-* 
-* @file
-*
-* @brief  TFMMusicMaker chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TFMMusicMaker chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/tfm/tfmmusicmaker.h"
+
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
 #include "module/players/tfm/tfm_base.h"
 #include "module/players/tfm/tfm_base_track.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <math/fixedpoint.h>
-#include <module/players/properties_helper.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
 
-namespace Module
-{
-namespace TFMMusicMaker
+#include "math/fixedpoint.h"
+
+#include "make_ptr.h"
+
+#include <array>
+#include <memory>
+
+namespace Module::TFMMusicMaker
 {
   enum CmdType
   {
     EMPTY,
-    //add1, add2
+    // add1, add2
     ARPEGGIO,
-    //step
+    // step
     TONESLIDE,
-    //step
+    // step
     PORTAMENTO,
-    //speed, depth
+    // speed, depth
     VIBRATO,
-    //op, value
+    // op, value
     LEVEL,
-    //speedup, speeddown
+    // speedup, speeddown
     VOLSLIDE,
-    //on/off
+    // on/off
     SPECMODE,
-    //op, offset
+    // op, offset
     TONEOFFSET,
-    //op, value
+    // op, value
     MULTIPLE,
-    //mask
+    // mask
     MIXING,
-    //val
+    // val
     PANE,
-    //period
+    // period
     NOTERETRIG,
-    //pos
+    // pos
     NOTECUT,
-    //pos
+    // pos
     NOTEDELAY,
     //
     DROPEFFECTS,
-    //val
+    // val
     FEEDBACK,
-    //val
+    // val
     TEMPO_INTERLEAVE,
-    //even, odd
+    // even, odd
     TEMPO_VALUES,
     //
     LOOP_START,
-    //additional count
+    // additional count
     LOOP_STOP
   };
 
-  typedef Formats::Chiptune::TFMMusicMaker::Instrument Instrument;
+  using Instrument = Formats::Chiptune::TFMMusicMaker::Instrument;
 
   class ModuleData
   {
   public:
-    typedef std::shared_ptr<const ModuleData> Ptr;
-    typedef std::shared_ptr<ModuleData> RWPtr;
+    using Ptr = std::shared_ptr<const ModuleData>;
+    using RWPtr = std::shared_ptr<ModuleData>;
 
-    ModuleData()
-      : EvenInitialTempo()
-      , OddInitialTempo()
-      , InitialTempoInterleave()
-    {
-    }
+    ModuleData() = default;
 
-    uint_t EvenInitialTempo;
-    uint_t OddInitialTempo;
-    uint_t InitialTempoInterleave;
+    uint_t EvenInitialTempo = 0;
+    uint_t OddInitialTempo = 0;
+    uint_t InitialTempoInterleave = 0;
     OrderList::Ptr Order;
     PatternsSet::Ptr Patterns;
     SparsedObjectsStorage<Instrument> Instruments;
@@ -100,8 +96,7 @@ namespace TFMMusicMaker
       , Meta(props)
       , Patterns(PatternsBuilder::Create<TFM::TRACK_CHANNELS>())
       , Data(MakeRWPtr<ModuleData>())
-    {
-    }
+    {}
 
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
@@ -115,18 +110,13 @@ namespace TFMMusicMaker
       Data->InitialTempoInterleave = interleavePeriod;
     }
 
-    void SetDate(const Formats::Chiptune::TFMMusicMaker::Date& /*created*/, const Formats::Chiptune::TFMMusicMaker::Date& /*saved*/) override
-    {
-    }
-
-    void SetComment(const String& comment) override
-    {
-      Properties.SetComment(comment);
-    }
+    void SetDate(const Formats::Chiptune::TFMMusicMaker::Date& /*created*/,
+                 const Formats::Chiptune::TFMMusicMaker::Date& /*saved*/) override
+    {}
 
     void SetInstrument(uint_t index, Formats::Chiptune::TFMMusicMaker::Instrument instrument) override
     {
-      Data->Instruments.Add(index, std::move(instrument));
+      Data->Instruments.Add(index, instrument);
     }
 
     void SetPositions(Formats::Chiptune::TFMMusicMaker::Positions positions) override
@@ -270,6 +260,7 @@ namespace TFMMusicMaker
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -279,7 +270,7 @@ namespace TFMMusicMaker
 
   struct Halftones
   {
-    typedef Math::FixedPoint<int_t, 32> Type;
+    using Type = Math::FixedPoint<int_t, 32>;
 
     static Type Min()
     {
@@ -298,7 +289,7 @@ namespace TFMMusicMaker
 
     static Type FromFraction(int_t val)
     {
-      return Type(val, Type::PRECISION);
+      return {val, Type::PRECISION};
     }
 
     static Type FromInteger(int_t val)
@@ -309,7 +300,7 @@ namespace TFMMusicMaker
 
   struct Level
   {
-    typedef Math::FixedPoint<int_t, 8> Type;
+    using Type = Math::FixedPoint<int_t, 8>;
 
     static Type Min()
     {
@@ -323,7 +314,7 @@ namespace TFMMusicMaker
 
     static Type FromFraction(int_t val)
     {
-      return Type(val, Type::PRECISION);
+      return {val, Type::PRECISION};
     }
 
     static Type FromInteger(int_t val)
@@ -336,11 +327,8 @@ namespace TFMMusicMaker
   {
   public:
     ArpeggioState()
-      : Position()
-      , Addons()
-      , Value()
-    {
-    }
+      : Addons()
+    {}
 
     void Reset()
     {
@@ -377,22 +365,18 @@ namespace TFMMusicMaker
     {
       return Halftones::FromInteger(Value);
     }
+
   private:
-    uint_t Position;
+    uint_t Position = 0;
     std::array<uint_t, 3> Addons;
-    uint_t Value;
+    uint_t Value = 0;
   };
 
   template<class Category>
   struct SlideState
   {
   public:
-    SlideState()
-      : Enabled()
-      , UpDelta()
-      , DownDelta()
-    {
-    }
+    SlideState() = default;
 
     void Disable()
     {
@@ -431,25 +415,19 @@ namespace TFMMusicMaker
       }
       return val != prev;
     }
+
   private:
-    bool Enabled;
-    int_t UpDelta;
-    int_t DownDelta;
+    bool Enabled = false;
+    int_t UpDelta = 0;
+    int_t DownDelta = 0;
   };
 
-  typedef SlideState<Halftones> ToneSlideState;
+  using ToneSlideState = SlideState<Halftones>;
 
   struct VibratoState
   {
   public:
-    VibratoState()
-      : Enabled()
-      , Position()
-      , Speed()
-      , Depth()
-      , Value()
-    {
-    }
+    VibratoState() = default;
 
     void Disable()
     {
@@ -490,13 +468,10 @@ namespace TFMMusicMaker
         }
         return false;
       }
-      //use signed values
+      // use signed values
       const int_t PRECISION = 256;
-      const int_t TABLE[] =
-      {
-        0, 49, 97, 142, 181, 212, 236, 251, 256, 251, 236, 212, 181, 142, 97, 49,
-        0, -49, -97, -142, -181, -212, -236, -251, -256, -251, -236, -212, -181, -142, -97, -49
-      };      
+      const int_t TABLE[] = {0, 49,  97,  142,  181,  212,  236,  251,  256,  251,  236,  212,  181,  142,  97,  49,
+                             0, -49, -97, -142, -181, -212, -236, -251, -256, -251, -236, -212, -181, -142, -97, -49};
       const int_t prevVal = Value;
       Value = TABLE[Position / 2] * Depth / PRECISION;
       Position = (Position + Speed) & 0x3f;
@@ -507,25 +482,23 @@ namespace TFMMusicMaker
     {
       return Halftones::FromFraction(Value);
     }
+
   private:
-    bool Enabled;
-    uint_t Position;
-    uint_t Speed;
-    int_t Depth;
-    int_t Value;
+    bool Enabled = false;
+    uint_t Position = 0;
+    uint_t Speed = 0;
+    int_t Depth = 0;
+    int_t Value = 0;
   };
 
-  typedef SlideState<Level> VolumeSlideState;
+  using VolumeSlideState = SlideState<Level>;
 
   struct PortamentoState
   {
   public:
     PortamentoState()
-      : Enabled()
-      , Step()
-      , Target(Halftones::Stub())
-    {
-    }
+      : Target(Halftones::Stub())
+    {}
 
     void Disable()
     {
@@ -549,10 +522,7 @@ namespace TFMMusicMaker
 
     bool Update(Halftones::Type& note) const
     {
-      if (!Enabled
-       || Target == Halftones::Stub()
-       || Target == note
-       || Step == Halftones::FromFraction(0))
+      if (!Enabled || Target == Halftones::Stub() || Target == note || Step == Halftones::FromFraction(0))
       {
         return false;
       }
@@ -566,6 +536,7 @@ namespace TFMMusicMaker
       }
       return true;
     }
+
   private:
     void PortamentoUp(Halftones::Type& note) const
     {
@@ -578,8 +549,9 @@ namespace TFMMusicMaker
       const Halftones::Type next = note - Step;
       note = std::max(next, Target);
     }
+
   private:
-    bool Enabled;
+    bool Enabled = false;
     Halftones::Type Step;
     Halftones::Type Target;
   };
@@ -591,31 +563,22 @@ namespace TFMMusicMaker
   struct ChannelState
   {
     ChannelState()
-      : CurInstrument(nullptr)
-      , Algorithm(NO_VALUE)
+      : Algorithm(NO_VALUE)
       , TotalLevel()
       , Note(Halftones::Stub())
       , Volume(Level::Max())
-      , HasToneChange(false)
-      , HasVolumeChange(false)
-      , Arpeggio()
-      , ToneSlide()
-      , Vibrato()
-      , VolumeSlide()
-      , Portamento()
       , NoteRetrig(NO_VALUE)
       , NoteCut(NO_VALUE)
       , NoteDelay(NO_VALUE)
-    {
-    }
+    {}
 
-    const Instrument* CurInstrument;
+    const Instrument* CurInstrument = nullptr;
     uint_t Algorithm;
     std::array<uint_t, OPERATORS_COUNT> TotalLevel;
     Halftones::Type Note;
     Level::Type Volume;
-    bool HasToneChange;
-    bool HasVolumeChange;
+    bool HasToneChange = false;
+    bool HasVolumeChange = false;
 
     ArpeggioState Arpeggio;
     ToneSlideState ToneSlide;
@@ -630,12 +593,10 @@ namespace TFMMusicMaker
   struct PlayerState
   {
     PlayerState()
-      : SpecialMode(false)
-      , ToneOffset()
-    {
-    }
+      : ToneOffset()
+    {}
 
-    bool SpecialMode;
+    bool SpecialMode = false;
     std::array<int_t, OPERATORS_COUNT> ToneOffset;
     std::array<ChannelState, TFM::TRACK_CHANNELS> Channels;
   };
@@ -645,8 +606,7 @@ namespace TFMMusicMaker
   public:
     explicit DataRenderer(ModuleData::Ptr data)
       : Data(std::move(data))
-    {
-    }
+    {}
 
     void Reset() override
     {
@@ -662,15 +622,16 @@ namespace TFMMusicMaker
       }
       SynthesizeChannelsData(quirk, track);
     }
+
   private:
     void GetNewLineState(const TrackModelState& state, TFM::TrackBuilder& track)
     {
       ResetOneLineEffects();
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
         for (uint_t chan = 0; chan != State.Channels.size(); ++chan)
         {
-          if (const auto src = line->GetChannel(chan))
+          if (const auto* const src = line->GetChannel(chan))
           {
             TFM::ChannelBuilder channel = track.GetChannel(chan);
             GetNewChannelState(*src, State.Channels[chan], track, channel);
@@ -681,10 +642,9 @@ namespace TFMMusicMaker
 
     void ResetOneLineEffects()
     {
-      for (uint_t chan = 0; chan != State.Channels.size(); ++chan)
+      for (auto& dst : State.Channels)
       {
-        ChannelState& dst = State.Channels[chan];
-        //portamento, vibrato, volume and tone slide are applicable only when effect is specified
+        // portamento, vibrato, volume and tone slide are applicable only when effect is specified
         dst.ToneSlide.Disable();
         dst.Vibrato.Disable();
         dst.VolumeSlide.Disable();
@@ -820,7 +780,7 @@ namespace TFMMusicMaker
           dst.Portamento.SetStep(it->Param1);
           break;
         case VIBRATO:
-          //parameter in 1/16 of halftone
+          // parameter in 1/16 of halftone
           dst.Vibrato.SetParameters(it->Param1, it->Param2 * Halftones::Type::PRECISION / 16);
           break;
         case LEVEL:
@@ -865,7 +825,7 @@ namespace TFMMusicMaker
       }
     }
 
-    void LoadInstrument(const int_t* multiplies[], ChannelState& dst, TFM::ChannelBuilder& channel)
+    static void LoadInstrument(const int_t* multiplies[], ChannelState& dst, TFM::ChannelBuilder& channel)
     {
       const Instrument& ins = *dst.CurInstrument;
       channel.SetupConnection(dst.Algorithm = ins.Algorithm, ins.Feedback);
@@ -932,7 +892,7 @@ namespace TFMMusicMaker
 
     void ProcessNoteEffects(uint_t quirk, uint_t idx, TFM::ChannelBuilder& channel)
     {
-      ChannelState& state = State.Channels[idx];
+      const auto& state = State.Channels[idx];
       if (state.NoteRetrig != NO_VALUE && 0 == quirk % state.NoteRetrig)
       {
         channel.KeyOff();
@@ -951,20 +911,15 @@ namespace TFMMusicMaker
 
     struct RawNote
     {
-      RawNote()
-        : Octave()
-        , Freq()
-      {
-      }
+      RawNote() = default;
 
       RawNote(uint_t octave, uint_t freq)
         : Octave(octave)
         , Freq(freq)
-      {
-      }
+      {}
 
-      uint_t Octave;
-      uint_t Freq;
+      uint_t Octave = 0;
+      uint_t Freq = 0;
     };
 
     void SetTone(uint_t idx, const ChannelState& state, TFM::ChannelBuilder& channel) const
@@ -1001,30 +956,22 @@ namespace TFMMusicMaker
 
     static RawNote ConvertNote(Halftones::Type note)
     {
-      static const uint_t FREQS[] =
-      {
-        707, 749, 793, 840, 890, 943, 999, 1059, 1122, 1189, 1259, 1334, 1413, 1497
-      };
+      static const uint_t FREQS[] = {707, 749, 793, 840, 890, 943, 999, 1059, 1122, 1189, 1259, 1334, 1413, 1497};
       const uint_t totalHalftones = note.Integer();
       const uint_t octave = totalHalftones / 12;
       const uint_t halftone = totalHalftones % 12;
-      const uint_t freq = FREQS[halftone] + ((FREQS[halftone + 1] - FREQS[halftone]) * note.Fraction()/* + note.PRECISION / 2*/) / note.PRECISION;
-      return RawNote(octave, freq);
+      const uint_t freq =
+          FREQS[halftone]
+          + ((FREQS[halftone + 1] - FREQS[halftone]) * note.Fraction() /* + note.PRECISION / 2*/) / note.PRECISION;
+      return {octave, freq};
     }
 
-    void SetLevel(const ChannelState& state, TFM::ChannelBuilder& channel) const
+    static void SetLevel(const ChannelState& state, TFM::ChannelBuilder& channel)
     {
-      static const uint_t MIXER_TABLE[8] =
-      {
-        0x8, 0x8, 0x8, 0x8, 0x0c, 0xe, 0xe, 0x0f
-      };
-      static const uint_t LEVELS_TABLE[32] =
-      {
-        0x00, 0x00, 0x58, 0x5a, 0x5b, 0x5d, 0x5f, 0x60,
-        0x61, 0x62, 0x64, 0x66, 0x68, 0x6a, 0x6b, 0x6d,
-        0x6e, 0x70, 0x71, 0x72, 0x73, 0x74, 0x76, 0x77,
-        0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f
-      };
+      static const uint_t MIXER_TABLE[8] = {0x8, 0x8, 0x8, 0x8, 0x0c, 0xe, 0xe, 0x0f};
+      static const uint_t LEVELS_TABLE[32] = {0x00, 0x00, 0x58, 0x5a, 0x5b, 0x5d, 0x5f, 0x60, 0x61, 0x62, 0x64,
+                                              0x66, 0x68, 0x6a, 0x6b, 0x6d, 0x6e, 0x70, 0x71, 0x72, 0x73, 0x74,
+                                              0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f};
       if (state.Algorithm == NO_VALUE)
       {
         return;
@@ -1042,18 +989,18 @@ namespace TFMMusicMaker
     {
       return 0x7f - ((0x7f - tl) * scale / 127);
     }
+
   private:
     const ModuleData::Ptr Data;
     PlayerState State;
   };
 
   // TrackStateModel and TrackStateIterator with alternative tempo logic and loop support
-  //TODO: refactor with common code and remove C&P
+  // TODO: refactor with common code and remove C&P
   class StubPattern : public Pattern
   {
-    StubPattern()
-    {
-    }
+    StubPattern() = default;
+
   public:
     const Line* GetLine(uint_t /*row*/) const override
     {
@@ -1071,23 +1018,20 @@ namespace TFMMusicMaker
       return &instance;
     }
   };
-  
+
   struct PlainTrackState
   {
-    uint_t Frame;
-    uint_t Position;
-    uint_t Pattern;
-    uint_t Line;
-    uint_t Quirk;
-    uint_t EvenTempo;
-    uint_t OddTempo;
-    uint_t TempoInterleavePeriod;
-    uint_t TempoInterleaveCounter;
+    uint_t Frame = 0;
+    uint_t Position = 0;
+    uint_t Pattern = 0;
+    uint_t Line = 0;
+    uint_t Quirk = 0;
+    uint_t EvenTempo = 0;
+    uint_t OddTempo = 0;
+    uint_t TempoInterleavePeriod = 0;
+    uint_t TempoInterleaveCounter = 0;
 
-    PlainTrackState()
-      : Frame(), Position(), Pattern(), Line(), Quirk(), EvenTempo(), OddTempo(), TempoInterleavePeriod(), TempoInterleaveCounter()
-    {
-    }
+    PlainTrackState() = default;
 
     uint_t GetTempo() const
     {
@@ -1108,16 +1052,13 @@ namespace TFMMusicMaker
   struct LoopState
   {
   public:
-    LoopState()
-      : Counter()
-    {
-    }
+    LoopState() = default;
 
     void Start(const PlainTrackState& state)
     {
-      if (!Begin.get() || Begin->Line != state.Line || Begin->Position != state.Position)
+      if (!Begin || Begin->Line != state.Line || Begin->Position != state.Position)
       {
-        Begin.reset(new PlainTrackState(state));
+        Begin = std::make_unique<PlainTrackState>(state);
         Counter = 0;
       }
     }
@@ -1130,38 +1071,43 @@ namespace TFMMusicMaker
       }
       else
       {
-        //from original loop processing logic
+        // from original loop processing logic
         if (++Counter >= repeatCount)
         {
-          Counter = 16;//max repeat count+1
+          Counter = 16;  // max repeat count+1
         }
         return Begin.get();
       }
     }
+
   private:
     std::unique_ptr<const PlainTrackState> Begin;
-    uint_t Counter;
+    uint_t Counter = 0;
   };
 
   class TrackStateCursor : public TrackModelState
   {
   public:
-    typedef std::shared_ptr<TrackStateCursor> Ptr;
+    using Ptr = std::shared_ptr<TrackStateCursor>;
 
-    explicit TrackStateCursor(ModuleData::Ptr data)
-      : Data(std::move(data))
+    TrackStateCursor(Time::Microseconds frameDuration, ModuleData::Ptr data)
+      : FrameDuration(frameDuration)
+      , Data(std::move(data))
       , Order(*Data->Order)
       , Patterns(*Data->Patterns)
-      , NextLineState()
-      , Loops()
     {
       Reset();
     }
 
-    //State
-    uint_t Frame() const override
+    // State
+    Time::AtMillisecond At() const override
     {
-      return Plain.Frame;
+      return Time::AtMillisecond() + (FrameDuration * Plain.Frame).CastTo<Time::Millisecond>();
+    }
+
+    Time::Milliseconds Total() const override
+    {
+      return TotalPlayed.CastTo<Time::Millisecond>();
     }
 
     uint_t LoopCount() const override
@@ -1169,7 +1115,7 @@ namespace TFMMusicMaker
       return Loops;
     }
 
-    //TrackState
+    // TrackState
     uint_t Position() const override
     {
       return Plain.Position;
@@ -1200,7 +1146,7 @@ namespace TFMMusicMaker
       return CurLineObject ? CurLineObject->CountActiveChannels() : 0;
     }
 
-    //TrackModelState
+    // TrackModelState
     const class Pattern* PatternObject() const override
     {
       return CurPatternObject;
@@ -1211,7 +1157,7 @@ namespace TFMMusicMaker
       return CurLineObject;
     }
 
-    //navigation
+    // navigation
     bool IsValid() const
     {
       return Plain.Position < Order.GetSize();
@@ -1231,6 +1177,7 @@ namespace TFMMusicMaker
       Plain.TempoInterleaveCounter = 0;
       SetPosition(0);
       NextLineState = nullptr;
+      TotalPlayed = {};
       Loops = 0;
     }
 
@@ -1242,8 +1189,7 @@ namespace TFMMusicMaker
 
     void Seek(uint_t position)
     {
-      if (Plain.Position > position ||
-          (Plain.Position == position && (0 != Plain.Line || 0 != Plain.Quirk)))
+      if (Plain.Position > position || (Plain.Position == position && (0 != Plain.Line || 0 != Plain.Quirk)))
       {
         Reset();
       }
@@ -1259,13 +1205,22 @@ namespace TFMMusicMaker
 
     bool NextFrame()
     {
-      return NextQuirk() || NextLine() || NextPosition();
+      if (NextQuirk() || NextLine() || NextPosition())
+      {
+        TotalPlayed += FrameDuration;
+        return true;
+      }
+      else
+      {
+        return false;
+      }
     }
 
     void DoneLoop()
     {
       ++Loops;
     }
+
   private:
     void SetPosition(uint_t pos)
     {
@@ -1357,7 +1312,7 @@ namespace TFMMusicMaker
     {
       for (uint_t idx = 0; idx != TFM::TRACK_CHANNELS; ++idx)
       {
-        if (const auto chan = CurLineObject->GetChannel(idx))
+        if (const auto* const chan = CurLineObject->GetChannel(idx))
         {
           LoadNewLoopTempoParameters(*chan);
         }
@@ -1366,7 +1321,7 @@ namespace TFMMusicMaker
 
     void LoadNewLoopTempoParameters(const Cell& chan)
     {
-      //TODO: chan.FindCommand ?
+      // TODO: chan.FindCommand ?
       for (CommandsIterator it = chan.GetCommands(); it; ++it)
       {
         switch (it->Type)
@@ -1387,46 +1342,39 @@ namespace TFMMusicMaker
         }
       }
     }
+
   private:
-    //context
+    // context
+    const Time::Microseconds FrameDuration;
     const ModuleData::Ptr Data;
     const OrderList& Order;
     const PatternsSet& Patterns;
-    //state
+    // state
     PlainTrackState Plain;
     const class Pattern* CurPatternObject;
     const class Line* CurLineObject;
     LoopState Loop;
-    const PlainTrackState* NextLineState;
-    uint_t Loops;
+    const PlainTrackState* NextLineState = nullptr;
+    Time::Microseconds TotalPlayed;
+    uint_t Loops = 0;
   };
 
   class TrackStateIteratorImpl : public TrackStateIterator
   {
   public:
-    explicit TrackStateIteratorImpl(ModuleData::Ptr data)
+    TrackStateIteratorImpl(Time::Microseconds frameDuration, ModuleData::Ptr data)
       : Data(std::move(data))
-      , Cursor(MakePtr<TrackStateCursor>(Data))
-    {
-    }
+      , Cursor(MakePtr<TrackStateCursor>(frameDuration, Data))
+    {}
 
     void Reset() override
     {
       Cursor->Reset();
     }
 
-    bool IsValid() const override
+    void NextFrame() override
     {
-      return Cursor->IsValid();
-    }
-
-    void NextFrame(const Sound::LoopParameters& looped) override
-    {
-      if (!Cursor->IsValid())
-      {
-        return;
-      }
-      else if (!Cursor->NextFrame() && looped(Cursor->LoopCount()))
+      if (!Cursor->NextFrame())
       {
         MoveToLoop();
       }
@@ -1436,10 +1384,11 @@ namespace TFMMusicMaker
     {
       return Cursor;
     }
+
   private:
     void MoveToLoop()
     {
-      if (LoopState.get())
+      if (LoopState)
       {
         Cursor->SetState(*LoopState);
       }
@@ -1447,10 +1396,11 @@ namespace TFMMusicMaker
       {
         Cursor->Seek(Data->Order->GetLoopPosition());
         const PlainTrackState& loop = Cursor->GetState();
-        LoopState.reset(new PlainTrackState(loop));
+        LoopState = std::make_unique<PlainTrackState>(loop);
       }
       Cursor->DoneLoop();
     }
+
   private:
     const ModuleData::Ptr Data;
     const TrackStateCursor::Ptr Cursor;
@@ -1460,10 +1410,21 @@ namespace TFMMusicMaker
   class TrackInformation : public Module::TrackInformation
   {
   public:
-    explicit TrackInformation(ModuleData::Ptr data)
-      : Data(std::move(data))
-      , Frames(), LoopFrameNum()
+    TrackInformation(Time::Microseconds frameDuration, ModuleData::Ptr data)
+      : FrameDuration(frameDuration)
+      , Data(std::move(data))
+    {}
+
+    Time::Milliseconds Duration() const override
     {
+      Initialize();
+      return (FrameDuration * Frames).CastTo<Time::Millisecond>();
+    }
+
+    Time::Milliseconds LoopDuration() const override
+    {
+      Initialize();
+      return (FrameDuration * (Frames - LoopFrame)).CastTo<Time::Millisecond>();
     }
 
     uint_t PositionsCount() const override
@@ -1476,44 +1437,30 @@ namespace TFMMusicMaker
       return Data->Order->GetLoopPosition();
     }
 
-    uint_t FramesCount() const override
-    {
-      Initialize();
-      return Frames;
-    }
-
-    uint_t LoopFrame() const override
-    {
-      Initialize();
-      return LoopFrameNum;
-    }
-
     uint_t ChannelsCount() const override
     {
       return TFM::TRACK_CHANNELS;
     }
 
-    uint_t Tempo() const override
-    {
-      return Data->EvenInitialTempo;
-    }
   private:
     void Initialize() const
     {
       if (Frames)
       {
-        return;//initialized
+        return;  // initialized
       }
-      TrackStateCursor cursor(Data);
+      TrackStateCursor cursor({}, Data);
       cursor.Seek(Data->Order->GetLoopPosition());
-      LoopFrameNum = cursor.GetState().Frame;
+      LoopFrame = cursor.GetState().Frame;
       cursor.Seek(Data->Order->GetSize());
       Frames = cursor.GetState().Frame;
     }
+
   private:
+    const Time::Microseconds FrameDuration;
     const ModuleData::Ptr Data;
-    mutable uint_t Frames;
-    mutable uint_t LoopFrameNum;
+    mutable uint_t Frames = 0;
+    mutable uint_t LoopFrame = 0;
   };
 
   class Chiptune : public TFM::Chiptune
@@ -1522,13 +1469,16 @@ namespace TFMMusicMaker
     Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
       : Data(std::move(data))
       , Properties(std::move(properties))
-      , Info(MakePtr<TrackInformation>(Data))
+    {}
+
+    Time::Microseconds GetFrameDuration() const override
     {
+      return TFM::BASE_FRAME_DURATION;
     }
 
     Information::Ptr GetInformation() const override
     {
-      return Info;
+      return MakePtr<TrackInformation>(GetFrameDuration(), Data);
     }
 
     Parameters::Accessor::Ptr GetProperties() const override
@@ -1538,14 +1488,14 @@ namespace TFMMusicMaker
 
     TFM::DataIterator::Ptr CreateDataIterator() const override
     {
-      auto iterator = MakePtr<TrackStateIteratorImpl>(Data);
+      auto iterator = MakePtr<TrackStateIteratorImpl>(GetFrameDuration(), Data);
       auto renderer = MakePtr<DataRenderer>(Data);
       return TFM::CreateDataIterator(std::move(iterator), std::move(renderer));
     }
+
   private:
     const ModuleData::Ptr Data;
     const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
   };
 
   class Factory : public TFM::Factory
@@ -1553,10 +1503,10 @@ namespace TFMMusicMaker
   public:
     explicit Factory(Formats::Chiptune::TFMMusicMaker::Decoder::Ptr decoder)
       : Decoder(std::move(decoder))
-    {
-    }
+    {}
 
-    TFM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    TFM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
@@ -1567,9 +1517,10 @@ namespace TFMMusicMaker
       }
       else
       {
-        return TFM::Chiptune::Ptr();
+        return {};
       }
     }
+
   private:
     const Formats::Chiptune::TFMMusicMaker::Decoder::Ptr Decoder;
   };
@@ -1578,5 +1529,4 @@ namespace TFMMusicMaker
   {
     return MakePtr<Factory>(std::move(decoder));
   }
-}
-}
+}  // namespace Module::TFMMusicMaker

@@ -1,33 +1,28 @@
 /**
-* 
-* @file
-*
-* @brief  SoundTrackerPro compiled modules support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SoundTrackerPro compiled modules support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "formats/packed/container.h"
 #include "formats/chiptune/aym/soundtrackerpro.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-//std includes
+#include "formats/packed/container.h"
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <algorithm>
 #include <array>
 #include <cstring>
-#include <functional>
-//text includes
-#include <formats/text/chiptune.h>
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace CompiledSTP
   {
@@ -36,72 +31,71 @@ namespace Packed
     const std::size_t MAX_MODULE_SIZE = 0x2800;
     const std::size_t MAX_PLAYER_SIZE = 2000;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
+    using RawInformation = std::array<uint8_t, 53>;
+
     struct Version1
     {
-      static const String DESCRIPTION;
-      static const std::string FORMAT;
+      static const StringView DESCRIPTION;
+      static const StringView FORMAT;
 
-      PACK_PRE struct RawPlayer
+      struct RawPlayer
       {
         uint8_t Padding1;
-        uint16_t DataAddr;
+        le_uint16_t DataAddr;
         uint8_t Padding2;
-        uint16_t InitAddr;
+        le_uint16_t InitAddr;
         uint8_t Padding3;
-        uint16_t PlayAddr;
+        le_uint16_t PlayAddr;
         uint8_t Padding4[8];
         //+17
-        std::array<uint8_t, 53> Information;
+        RawInformation Information;
         uint8_t Padding5[8];
         //+78
         uint8_t Initialization;
 
         std::size_t GetSize() const
         {
-          const uint_t initAddr = fromLE(InitAddr);
+          const uint_t initAddr = InitAddr;
           const uint_t compileAddr = initAddr - offsetof(RawPlayer, Initialization);
-          return fromLE(DataAddr) - compileAddr;
+          return DataAddr - compileAddr;
         }
 
-        Dump GetInfo() const
+        RawInformation GetInfo() const
         {
-          return Dump(Information.begin(), Information.end());
+          return Information;
         }
-      } PACK_POST;
+      };
     };
 
     struct Version2
     {
-      static const String DESCRIPTION;
-      static const std::string FORMAT;
+      static const StringView DESCRIPTION;
+      static const StringView FORMAT;
 
-      PACK_PRE struct RawPlayer
+      struct RawPlayer
       {
         uint8_t Padding1;
-        uint16_t InitAddr;
+        le_uint16_t InitAddr;
         uint8_t Padding2;
-        uint16_t PlayAddr;
+        le_uint16_t PlayAddr;
         uint8_t Padding3[2];
         //+8
         uint8_t Information[56];
         uint8_t Padding4[8];
         //+0x48
         uint8_t Initialization[2];
-        uint16_t DataAddr;
+        le_uint16_t DataAddr;
 
         std::size_t GetSize() const
         {
-          const uint_t initAddr = fromLE(InitAddr);
+          const uint_t initAddr = InitAddr;
           const uint_t compileAddr = initAddr - offsetof(RawPlayer, Initialization);
-          return fromLE(DataAddr) - compileAddr;
+          return DataAddr - compileAddr;
         }
 
-        Dump GetInfo() const
+        RawInformation GetInfo() const
         {
-          Dump result(53);
+          RawInformation result;
           const uint8_t* const src = Information;
           uint8_t* const dst = result.data();
           std::memcpy(dst, src, 24);
@@ -109,72 +103,66 @@ namespace Packed
           std::memcpy(dst + 27, src + 31, 25);
           return result;
         }
-      } PACK_POST;
+      };
     };
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
 
     static_assert(offsetof(Version1::RawPlayer, Information) == 17, "Invalid layout");
     static_assert(offsetof(Version1::RawPlayer, Initialization) == 78, "Invalid layout");
     static_assert(offsetof(Version2::RawPlayer, Information) == 8, "Invalid layout");
     static_assert(offsetof(Version2::RawPlayer, Initialization) == 72, "Invalid layout");
 
-    const String Version1::DESCRIPTION = String(Text::SOUNDTRACKERPRO_DECODER_DESCRIPTION) + Text::PLAYER_SUFFIX;
-    const String Version2::DESCRIPTION = String(Text::SOUNDTRACKERPRO2_DECODER_DESCRIPTION) + Text::PLAYER_SUFFIX;
+    const StringView Version1::DESCRIPTION = "Sound Tracker Pro v1.x player"sv;
+    const StringView Version2::DESCRIPTION = "Sound Tracker Pro v2.x player"sv;
 
-    const std::string Version1::FORMAT =
-      "21??"     //ld hl,ModuleAddr
-      "c3??"     //jp xxxx
-      "c3??"     //jp xxxx
-      "ed4b??"   //ld bc,(xxxx)
-      "c3??"     //jp xxxx
-      "?"        //nop?
-      "'K'S'A' 'S'O'F'T'W'A'R'E' 'C'O'M'P'I'L'A'T'I'O'N' 'O'F' "
-      "?{25}"
-      "?{8}"
-      "f3"       //di
-      "22??"     //ld (xxxx),hl
-      "3e?"      //ld a,xx
-      "32??"     //ld (xxxx),a
-      "32??"     //ld (xxxx),a
-      "32??"     //ld (xxxx),a
-      "7e"       //ld a,(hl)
-      "23"       //inc hl
-      "32??"     //ld (xxxx),a
-    ;
+    const StringView Version1::FORMAT =
+        "21??"    // ld hl,ModuleAddr
+        "c3??"    // jp xxxx
+        "c3??"    // jp xxxx
+        "ed4b??"  // ld bc,(xxxx)
+        "c3??"    // jp xxxx
+        "?"       // nop?
+        "'K'S'A' 'S'O'F'T'W'A'R'E' 'C'O'M'P'I'L'A'T'I'O'N' 'O'F' "
+        "?{25}"
+        "?{8}"
+        "f3"    // di
+        "22??"  // ld (xxxx),hl
+        "3e?"   // ld a,xx
+        "32??"  // ld (xxxx),a
+        "32??"  // ld (xxxx),a
+        "32??"  // ld (xxxx),a
+        "7e"    // ld a,(hl)
+        "23"    // inc hl
+        "32??"  // ld (xxxx),a
+        ""sv;
 
-    const std::string Version2::FORMAT =
-      "c3??"     //jp InitAddr
-      "c3??"     //jp PlayAddr
-      "??"       //nop,nop
-      "'K'S'A' 'S'O'F'T'W'A'R'E' 'C'O'M'P'I'L'A'T'I'O'N' ' ' 'O'F' ' ' "
-      "?{24}"
-      "?{8}"
-      //+0x48
-      "f3"       //di
-      "21??"     //ld hl,ModuleAddr
-      "22??"     //ld (xxxx),hl
-      "3e?"      //ld a,xx
-      "32??"     //ld (xxxx),a
-      "32??"     //ld (xxxx),a
-      "32??"     //ld (xxxx),a
-      "7e"       //ld a,(hl)
-      "23"       //inc hl
-      "32??"     //ld (xxxx),a
-    ;
+    const StringView Version2::FORMAT =
+        "c3??"  // jp InitAddr
+        "c3??"  // jp PlayAddr
+        "??"    // nop,nop
+        "'K'S'A' 'S'O'F'T'W'A'R'E' 'C'O'M'P'I'L'A'T'I'O'N' ' ' 'O'F' ' ' "
+        "?{24}"
+        "?{8}"
+        //+0x48
+        "f3"    // di
+        "21??"  // ld hl,ModuleAddr
+        "22??"  // ld (xxxx),hl
+        "3e?"   // ld a,xx
+        "32??"  // ld (xxxx),a
+        "32??"  // ld (xxxx),a
+        "32??"  // ld (xxxx),a
+        "7e"    // ld a,(hl)
+        "23"    // inc hl
+        "32??"  // ld (xxxx),a
+        ""sv;
 
-    bool IsInfoEmpty(Binary::View info)
+    bool IsInfoEmpty(const RawInformation& info)
     {
-      assert(info.Size() == 53);
-      //28 is fixed
-      //25 is title
-      const auto start = info.As<Char>();
-      const auto end = start + info.Size();
-      const auto titleStart = start + 28;
-      return end == std::find_if(titleStart, end, std::bind2nd(std::greater<Char>(), Char(' ')));
+      // 28 is fixed
+      // 25 is title
+      const auto* const titleStart = info.begin() + 28;
+      return std::none_of(titleStart, info.end(), [](auto b) { return b > ' '; });
     }
-  }//CompiledSTP
+  }  // namespace CompiledSTP
 
   template<class Version>
   class CompiledSTPDecoder : public Decoder
@@ -182,10 +170,9 @@ namespace Packed
   public:
     CompiledSTPDecoder()
       : Player(Binary::CreateFormat(Version::FORMAT, sizeof(typename Version::RawPlayer)))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Version::DESCRIPTION;
     }
@@ -201,16 +188,16 @@ namespace Packed
       const Binary::View data(rawData);
       if (!Player->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       const auto& rawPlayer = *data.As<typename Version::RawPlayer>();
       const auto playerSize = rawPlayer.GetSize();
       if (playerSize >= std::min(data.Size(), CompiledSTP::MAX_PLAYER_SIZE))
       {
         Dbg("Invalid player");
-        return Container::Ptr();
+        return {};
       }
-      Dbg("Detected player in first %1% bytes", playerSize);
+      Dbg("Detected player in first {} bytes", playerSize);
       const auto modData = rawData.GetSubcontainer(playerSize, CompiledSTP::MAX_MODULE_SIZE);
       const auto metainfo = rawPlayer.GetInfo();
       auto& stub = Formats::Chiptune::SoundTrackerPro::GetStubBuilder();
@@ -233,8 +220,9 @@ namespace Packed
         Dbg("Failed to parse fixed module");
       }
       Dbg("Failed to find module after player");
-      return Container::Ptr();
+      return {};
     }
+
   private:
     const Binary::Format::Ptr Player;
   };
@@ -248,5 +236,4 @@ namespace Packed
   {
     return MakePtr<CompiledSTPDecoder<CompiledSTP::Version2> >();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

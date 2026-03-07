@@ -1,42 +1,40 @@
 /**
-* 
-* @file
-*
-* @brief Single channel mixer widget implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Single channel mixer widget implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "mixer.h"
+#include "apps/zxtune-qt/ui/preferences/mixer.h"
+
 #include "mixer.ui.h"
-//common includes
-#include <contract.h>
-//std includes
+
+#include "contract.h"
+
 #include <utility>
 
 namespace
 {
-  const char* CHANNEL_NAMES[] =
-  {
-    QT_TRANSLATE_NOOP("UI::MixerWidget", "Left"),
-    QT_TRANSLATE_NOOP("UI::MixerWidget", "Right")
-  };
+  const char* CHANNEL_NAMES[] = {QT_TRANSLATE_NOOP("UI::MixerWidget", "Left"),
+                                 QT_TRANSLATE_NOOP("UI::MixerWidget", "Right")};
 
-  class MixerWidgetImpl : public UI::MixerWidget
-                        , private Ui::Mixer
+  class MixerWidgetImpl
+    : public UI::MixerWidget
+    , private Ui::Mixer
   {
   public:
     MixerWidgetImpl(QWidget& parent, UI::MixerWidget::Channel chan)
       : UI::MixerWidget(parent)
       , Chan(chan)
     {
-      //setup self
+      // setup self
       setupUi(this);
       LoadName();
 
-      Require(connect(channelValue, SIGNAL(valueChanged(int)), SIGNAL(valueChanged(int))));
+      Require(connect(channelValue, &QSlider::valueChanged, this, &UI::MixerWidget::valueChanged));
     }
 
     void setValue(int val) override
@@ -44,7 +42,7 @@ namespace
       channelValue->setValue(val);
     }
 
-    //QWidget
+    // QWidget
     void changeEvent(QEvent* event) override
     {
       if (event && QEvent::LanguageChange == event->type())
@@ -53,65 +51,67 @@ namespace
       }
       UI::MixerWidget::changeEvent(event);
     }
+
   private:
     void LoadName()
     {
       channelName->setText(UI::MixerWidget::tr(CHANNEL_NAMES[Chan]));
     }
+
   private:
     const UI::MixerWidget::Channel Chan;
   };
-}
+}  // namespace
 
 namespace UI
 {
   MixerWidget::MixerWidget(QWidget& parent)
     : QWidget(&parent)
-  {
-  }
-  
+  {}
+
   MixerWidget* MixerWidget::Create(QWidget& parent, MixerWidget::Channel chan)
   {
     return new MixerWidgetImpl(parent, chan);
   }
-}
+}  // namespace UI
 
 namespace
 {
   using namespace Parameters;
-  
+
   class MixerValueImpl : public MixerValue
   {
   public:
-    MixerValueImpl(UI::MixerWidget& parent, Parameters::Container& ctr, const Parameters::NameType& name, int defValue)
+    MixerValueImpl(UI::MixerWidget& parent, Container& ctr, Identifier name, int defValue)
       : MixerValue(parent)
-      , Container(ctr)
-      , Name(name)
+      , Storage(ctr)
+      , Name(std::move(name))
     {
-      Parameters::IntType value = defValue;
-      Container.FindValue(Name, value);
+      const auto value = Parameters::GetInteger(Storage, Name, defValue);
       parent.setValue(value);
-      Require(connect(&parent, SIGNAL(valueChanged(int)), SLOT(SetValue(int))));
+      Require(connect(&parent, &UI::MixerWidget::valueChanged, this, &MixerValueImpl::SetValue));
     }
 
-    void SetValue(int value) override
-    {
-      Container.SetValue(Name, value);
-    }
   private:
-    Parameters::Container& Container;
-    const Parameters::NameType Name;
+    void SetValue(int value)
+    {
+      Storage.SetValue(Name, value);
+    }
+
+  private:
+    Container& Storage;
+    const Identifier Name;
   };
-}
+}  // namespace
 
 namespace Parameters
 {
-  MixerValue::MixerValue(QObject& parent) : QObject(&parent)
-  {
-  }
+  MixerValue::MixerValue(QObject& parent)
+    : QObject(&parent)
+  {}
 
-  void MixerValue::Bind(UI::MixerWidget& mix, Container& ctr, const NameType& name, int defValue)
+  void MixerValue::Bind(UI::MixerWidget& mix, Container& ctr, Identifier name, int defValue)
   {
     new MixerValueImpl(mix, ctr, name, defValue);
   }
-}
+}  // namespace Parameters

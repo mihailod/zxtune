@@ -1,33 +1,90 @@
 /**
-* 
-* @file
-*
-* @brief  AYM-based stream chiptunes support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AYM-based stream chiptunes support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
 #include "module/players/aym/aym_chiptune.h"
+#include "module/players/stream_model.h"
 
-namespace Module
+#include "contract.h"
+
+namespace Module::AYM
 {
-  namespace AYM
+  class StreamModel : public Module::StreamModel
   {
-    class StreamModel
+  public:
+    using Ptr = std::shared_ptr<const StreamModel>;
+
+    uint_t GetTotalFrames() const override
     {
-    public:
-      typedef std::shared_ptr<const StreamModel> Ptr;
-      virtual ~StreamModel() = default;
+      return static_cast<uint_t>(Data.size());
+    }
 
-      virtual uint_t Size() const = 0;
-      virtual uint_t Loop() const = 0;
-      virtual Devices::AYM::Registers Get(uint_t pos) const = 0;
-    };
+    uint_t GetLoopFrame() const override
+    {
+      return Loop;
+    }
 
-    Chiptune::Ptr CreateStreamedChiptune(StreamModel::Ptr model, Parameters::Accessor::Ptr properties);
-  }
-}
+    const Devices::AYM::Registers& Get(uint_t pos) const
+    {
+      return Data[pos];
+    }
+
+  protected:
+    uint_t Loop = 0;
+    std::vector<Devices::AYM::Registers> Data;
+  };
+
+  class MutableStreamModel : public StreamModel
+  {
+  public:
+    using Ptr = std::shared_ptr<MutableStreamModel>;
+
+    bool IsEmpty() const
+    {
+      return Data.empty();
+    }
+
+    void SetLoop(uint_t frame)
+    {
+      Loop = frame;
+    }
+
+    void Resize(std::size_t size)
+    {
+      Require(Data.empty());
+      Data.resize(size);
+    }
+
+    void Append(std::size_t count)
+    {
+      Data.resize(Data.size() + count);
+    }
+
+    Devices::AYM::Registers& Frame(uint_t pos)
+    {
+      return Data.at(pos);
+    }
+
+    Devices::AYM::Registers* LastFrame()
+    {
+      return Data.empty() ? nullptr : &Data.back();
+    }
+
+    Devices::AYM::Registers& AddFrame()
+    {
+      Data.emplace_back();
+      return Data.back();
+    }
+  };
+
+  Chiptune::Ptr CreateStreamedChiptune(Time::Microseconds frameDuration, StreamModel::Ptr model,
+                                       Parameters::Accessor::Ptr properties);
+}  // namespace Module::AYM

@@ -1,57 +1,55 @@
 /**
-* 
-* @file
-*
-* @brief  ProSoundCreator chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ProSoundCreator chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/aym/prosoundcreator.h"
+
+#include "formats/chiptune/aym/prosoundcreator.h"
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <formats/chiptune/aym/prosoundcreator.h>
-#include <math/numeric.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
-//text includes
-#include <module/text/platforms.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
 
-namespace Module
-{
-namespace ProSoundCreator
+#include "math/numeric.h"
+
+#include "make_ptr.h"
+
+#include <array>
+
+namespace Module::ProSoundCreator
 {
   /*
     Do not use GLISS_NOTE command due to possible ambiguation while parsing
   */
-  //supported commands and parameters
+  // supported commands and parameters
   enum CmdType
   {
-    //no parameters
+    // no parameters
     EMPTY,
-    //r13,period or nothing
+    // r13,period or nothing
     ENVELOPE,
-    //no parameters
+    // no parameters
     NOENVELOPE,
-    //noise base
+    // noise base
     NOISE_BASE,
-    //no params
+    // no params
     BREAK_SAMPLE,
-    //no params
+    // no params
     BREAK_ORNAMENT,
-    //no params
+    // no params
     NO_ORNAMENT,
-    //absolute gliss
+    // absolute gliss
     GLISS,
-    //step
+    // step
     SLIDE,
-    //period, delta
+    // period, delta
     VOLUME_SLIDE
   };
 
@@ -64,15 +62,11 @@ namespace ProSoundCreator
   public:
     ObjectLinesIterator()
       : Obj()
-      , Position()
-      , LoopPosition()
-      , Break()
-    {
-    }
+    {}
 
     void Set(const Object& obj)
     {
-      //do not reset for original position update algo
+      // do not reset for original position update algo
       Obj = &obj;
     }
 
@@ -89,9 +83,7 @@ namespace ProSoundCreator
 
     const typename Object::Line* GetLine() const
     {
-      return Position < Obj->GetSize()
-        ? &Obj->GetLine(Position)
-        : nullptr;
+      return Position < Obj->GetSize() ? &Obj->GetLine(Position) : nullptr;
     }
 
     void SetBreakLoop(bool brk)
@@ -123,22 +115,18 @@ namespace ProSoundCreator
         ++Position;
       }
     }
+
   private:
     const Object* Obj;
-    uint_t Position;
-    uint_t LoopPosition;
-    bool Break;
+    uint_t Position = 0;
+    uint_t LoopPosition = 0;
+    bool Break = false;
   };
 
   class ToneSlider
   {
   public:
-    ToneSlider()
-      : Sliding()
-      , Glissade()
-      , Steps()
-    {
-    }
+    ToneSlider() = default;
 
     void SetSliding(int_t sliding)
     {
@@ -181,21 +169,17 @@ namespace ProSoundCreator
         return 0;
       }
     }
+
   private:
-    int_t Sliding;
-    int_t Glissade;
-    uint_t Steps;
+    int_t Sliding = 0;
+    int_t Glissade = 0;
+    uint_t Steps = 0;
   };
 
   class VolumeSlider
   {
   public:
-    VolumeSlider()
-      : Counter()
-      , Period()
-      , Delta()
-    {
-    }
+    VolumeSlider() = default;
 
     void Reset()
     {
@@ -220,44 +204,14 @@ namespace ProSoundCreator
         return 0;
       }
     }
+
   private:
-    uint_t Counter;
-    uint_t Period;
-    int_t Delta;
+    uint_t Counter = 0;
+    uint_t Period = 0;
+    int_t Delta = 0;
   };
 
-  class ModuleData : public TrackModel
-  {
-  public:
-    typedef std::shared_ptr<const ModuleData> Ptr;
-    typedef std::shared_ptr<ModuleData> RWPtr;
-
-    ModuleData()
-      : InitialTempo()
-    {
-    }
-
-    uint_t GetInitialTempo() const override
-    {
-      return InitialTempo;
-    }
-
-    const OrderList& GetOrder() const override
-    {
-      return *Order;
-    }
-
-    const PatternsSet& GetPatterns() const override
-    {
-      return *Patterns;
-    }
-
-    uint_t InitialTempo;
-    OrderList::Ptr Order;
-    PatternsSet::Ptr Patterns;
-    SparsedObjectsStorage<Sample> Samples;
-    SparsedObjectsStorage<Ornament> Ornaments;
-  };
+  using ModuleData = AYM::ModuleData<OrderList, Sample, Ornament>;
 
   class DataBuilder : public Formats::Chiptune::ProSoundCreator::Builder
   {
@@ -383,12 +337,13 @@ namespace ProSoundCreator
     {
       Patterns.GetChannel().AddCommand(VOLUME_SLIDE, period, delta);
     }
-    
+
     ModuleData::Ptr CaptureResult()
     {
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     AYM::PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -398,35 +353,25 @@ namespace ProSoundCreator
 
   struct ChannelState
   {
-    ChannelState()
-      : Note()
-      , ToneAccumulator()
-      , Volume()
-      , Attenuation()
-      , NoiseAccumulator()
-      , EnvelopeEnabled()
-    {
-    }
+    ChannelState() = default;
 
     ObjectLinesIterator<Sample> SampleIterator;
     ObjectLinesIterator<Ornament> OrnamentIterator;
     ToneSlider ToneSlide;
     VolumeSlider VolumeSlide;
-    int_t Note;
-    int16_t ToneAccumulator;
-    uint_t Volume;
-    int_t Attenuation;
-    uint_t NoiseAccumulator;
-    bool EnvelopeEnabled;
+    int_t Note = 0;
+    int16_t ToneAccumulator = 0;
+    uint_t Volume = 0;
+    int_t Attenuation = 0;
+    uint_t NoiseAccumulator = 0;
+    bool EnvelopeEnabled = false;
   };
 
   class DataRenderer : public AYM::DataRenderer
   {
   public:
     explicit DataRenderer(ModuleData::Ptr data)
-       : Data(std::move(data))
-       , EnvelopeTone()
-       , NoiseBase()
+      : Data(std::move(data))
     {
       Reset();
     }
@@ -435,9 +380,8 @@ namespace ProSoundCreator
     {
       const Sample& stubSample = Data->Samples.Get(0);
       const Ornament& stubOrnament = Data->Ornaments.Get(0);
-      for (uint_t chan = 0; chan != PlayerState.size(); ++chan)
+      for (auto& dst : PlayerState)
       {
-        ChannelState& dst = PlayerState[chan];
         dst = ChannelState();
         dst.SampleIterator.Set(stubSample);
         dst.SampleIterator.SetBreakLoop(false);
@@ -458,28 +402,30 @@ namespace ProSoundCreator
       }
       SynthesizeChannelsData(track);
     }
+
   private:
     void GetNewLineState(const TrackModelState& state, AYM::TrackBuilder& track)
     {
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
         for (uint_t chan = 0; chan != PlayerState.size(); ++chan)
         {
-          if (const auto src = line->GetChannel(chan))
+          if (const auto* const src = line->GetChannel(chan))
           {
             GetNewChannelState(*src, PlayerState[chan], track);
           }
         }
       }
-      for (uint_t chan = 0; chan != PlayerState.size(); ++chan)
+      for (auto& chan : PlayerState)
       {
-        PlayerState[chan].NoiseAccumulator += NoiseBase;
+        chan.NoiseAccumulator += NoiseBase;
       }
     }
 
     void GetNewChannelState(const Cell& src, ChannelState& dst, AYM::TrackBuilder& track)
     {
-      const uint16_t oldTone = static_cast<uint_t>(track.GetFrequency(dst.Note) + dst.ToneAccumulator + dst.ToneSlide.GetSliding());
+      const auto oldTone =
+          static_cast<uint16_t>(track.GetFrequency(dst.Note) + dst.ToneAccumulator + dst.ToneSlide.GetSliding());
       if (const bool* enabled = src.GetEnabled())
       {
         if (*enabled)
@@ -549,15 +495,15 @@ namespace ProSoundCreator
           NoiseBase = it->Param1;
           break;
         case GLISS:
-          {
-            const int_t sliding = oldTone - track.GetFrequency(dst.Note);
-            const int_t newGliss = sliding >= 0 ? -it->Param1 : it->Param1;
-            const int_t steps = 0 != it->Param1 ? (1 + Math::Absolute(sliding) / it->Param1) : 0;
-            dst.ToneSlide.SetSliding(sliding);
-            dst.ToneSlide.SetGlissade(newGliss);
-            dst.ToneSlide.SetSlidingSteps(steps);
-          }
-          break;
+        {
+          const int_t sliding = oldTone - track.GetFrequency(dst.Note);
+          const int_t newGliss = sliding >= 0 ? -it->Param1 : it->Param1;
+          const int_t steps = 0 != it->Param1 ? (1 + Math::Absolute(sliding) / it->Param1) : 0;
+          dst.ToneSlide.SetSliding(sliding);
+          dst.ToneSlide.SetGlissade(newGliss);
+          dst.ToneSlide.SetSlidingSteps(steps);
+        }
+        break;
         case SLIDE:
           dst.ToneSlide.SetGlissade(it->Param1);
           dst.ToneSlide.SetSlidingSteps(0);
@@ -590,7 +536,7 @@ namespace ProSoundCreator
       }
       dst.SampleIterator.Next();
 
-      //apply tone
+      // apply tone
       if (const Ornament::Line* curOrnamentLine = dst.OrnamentIterator.GetLine())
       {
         dst.NoiseAccumulator += curOrnamentLine->NoiseAddon;
@@ -617,14 +563,14 @@ namespace ProSoundCreator
         channel.DisableTone();
       }
 
-      //apply level
+      // apply level
       dst.Attenuation += curSampleLine->VolumeDelta + dst.VolumeSlide.Update();
-      const int_t level = Math::Clamp<int_t>(dst.Attenuation + dst.Volume, 0, 15);
+      const auto level = Math::Clamp<int_t>(dst.Attenuation + dst.Volume, 0, 15);
       dst.Attenuation = level - dst.Volume;
       const uint_t vol = 1 + static_cast<uint_t>(level);
       channel.SetLevel(vol * curSampleLine->Level >> 4);
 
-      //apply noise+envelope
+      // apply noise+envelope
       const bool envelope = dst.EnvelopeEnabled && curSampleLine->EnableEnvelope;
       if (envelope)
       {
@@ -648,61 +594,31 @@ namespace ProSoundCreator
         channel.DisableNoise();
       }
     }
+
   private:
     const ModuleData::Ptr Data;
     std::array<ChannelState, AYM::TRACK_CHANNELS> PlayerState;
-    uint_t EnvelopeTone;
-    uint_t NoiseBase;
-  };
-
-  class Chiptune : public AYM::Chiptune
-  {
-  public:
-    Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
-      : Data(std::move(data))
-      , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, AYM::TRACK_CHANNELS))
-    {
-    }
-
-    Information::Ptr GetInformation() const override
-    {
-      return Info;
-    }
-
-    Parameters::Accessor::Ptr GetProperties() const override
-    {
-      return Properties;
-    }
-
-    AYM::DataIterator::Ptr CreateDataIterator(AYM::TrackParameters::Ptr trackParams) const override
-    {
-      auto iterator = CreateTrackStateIterator(Data);
-      auto renderer = MakePtr<DataRenderer>(Data);
-      return AYM::CreateDataIterator(std::move(trackParams), std::move(iterator), std::move(renderer));
-    }
-  private:
-    const ModuleData::Ptr Data;
-    const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
+    uint_t EnvelopeTone = 0;
+    uint_t NoiseBase = 0;
   };
 
   class Factory : public AYM::Factory
   {
   public:
-    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       AYM::PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
       if (const auto container = Formats::Chiptune::ProSoundCreator::Parse(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
-        return MakePtr<Chiptune>(dataBuilder.CaptureResult(), std::move(properties));
+        return MakePtr<AYM::TrackingChiptune<ModuleData, DataRenderer>>(dataBuilder.CaptureResult(),
+                                                                        std::move(properties));
       }
       else
       {
-        return AYM::Chiptune::Ptr();
+        return {};
       }
     }
   };
@@ -711,5 +627,4 @@ namespace ProSoundCreator
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::ProSoundCreator

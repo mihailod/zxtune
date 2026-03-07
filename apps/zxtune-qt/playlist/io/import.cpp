@@ -1,20 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief Playlist import implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playlist import implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "import.h"
-#include "container_impl.h"
-#include "ui/utils.h"
-//common includes
-#include <make_ptr.h>
-//qt includes
+#include "apps/zxtune-qt/playlist/io/import.h"
+
+#include "apps/zxtune-qt/playlist/io/container_impl.h"
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "make_ptr.h"
+
 #include <QtCore/QStringList>
 
 namespace
@@ -26,32 +26,29 @@ namespace
     res.AdjustedParameters = Parameters::Container::Create();
     return res;
   }
-}
+}  // namespace
 
-namespace Playlist
+namespace Playlist::IO
 {
-  namespace IO
+  Container::Ptr Open(Item::DataProvider::Ptr provider, const QString& filename, Log::ProgressCallback& cb)
   {
-    Container::Ptr Open(Item::DataProvider::Ptr provider, const QString& filename, Log::ProgressCallback& cb)
+    if (auto ayl = OpenAYL(provider, filename, cb))
     {
-      if (const Container::Ptr ayl = OpenAYL(provider, filename, cb))
-      {
-        return ayl;
-      }
-      else if (const Container::Ptr xspf = OpenXSPF(provider, filename, cb))
-      {
-        return xspf;
-      }
-      return Container::Ptr();
+      return ayl;
     }
-
-    Container::Ptr OpenPlainList(Item::DataProvider::Ptr provider, const QStringList& uris)
+    else if (auto xspf = OpenXSPF(std::move(provider), filename, cb))
     {
-      const ContainerItems::RWPtr items = MakeRWPtr<ContainerItems>();
-      std::transform(uris.begin(), uris.end(), std::back_inserter(*items), &CreateContainerItem);
-      const Parameters::Container::Ptr props = Parameters::Container::Create();
-      props->SetValue(ATTRIBUTE_ITEMS, items->size());
-      return CreateContainer(provider, props, items);
+      return xspf;
     }
+    return {};
   }
-}
+
+  Container::Ptr OpenPlainList(Item::DataProvider::Ptr provider, const QStringList& uris)
+  {
+    auto items = MakeRWPtr<ContainerItems>();
+    std::transform(uris.begin(), uris.end(), std::back_inserter(*items), &CreateContainerItem);
+    auto props = Parameters::Container::Create();
+    props->SetValue(ATTRIBUTE_ITEMS, items->size());
+    return CreateContainer(std::move(provider), std::move(props), std::move(items));
+  }
+}  // namespace Playlist::IO

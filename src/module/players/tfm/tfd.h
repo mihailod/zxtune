@@ -1,22 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  TFD chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TFD chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
 #include "module/players/tfm/tfm_factory.h"
 
-namespace Module
+namespace Module::TFD
 {
-  namespace TFD
-  {
-    TFM::Factory::Ptr CreateFactory();
-  }
-}
+  TFM::Factory::Ptr CreateFactory();
+}  // namespace Module::TFD

@@ -1,18 +1,17 @@
 /**
-* 
-* @file
-*
-* @brief Binary data functions interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Binary data functions interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <binary/container.h>
-//platform includes
+#include "binary/container.h"
+
 #include <jni.h>
 
 namespace Binary

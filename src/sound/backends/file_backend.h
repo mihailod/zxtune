@@ -1,26 +1,33 @@
 /**
-*
-* @file
-*
-* @brief  File-based backends interfaces and fatory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  File-based backends interfaces and fatory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
 #include "sound/backends/backend_impl.h"
-//library includes
-#include <binary/output_stream.h>
+
+#include "binary/output_stream.h"
+#include "sound/receiver.h"
 
 namespace Sound
 {
+  namespace File
+  {
+    constexpr auto TITLE_TAG = "TITLE"sv;
+    constexpr auto AUTHOR_TAG = "ARTIST"sv;
+    constexpr auto COMMENT_TAG = "COMMENT"sv;
+  }  // namespace File
+
   class FileStream : public Receiver
   {
   public:
-    typedef std::shared_ptr<FileStream> Ptr;
+    using Ptr = std::shared_ptr<FileStream>;
 
     virtual void SetTitle(const String& title) = 0;
     virtual void SetAuthor(const String& author) = 0;
@@ -31,12 +38,13 @@ namespace Sound
   class FileStreamFactory
   {
   public:
-    typedef std::shared_ptr<const FileStreamFactory> Ptr;
+    using Ptr = std::shared_ptr<const FileStreamFactory>;
     virtual ~FileStreamFactory() = default;
 
-    virtual String GetId() const = 0;
+    virtual BackendId GetId() const = 0;
     virtual FileStream::Ptr CreateStream(Binary::OutputStream::Ptr stream) const = 0;
   };
 
-  BackendWorker::Ptr CreateFileBackendWorker(Parameters::Accessor::Ptr params, FileStreamFactory::Ptr factory);
-}
+  BackendWorker::Ptr CreateFileBackendWorker(Parameters::Accessor::Ptr params, Parameters::Accessor::Ptr properties,
+                                             FileStreamFactory::Ptr factory);
+}  // namespace Sound

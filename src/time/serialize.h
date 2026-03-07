@@ -1,17 +1,17 @@
 /**
-*
-* @file
-*
-* @brief  Duration serialize function
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Duration serialize function
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <strings/format.h>
+#include "strings/format.h"
+#include "time/duration.h"
 
 namespace Time
 {
@@ -29,4 +29,4 @@ namespace Time
     const uint_t centiSeconds = uint_t(val.Get() % val.PER_SECOND) * 100 / val.PER_SECOND;
     return Strings::FormatTime(hours, minutes, seconds, centiSeconds);
   }
-}
+}  // namespace Time

@@ -1,19 +1,19 @@
 /**
-*
-* @file
-*
-* @brief  Pack2 test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Pack2 test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../utils.h"
+#include "formats/test/utils.h"
 
 int main()
 {
   std::vector<std::string> tests;
-  tests.push_back("packed.bin");
+  tests.emplace_back("packed.bin");
 
   try
   {

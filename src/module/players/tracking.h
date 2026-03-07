@@ -1,25 +1,24 @@
 /**
-* 
-* @file
-*
-* @brief  Track modules support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Track modules support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
+#include "formats/chiptune/builder_pattern.h"
 #include "module/players/iterator.h"
 #include "module/players/track_model.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <formats/chiptune/builder_pattern.h>
-#include <module/track_information.h>
-#include <module/track_state.h>
-//std includes
+
+#include "module/track_information.h"
+#include "module/track_state.h"
+
+#include "make_ptr.h"
+
 #include <algorithm>
 #include <array>
 
@@ -60,23 +59,21 @@ namespace Module
 
     void AddCommand(uint_t type, int_t p1 = 0, int_t p2 = 0, int_t p3 = 0)
     {
-      Commands.push_back(Command(type, p1, p2, p3));
+      Commands.emplace_back(type, p1, p2, p3);
     }
 
     Command* FindCommand(uint_t type)
     {
-      const CommandsArray::iterator it = std::find(Commands.begin(), Commands.end(), type);
-      return it != Commands.end()
-        ? &*it
-        : nullptr;
+      const auto it = std::find(Commands.begin(), Commands.end(), type);
+      return it != Commands.end() ? &*it : nullptr;
     }
   };
 
   class MutableLine : public Line
   {
   public:
-    typedef std::unique_ptr<MutableLine> Ptr;
-    
+    using Ptr = std::unique_ptr<MutableLine>;
+
     virtual void SetTempo(uint_t val) = 0;
     virtual MutableCell& AddChannel(uint_t idx) = 0;
   };
@@ -84,8 +81,8 @@ namespace Module
   class MutablePattern : public Pattern
   {
   public:
-    typedef std::unique_ptr<MutablePattern> Ptr;
-    
+    using Ptr = std::unique_ptr<MutablePattern>;
+
     virtual MutableLine& AddLine(uint_t row) = 0;
     virtual void SetSize(uint_t size) = 0;
   };
@@ -93,8 +90,8 @@ namespace Module
   class MutablePatternsSet : public PatternsSet
   {
   public:
-    typedef std::unique_ptr<MutablePatternsSet> Ptr;
-    
+    using Ptr = std::unique_ptr<MutablePatternsSet>;
+
     virtual MutablePattern& AddPattern(uint_t idx) = 0;
   };
 
@@ -102,10 +99,7 @@ namespace Module
   class MultichannelMutableLine : public MutableLine
   {
   public:
-    MultichannelMutableLine()
-      : Tempo()
-    {
-    }
+    MultichannelMutableLine() = default;
 
     const Cell* GetChannel(uint_t idx) const override
     {
@@ -114,8 +108,8 @@ namespace Module
 
     uint_t CountActiveChannels() const override
     {
-      return static_cast<uint_t>(std::count_if(Channels.begin(), Channels.end(),
-          [](const MutableCell& cell) {return cell.HasData();}));
+      return static_cast<uint_t>(
+          std::count_if(Channels.begin(), Channels.end(), [](const MutableCell& cell) { return cell.HasData(); }));
     }
 
     uint_t GetTempo() const override
@@ -132,9 +126,10 @@ namespace Module
     {
       return Channels[idx];
     }
+
   private:
-    uint_t Tempo;
-    typedef std::array<MutableCell, ChannelsCount> ChannelsArray;
+    uint_t Tempo = 0;
+    using ChannelsArray = std::array<MutableCell, ChannelsCount>;
     ChannelsArray Channels;
   };
 
@@ -174,6 +169,7 @@ namespace Module
       }
       return Objects[idx] = std::move(obj);
     }
+
   private:
     std::vector<T> Objects;
   };
@@ -201,6 +197,7 @@ namespace Module
     {
       Storage.Resize(newSize);
     }
+
   private:
     SparsedObjectsStorage<MutableLine::Ptr> Storage;
   };
@@ -219,7 +216,7 @@ namespace Module
       uint_t res = 0;
       for (uint_t idx = 0; idx != Storage.Size(); ++idx)
       {
-        if (const auto pat = Storage.Get(idx).get())
+        if (auto* const pat = Storage.Get(idx).get())
         {
           res += pat->GetSize() != 0;
         }
@@ -231,43 +228,41 @@ namespace Module
     {
       return *Storage.Add(idx, MakePtr<MutablePatternType>());
     }
+
   private:
     SparsedObjectsStorage<MutablePattern::Ptr> Storage;
   };
 
-  TrackInformation::Ptr CreateTrackInfo(TrackModel::Ptr model, uint_t channels);
+  TrackInformation::Ptr CreateTrackInfoFixedChannels(Time::Microseconds frameDuration, TrackModel::Ptr model,
+                                                     uint_t channels);
+
+  inline TrackInformation::Ptr CreateTrackInfo(Time::Microseconds frameDuration, TrackModel::Ptr model)
+  {
+    const auto channels = model->GetChannelsCount();
+    return CreateTrackInfoFixedChannels(frameDuration, std::move(model), channels);
+  }
 
   class TrackStateIterator : public Iterator
   {
   public:
-    typedef std::shared_ptr<TrackStateIterator> Ptr;
+    using Ptr = std::shared_ptr<TrackStateIterator>;
 
     virtual TrackModelState::Ptr GetStateObserver() const = 0;
   };
 
-  TrackStateIterator::Ptr CreateTrackStateIterator(TrackModel::Ptr model);
+  TrackStateIterator::Ptr CreateTrackStateIterator(Time::Microseconds frameDuration, TrackModel::Ptr model);
 
   class PatternsBuilder : public Formats::Chiptune::PatternBuilder
   {
   public:
     explicit PatternsBuilder(MutablePatternsSet::Ptr patterns)
       : Patterns(std::move(patterns))
-      , CurPattern()
-      , CurLine()
-      , CurChannel()
-    {
-    }
-    
+    {}
+
     PatternsBuilder(const PatternsBuilder&) = delete;
-    PatternsBuilder& operator = (const PatternsBuilder&) = delete;
-    
-    PatternsBuilder(PatternsBuilder&& rh) noexcept// = default
-      : Patterns(std::move(rh.Patterns))
-      , CurPattern(rh.CurPattern)
-      , CurLine(rh.CurLine)
-      , CurChannel(rh.CurChannel)
-    {
-    }
+    PatternsBuilder& operator=(const PatternsBuilder&) = delete;
+
+    PatternsBuilder(PatternsBuilder&& rh) noexcept = default;
 
     void Finish(uint_t size) override
     {
@@ -327,15 +322,16 @@ namespace Module
     template<uint_t ChannelsCount>
     static PatternsBuilder Create()
     {
-      typedef MultichannelMutableLine<ChannelsCount> LineType;
-      typedef SparsedMutablePattern<LineType> PatternType;
-      typedef SparsedMutablePatternsSet<PatternType> PatternsSetType;
+      using LineType = MultichannelMutableLine<ChannelsCount>;
+      using PatternType = SparsedMutablePattern<LineType>;
+      using PatternsSetType = SparsedMutablePatternsSet<PatternType>;
       return PatternsBuilder(MakePtr<PatternsSetType>());
     }
-  private:  
+
+  private:
     MutablePatternsSet::Ptr Patterns;
     MutablePattern* CurPattern;
-    MutableLine* CurLine;
-    MutableCell* CurChannel;
+    MutableLine* CurLine = nullptr;
+    MutableCell* CurChannel = nullptr;
   };
-}
+}  // namespace Module

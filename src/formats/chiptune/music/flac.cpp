@@ -1,45 +1,42 @@
 /**
-* 
-* @file
-*
-* @brief  Flac parser implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Flac parser implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/chiptune/music/flac.h"
+
+#include "formats/chiptune/container.h"
 #include "formats/chiptune/music/tags_id3.h"
 #include "formats/chiptune/music/tags_vorbis.h"
-#include "formats/chiptune/container.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/input_stream.h>
-#include <binary/format_factories.h>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+
+namespace Formats::Chiptune
 {
   namespace Flac
   {
-    //https://www.xiph.org/flac/format
+    const auto DESCRIPTION = "Free Lossless Audio Codec"sv;
+
+    // https://www.xiph.org/flac/format
     class Format
     {
     public:
       explicit Format(const Binary::Container& data)
         : Stream(data)
-      {
-      }
-      
+      {}
+
       Container::Ptr Parse(Builder& target)
       {
-        //Some of the tracks contain ID3 tag at the very beginning
+        // Some of the tracks contain ID3 tag at the very beginning
         Id3::Parse(Stream, target.GetMetaBuilder());
         if (ParseSignature() && ParseMetadata(target) && ParseFrames(target))
         {
@@ -48,13 +45,15 @@ namespace Chiptune
             return CreateCalculatingCrcContainer(subData, 0, subData->Size());
           }
         }
-        return Container::Ptr();
+        return {};
       }
+
     private:
       bool ParseSignature()
       {
         static const uint8_t SIGNATURE[] = {'f', 'L', 'a', 'C'};
-        if (0 == std::memcmp(Stream.PeekRawData(sizeof(SIGNATURE)), SIGNATURE, sizeof(SIGNATURE)))
+        const auto* sign = Stream.PeekRawData(sizeof(SIGNATURE));
+        if (sign && 0 == std::memcmp(sign, SIGNATURE, sizeof(SIGNATURE)))
         {
           Stream.Skip(sizeof(SIGNATURE));
           return true;
@@ -64,18 +63,20 @@ namespace Chiptune
 
       bool ParseMetadata(Builder& target)
       {
-        static const std::size_t HEADER_SIZE = 4;
-        while (const auto* hdr = Stream.PeekRawData(HEADER_SIZE))
+        const auto pos = Stream.GetPosition();
+        while (Stream.PeekRawData(1 + sizeof(be_uint24_t)))
         {
-          const bool isLast = hdr[0] & 128;
-          const auto type = hdr[0] & 127;
-          const auto payloadSize = Byteorder<3>::ReadBE(hdr + 1);
-          if (type == 127 || Stream.GetRestSize() < HEADER_SIZE + payloadSize)
+          const auto flag = Stream.ReadByte();
+          const bool isLast = flag & 128;
+          const auto type = flag & 127;
+          const uint_t payloadSize = Stream.Read<be_uint24_t>();
+          if (type == 127 || Stream.GetRestSize() < payloadSize)
           {
+            Stream.Seek(pos);
             break;
           }
-          Stream.Skip(HEADER_SIZE);
           Binary::DataInputStream payload(Stream.ReadData(payloadSize));
+          // See FLAC/format.h for FLAC_METADATA_TYPE_* enum
           if (type == 0)
           {
             ParseStreamInfo(payload, target);
@@ -83,6 +84,10 @@ namespace Chiptune
           else if (type == 4)
           {
             Vorbis::ParseComment(payload, target.GetMetaBuilder());
+          }
+          else if (type == 6)
+          {
+            ParsePicture(payload, target.GetMetaBuilder());
           }
           if (isLast)
           {
@@ -94,26 +99,34 @@ namespace Chiptune
 
       static void ParseStreamInfo(Binary::DataInputStream& input, Builder& target)
       {
-        const auto minBlockSize = input.ReadBE<uint16_t>();
-        const auto maxBlockSize = input.ReadBE<uint16_t>();
+        const uint_t minBlockSize = input.Read<be_uint16_t>();
+        const uint_t maxBlockSize = input.Read<be_uint16_t>();
         target.SetBlockSize(minBlockSize, maxBlockSize);
-        const auto minFrameSize = fromBE24(input.ReadData(3));
-        const auto maxFrameSize = fromBE24(input.ReadData(3));
+        const auto minFrameSize = input.Read<be_uint24_t>();
+        const auto maxFrameSize = input.Read<be_uint24_t>();
         target.SetFrameSize(minFrameSize, maxFrameSize);
-        //TODO: operate with uint64_t
-        const auto params = input.ReadData(8).As<uint8_t>();
-        const auto sampleRate = (uint_t(params[0]) << 12) | (uint_t(params[1]) << 4) | (params[2] >> 4);
+        // big endian:
+        // ffffffff ffffffff ffffcccb bbbbssss ssssssss ssssssss ssssssss ssssssss
+        const uint64_t params = input.Read<be_uint64_t>();
+        const auto totalSamples = params & 0xfffffffffuLL;
+        const auto bitsPerSample = 1 + uint_t((params >> 36) & 0x1f);
+        const auto channels = 1 + uint_t((params >> 41) & 7);
+        const auto sampleRate = uint_t(params >> 44);
         Require(sampleRate != 0);
-        const auto channels = 1 + ((params[2] >> 1) & 7);
-        const auto bitsPerSample = 1 + (((params[2] & 1) << 4) | (params[3] >> 4));
         target.SetStreamParameters(sampleRate, channels, bitsPerSample);
-        const auto totalSamples = (uint64_t(params[3] & 15) << 32) | (uint64_t(params[4]) << 24) | Byteorder<3>::ReadBE(params + 5);
         target.SetTotalSamples(totalSamples);
       }
 
-      static inline uint_t fromBE24(Binary::View data)
+      static void ParsePicture(Binary::DataInputStream& input, MetaBuilder& target)
       {
-        return Byteorder<3>::ReadBE(data.As<uint8_t>());
+        input.Skip(4);  // type
+        const auto typeSize = input.Read<be_uint32_t>();
+        input.Skip(typeSize);
+        const auto descriptionSize = input.Read<be_uint32_t>();
+        input.Skip(descriptionSize);
+        input.Skip(4 * 4);  // width, height, depth, colors count
+        const auto dataSize = input.Read<be_uint32_t>();
+        target.SetPicture(input.ReadData(dataSize));
       }
 
       bool ParseFrames(Builder& target)
@@ -140,9 +153,9 @@ namespace Chiptune
       std::size_t FindFrameHeader()
       {
         const auto limit = Stream.GetRestSize();
-        const auto start = Stream.PeekRawData(limit);
-        const auto end = start + limit;
-        for (auto cursor = start; cursor + MAX_HEADER_SIZE < end; )
+        const auto* const start = Stream.PeekRawData(limit);
+        const auto* const end = start + limit;
+        for (const auto* cursor = start; cursor + MAX_HEADER_SIZE < end;)
         {
           const auto headerSize = GetFrameHeaderSize(cursor);
           if (headerSize >= MIN_HEADER_SIZE)
@@ -150,7 +163,7 @@ namespace Chiptune
             Stream.Skip(cursor - start);
             return headerSize;
           }
-          const auto match = std::find(cursor + 1, end, 0xff);
+          const auto* const match = std::find(cursor + 1, end, 0xff);
           if (match == end)
           {
             return 0;
@@ -171,14 +184,19 @@ namespace Chiptune
         {
           return 0;
         }
-        uint8_t crc = 0;
+        uint_t crc = 0;
         for (std::size_t idx = 0; idx < MAX_HEADER_SIZE; ++idx)
         {
           crc ^= hdr[idx];
           for (uint_t bit = 0; bit < 8; ++bit)
           {
-            crc = crc & 0x80 ? (crc << 1) ^ 0x7: crc << 1;
+            crc <<= 1;
+            if (crc & 0x100)
+            {
+              crc ^= 0x7;
+            }
           }
+          crc &= 0xff;
           if (crc == 0)
           {
             return idx;
@@ -186,6 +204,7 @@ namespace Chiptune
         }
         return 0;
       }
+
     private:
       Binary::InputStream Stream;
     };
@@ -198,10 +217,10 @@ namespace Chiptune
       }
       catch (const std::exception&)
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
-    
+
     class StubBuilder : public Builder
     {
     public:
@@ -216,33 +235,32 @@ namespace Chiptune
       void SetTotalSamples(uint64_t /*count*/) override {}
       void AddFrame(std::size_t /*offset*/) override {}
     };
-    
+
     Builder& GetStubBuilder()
     {
       static StubBuilder stub;
       return stub;
     }
-    
-    const std::string FORMAT =
-      //ID3 tag    flac stream
-      "'I         |'f"
-      "'D         |'L"
-      "'3         |'a"
-      "00-04      |'C"
-      "00-0a      |00"//streaminfo metatag
-    ;
-    
+
+    const auto FORMAT =
+        // ID3 tag    flac stream
+        "'I         |'f"
+        "'D         |'L"
+        "'3         |'a"
+        "00-04      |'C"
+        "00-0a      |00"  // streaminfo metatag
+        ""sv;
+
     class Decoder : public Formats::Chiptune::Decoder
     {
     public:
       Decoder()
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
-      {
-      }
+      {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
-        return Text::FLAC_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -250,7 +268,7 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Format->Match(rawData);
       }
@@ -263,17 +281,17 @@ namespace Chiptune
         }
         else
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
-  } //namespace Flac
+  }  // namespace Flac
 
   Decoder::Ptr CreateFLACDecoder()
   {
     return MakePtr<Flac::Decoder>();
   }
-}
-}
+}  // namespace Formats::Chiptune

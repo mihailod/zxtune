@@ -1,28 +1,24 @@
 /**
-* 
-* @file
-*
-* @brief  TurboSound container support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TurboSound container support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/chiptune/aym/turbosound.h"
-#include "formats/chiptune/container.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/format_factories.h>
-#include <math/numeric.h>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+#include "formats/chiptune/container.h"
+
+#include "binary/format_factories.h"
+#include "math/numeric.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+
+namespace Formats::Chiptune
 {
   namespace TurboSound
   {
@@ -30,30 +26,25 @@ namespace Chiptune
     const std::size_t MAX_MODULE_SIZE = 32767;
     const std::size_t MAX_SIZE = MAX_MODULE_SIZE * 2;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct Footer
+    struct Footer
     {
-      uint8_t ID1[4];//'PT3!' or other type
-      uint16_t Size1;
-      uint8_t ID2[4];//same
-      uint16_t Size2;
-      uint8_t ID3[4];//'02TS'
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+      uint8_t ID1[4];  //'PT3!' or other type
+      le_uint16_t Size1;
+      uint8_t ID2[4];  // same
+      le_uint16_t Size2;
+      uint8_t ID3[4];  //'02TS'
+    };
 
-    static_assert(sizeof(Footer) == 16, "Invalid layout");
+    static_assert(sizeof(Footer) * alignof(Footer) == 16, "Invalid layout");
 
-    const std::string FOOTER_FORMAT(
-      "%0xxxxxxx%0xxxxxxx%0xxxxxxx21"  // uint8_t ID1[4];//'PT3!' or other type
-      "?%0xxxxxxx"                     // uint16_t Size1;
-      "%0xxxxxxx%0xxxxxxx%0xxxxxxx21"  // uint8_t ID2[4];//same
-      "?%0xxxxxxx"                     // uint16_t Size2;
-      "'0'2'T'S"                       // uint8_t ID3[4];//'02TS'
-    );
+    const auto DESCRIPTION = "TurboSound"sv;
+    const auto FOOTER_FORMAT =
+        "%0xxxxxxx%0xxxxxxx%0xxxxxxx21"  // uint8_t ID1[4];//'PT3!' or other type
+        "?%0xxxxxxx"                     // uint16_t Size1;
+        "%0xxxxxxx%0xxxxxxx%0xxxxxxx21"  // uint8_t ID2[4];//same
+        "?%0xxxxxxx"                     // uint16_t Size2;
+        "'0'2'T'S"                       // uint8_t ID3[4];//'02TS'
+        ""sv;
 
     class StubBuilder : public Builder
     {
@@ -68,14 +59,14 @@ namespace Chiptune
       ModuleTraits(Binary::View data, std::size_t footerOffset)
         : FooterOffset(footerOffset)
         , Foot(data.SubView(footerOffset).As<Footer>())
-        , FirstSize(Foot ? fromLE(Foot->Size1) : 0)
-        , SecondSize(Foot ? fromLE(Foot->Size2) : 0)
-      {
-      }
+        , FirstSize(Foot ? std::size_t(Foot->Size1) : 0)
+        , SecondSize(Foot ? std::size_t(Foot->Size2) : 0)
+      {}
 
       bool Matched() const
       {
-        return Foot != nullptr && FooterOffset == FirstSize + SecondSize && Math::InRange(FooterOffset, MIN_SIZE, MAX_SIZE);
+        return Foot != nullptr && FooterOffset == FirstSize + SecondSize
+               && Math::InRange(FooterOffset, MIN_SIZE, MAX_SIZE);
       }
 
       std::size_t NextOffset() const
@@ -109,6 +100,7 @@ namespace Chiptune
       {
         return FooterOffset + sizeof(*Foot);
       }
+
     private:
       const std::size_t FooterOffset;
       const Footer* const Foot;
@@ -119,12 +111,11 @@ namespace Chiptune
     class FooterFormat : public Binary::Format
     {
     public:
-      typedef std::shared_ptr<const FooterFormat> Ptr;
+      using Ptr = std::shared_ptr<const FooterFormat>;
 
       FooterFormat()
         : Delegate(Binary::CreateFormat(FOOTER_FORMAT))
-      {
-      }
+      {}
 
       bool Match(Binary::View data) const override
       {
@@ -140,8 +131,9 @@ namespace Chiptune
 
       ModuleTraits GetTraits(Binary::View data) const
       {
-        return ModuleTraits(data, Delegate->NextMatchOffset(data));
+        return {data, Delegate->NextMatchOffset(data)};
       }
+
     private:
       const Binary::Format::Ptr Delegate;
     };
@@ -151,12 +143,11 @@ namespace Chiptune
     public:
       DecoderImpl()
         : Format(MakePtr<FooterFormat>())
-      {
-      }
+      {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
-        return Text::TURBOSOUND_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -164,7 +155,7 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Format->Match(rawData);
       }
@@ -189,9 +180,10 @@ namespace Chiptune
 
         const std::size_t usedSize = traits.GetTotalSize();
         auto subData = rawData.GetSubcontainer(0, usedSize);
-        //use whole container as a fixed data
+        // use whole container as a fixed data
         return CreateCalculatingCrcContainer(std::move(subData), 0, usedSize);
       }
+
     private:
       const FooterFormat::Ptr Format;
     };
@@ -206,11 +198,10 @@ namespace Chiptune
     {
       return MakePtr<DecoderImpl>();
     }
-  }//namespace TurboSound
+  }  // namespace TurboSound
 
   Decoder::Ptr CreateTurboSoundDecoder()
   {
     return TurboSound::CreateDecoder();
   }
-}//namespace Chiptune
-}//namespace Formats
+}  // namespace Formats::Chiptune

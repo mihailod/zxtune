@@ -1,17 +1,16 @@
 /**
-* 
-* @file
-*
-* @brief SDL settings pane interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief SDL settings pane interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "../conversion/backend_settings.h"
+#include "apps/zxtune-qt/ui/conversion/backend_settings.h"
 
 namespace UI
 {
@@ -20,7 +19,8 @@ namespace UI
     Q_OBJECT
   protected:
     explicit SdlSettingsWidget(QWidget& parent);
+
   public:
     static BackendSettingsWidget* Create(QWidget& parent);
   };
-}
+}  // namespace UI

@@ -1,96 +1,63 @@
 /**
-* 
-* @file
-*
-* @brief  ASCSoundMaster chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ASCSoundMaster chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/aym/ascsoundmaster.h"
+
+#include "formats/chiptune/aym/ascsoundmaster.h"
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <formats/chiptune/aym/ascsoundmaster.h>
-#include <math/numeric.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
-//text includes
-#include <module/text/platforms.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
 
-namespace Module
+#include "math/numeric.h"
+
+#include "make_ptr.h"
+
+#include <array>
+
+namespace Module::ASCSoundMaster
 {
-namespace ASCSoundMaster
-{
-  //supported commands and their parameters
+  // supported commands and their parameters
   enum CmdType
   {
-    //no parameters
+    // no parameters
     EMPTY,
-    //r13,envL
+    // r13,envL
     ENVELOPE,
-    //no parameters
+    // no parameters
     ENVELOPE_ON,
-    //no parameters
+    // no parameters
     ENVELOPE_OFF,
-    //value
+    // value
     NOISE,
-    //no parameters
+    // no parameters
     CONT_SAMPLE,
-    //no parameters
+    // no parameters
     CONT_ORNAMENT,
-    //glissade value
+    // glissade value
     GLISS,
-    //steps
+    // steps
     SLIDE,
-    //steps,note
+    // steps,note
     SLIDE_NOTE,
-    //period,delta
+    // period,delta
     AMPLITUDE_SLIDE,
-    //no parameter
+    // no parameter
     BREAK_SAMPLE
   };
 
   using Formats::Chiptune::ASCSoundMaster::Sample;
   using Formats::Chiptune::ASCSoundMaster::Ornament;
 
-  class ModuleData : public TrackModel
-  {
-  public:
-    typedef std::shared_ptr<const ModuleData> Ptr;
-    typedef std::shared_ptr<ModuleData> RWPtr;
-
-    ModuleData()
-      : InitialTempo()
-    {
-    }
-
-    uint_t GetInitialTempo() const override
-    {
-      return InitialTempo;
-    }
-
-    const OrderList& GetOrder() const override
-    {
-      return *Order;
-    }
-
-    const PatternsSet& GetPatterns() const override
-    {
-      return *Patterns;
-    }
-
-    uint_t InitialTempo;
-    OrderList::Ptr Order;
-    PatternsSet::Ptr Patterns;
-    SparsedObjectsStorage<Sample> Samples;
-    SparsedObjectsStorage<Ornament> Ornaments;
-  };
+  using ModuleData = AYM::ModuleData<OrderList, Sample, Ornament>;
 
   class DataBuilder : public Formats::Chiptune::ASCSoundMaster::Builder
   {
@@ -153,7 +120,7 @@ namespace ASCSoundMaster
       }
       if (Command* cmd = Patterns.GetChannel().FindCommand(SLIDE))
       {
-        //set slide to note
+        // set slide to note
         cmd->Type = SLIDE_NOTE;
         cmd->Param3 = cmd->Param2;
         cmd->Param2 = note;
@@ -199,7 +166,7 @@ namespace ASCSoundMaster
       }
       else
       {
-        //strange situation
+        // strange situation
         Patterns.GetChannel().AddCommand(ENVELOPE, -1, int_t(tone));
       }
     }
@@ -254,6 +221,7 @@ namespace ASCSoundMaster
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     AYM::PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -266,39 +234,31 @@ namespace ASCSoundMaster
   struct ChannelState
   {
     ChannelState()
-      : Enabled(false), Envelope(false), BreakSample(false)
-      , Volume(15), VolumeAddon(0), VolSlideDelay(0), VolSlideAddon(), VolSlideCounter(0)
-      , BaseNoise(0), CurrentNoise(0)
-      , Note(0), NoteAddon(0)
-      , SampleNum(0), CurrentSampleNum(0), PosInSample(0)
-      , OrnamentNum(0), CurrentOrnamentNum(0), PosInOrnament(0)
-      , ToneDeviation(0)
-      , SlidingSteps(0), Sliding(0), SlidingTargetNote(LIMITER), Glissade(0)
-    {
-    }
-    bool Enabled;
-    bool Envelope;
-    bool BreakSample;
-    uint_t Volume;
-    int_t VolumeAddon;
-    uint_t VolSlideDelay;
-    int_t VolSlideAddon;
-    uint_t VolSlideCounter;
-    int_t BaseNoise;
-    int_t CurrentNoise;
-    uint_t Note;
-    int8_t NoteAddon;
-    uint_t SampleNum;
-    uint_t CurrentSampleNum;
-    uint_t PosInSample;
-    uint_t OrnamentNum;
-    uint_t CurrentOrnamentNum;
-    uint_t PosInOrnament;
-    int_t ToneDeviation;
-    int_t SlidingSteps;//may be infinite (negative)
-    int_t Sliding;
+      : SlidingTargetNote(LIMITER)
+    {}
+    bool Enabled = false;
+    bool Envelope = false;
+    bool BreakSample = false;
+    uint_t Volume = 15;
+    int_t VolumeAddon = 0;
+    uint_t VolSlideDelay = 0;
+    int_t VolSlideAddon = 0;
+    uint_t VolSlideCounter = 0;
+    int_t BaseNoise = 0;
+    int_t CurrentNoise = 0;
+    uint_t Note = 0;
+    int8_t NoteAddon = 0;
+    uint_t SampleNum = 0;
+    uint_t CurrentSampleNum = 0;
+    uint_t PosInSample = 0;
+    uint_t OrnamentNum = 0;
+    uint_t CurrentOrnamentNum = 0;
+    uint_t PosInOrnament = 0;
+    int_t ToneDeviation = 0;
+    int_t SlidingSteps = 0;  // may be infinite (negative)
+    int_t Sliding = 0;
     uint_t SlidingTargetNote;
-    int_t Glissade;
+    int_t Glissade = 0;
 
     void ResetBaseNoise()
     {
@@ -311,9 +271,7 @@ namespace ASCSoundMaster
   public:
     explicit DataRenderer(ModuleData::Ptr data)
       : Data(std::move(data))
-      , EnvelopeTone(0)
-    {
-    }
+    {}
 
     void Reset() override
     {
@@ -328,6 +286,7 @@ namespace ASCSoundMaster
       }
       SynthesizeChannelsData(track);
     }
+
   private:
     void GetNewLineState(const TrackModelState& state, AYM::TrackBuilder& track)
     {
@@ -338,11 +297,11 @@ namespace ASCSoundMaster
           state.ResetBaseNoise();
         }
       }
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
         for (uint_t chan = 0; chan != PlayerState.size(); ++chan)
         {
-          if (const auto src = line->GetChannel(chan))
+          if (const auto* const src = line->GetChannel(chan))
           {
             GetNewChannelState(*src, PlayerState[chan], track);
           }
@@ -358,7 +317,8 @@ namespace ASCSoundMaster
       }
       dst.VolSlideCounter = 0;
       dst.SlidingSteps = 0;
-      bool contSample = false, contOrnament = false;
+      bool contSample = false;
+      bool contOrnament = false;
       bool reloadNote = false;
       for (CommandsIterator it = src.GetCommands(); it; ++it)
       {
@@ -392,7 +352,7 @@ namespace ASCSoundMaster
           break;
         case GLISS:
           dst.Glissade = it->Param1;
-          dst.SlidingSteps = -1;//infinite sliding
+          dst.SlidingSteps = -1;  // infinite sliding
           break;
         case SLIDE:
         {
@@ -488,7 +448,7 @@ namespace ASCSoundMaster
       const Ornament& curOrnament = Data->Ornaments.Get(dst.CurrentOrnamentNum);
       const Ornament::Line& curOrnamentLine = curOrnament.GetLine(dst.PosInOrnament);
 
-      //calculate volume addon
+      // calculate volume addon
       if (dst.VolSlideCounter >= 2)
       {
         dst.VolSlideCounter--;
@@ -501,26 +461,26 @@ namespace ASCSoundMaster
       dst.VolumeAddon += curSampleLine.VolSlide;
       dst.VolumeAddon = Math::Clamp<int_t>(dst.VolumeAddon, -15, 15);
 
-      //calculate tone
+      // calculate tone
       dst.ToneDeviation += curSampleLine.ToneDeviation;
       dst.NoteAddon += curOrnamentLine.NoteAddon;
       const int_t halfTone = Math::Clamp<int8_t>(int8_t(dst.Note) + dst.NoteAddon, 0, 0x55);
       const int_t toneAddon = dst.ToneDeviation + dst.Sliding / 16;
-      //apply tone
+      // apply tone
       channel.SetTone(halfTone, toneAddon);
 
-      //apply level
+      // apply level
       channel.SetLevel((dst.Volume + 1) * Math::Clamp<int_t>(dst.VolumeAddon + curSampleLine.Level, 0, 15) / 16);
-      //apply envelope
+      // apply envelope
       if (dst.Envelope && curSampleLine.EnableEnvelope)
       {
         channel.EnableEnvelope();
       }
 
-      //calculate noise
+      // calculate noise
       dst.CurrentNoise += curOrnamentLine.NoiseAddon;
 
-      //mixer
+      // mixer
       if (curSampleLine.ToneMask)
       {
         channel.DisableTone();
@@ -544,13 +504,12 @@ namespace ASCSoundMaster
         channel.DisableNoise();
       }
 
-      //recalc positions
+      // recalc positions
       if (dst.SlidingSteps != 0)
       {
         if (dst.SlidingSteps > 0)
         {
-          if (!--dst.SlidingSteps &&
-              LIMITER != dst.SlidingTargetNote) //finish slide to note
+          if (!--dst.SlidingSteps && LIMITER != dst.SlidingTargetNote)  // finish slide to note
           {
             dst.Note = dst.SlidingTargetNote;
             dst.SlidingTargetNote = LIMITER;
@@ -576,42 +535,11 @@ namespace ASCSoundMaster
         dst.PosInOrnament = curOrnament.GetLoop();
       }
     }
+
   private:
     const ModuleData::Ptr Data;
-    uint_t EnvelopeTone;
+    uint_t EnvelopeTone = 0;
     std::array<ChannelState, AYM::TRACK_CHANNELS> PlayerState;
-  };
-
-  class Chiptune : public AYM::Chiptune
-  {
-  public:
-    Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
-      : Data(std::move(data))
-      , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, AYM::TRACK_CHANNELS))
-    {
-    }
-
-    Information::Ptr GetInformation() const override
-    {
-      return Info;
-    }
-
-    Parameters::Accessor::Ptr GetProperties() const override
-    {
-      return Properties;
-    }
-
-    AYM::DataIterator::Ptr CreateDataIterator(AYM::TrackParameters::Ptr trackParams) const override
-    {
-      auto iterator = CreateTrackStateIterator(Data);
-      auto renderer = MakePtr<DataRenderer>(Data);
-      return AYM::CreateDataIterator(std::move(trackParams), std::move(iterator), std::move(renderer));
-    }
-  private:
-    const ModuleData::Ptr Data;
-    const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
   };
 
   class Factory : public AYM::Factory
@@ -619,31 +547,31 @@ namespace ASCSoundMaster
   public:
     explicit Factory(Formats::Chiptune::ASCSoundMaster::Decoder::Ptr decoder)
       : Decoder(std::move(decoder))
-    {
-    }
+    {}
 
-    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       AYM::PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
       if (const auto container = Decoder->Parse(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
-        return MakePtr<Chiptune>(dataBuilder.CaptureResult(), std::move(properties));
+        return MakePtr<AYM::TrackingChiptune<ModuleData, DataRenderer>>(dataBuilder.CaptureResult(),
+                                                                        std::move(properties));
       }
       else
       {
-        return AYM::Chiptune::Ptr();
+        return {};
       }
     }
+
   private:
     const Formats::Chiptune::ASCSoundMaster::Decoder::Ptr Decoder;
   };
-  
+
   AYM::Factory::Ptr CreateFactory(Formats::Chiptune::ASCSoundMaster::Decoder::Ptr decoder)
   {
     return MakePtr<Factory>(std::move(decoder));
   }
-}
-}
+}  // namespace Module::ASCSoundMaster

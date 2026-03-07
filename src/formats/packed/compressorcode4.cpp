@@ -1,35 +1,32 @@
 /**
-* 
-* @file
-*
-* @brief  CompressorCode v4 & v4+ packer support
-*
-* @author vitamin.caig@gmail.com
-*
-* @note   Based on XLook sources by HalfElf
-*
-**/
+ *
+ * @file
+ *
+ * @brief  CompressorCode v4 & v4+ packer support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ * @note   Based on XLook sources by HalfElf
+ *
+ **/
 
-//local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-//common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-//library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-//std includes
+
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+#include "string_view.h"
+
 #include <algorithm>
 #include <iterator>
-//text includes
-#include <formats/text/packed.h>
+#include <memory>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace CompressorCode
   {
@@ -37,136 +34,121 @@ namespace Packed
 
     struct Version4
     {
-      static const String DESCRIPTION;
-      static const std::size_t MIN_SIZE = 256;//TODO
-      static const std::string DEPACKER_PATTERN;
+      static const StringView DESCRIPTION;
+      static const std::size_t MIN_SIZE = 256;  // TODO
+      static const StringView DEPACKER_PATTERN;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-      PACK_PRE struct RawHeader
+      struct RawHeader
       {
         //+0
         uint8_t Padding1[0x0e];
         //+0x0e
-        uint16_t RestDepackerSize;
+        le_uint16_t RestDepackerSize;
         //+0x10
         uint8_t Padding2[0x0a];
         //+0x1a
-        uint16_t ChunksCount;
+        le_uint16_t ChunksCount;
         //+0x1c
-      } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+      };
 
       static bool FastCheck(const RawHeader& header, std::size_t size)
       {
-        const uint_t depackerSize = 0x14 + fromLE(header.RestDepackerSize);
-        const uint_t chunksCount = fromLE(header.ChunksCount);
-        //at least one byte per chunk
-        if (chunksCount > MAX_DECODED_SIZE ||
-            depackerSize + chunksCount > size)
+        const uint_t depackerSize = 0x14 + header.RestDepackerSize;
+        const uint_t chunksCount = header.ChunksCount;
+        // at least one byte per chunk
+        if (chunksCount > MAX_DECODED_SIZE || depackerSize + chunksCount > size)
         {
           return false;
         }
         const uint8_t RET_CODE = 0xc9;
-        const uint8_t* const depacker = safe_ptr_cast<const uint8_t*>(&header);
+        const auto* const depacker = safe_ptr_cast<const uint8_t*>(&header);
         return depacker[depackerSize - 1] == RET_CODE;
       }
 
-      static_assert(sizeof(RawHeader) == 0x1c, "Invalid layout");
+      static_assert(sizeof(RawHeader) * alignof(RawHeader) == 0x1c, "Invalid layout");
     };
 
     struct Version4Plus
     {
-      static const String DESCRIPTION;
-      static const std::size_t MIN_SIZE = 256;//TODO
-      static const std::string DEPACKER_PATTERN;
+      static const StringView DESCRIPTION;
+      static const std::size_t MIN_SIZE = 256;  // TODO
+      static const StringView DEPACKER_PATTERN;
 
-  #ifdef USE_PRAGMA_PACK
-  #pragma pack(push,1)
-  #endif
-      PACK_PRE struct RawHeader
+      struct RawHeader
       {
         //+0
         uint8_t Padding1[0x0e];
         //+0x0e
-        uint16_t RestDepackerSize;
+        le_uint16_t RestDepackerSize;
         //+0x10
         uint8_t Padding2[0x0d];
         //+0x1d
-        uint16_t PackedDataSize;
+        le_uint16_t PackedDataSize;
         //+0x1f
         uint8_t Padding3[0x15];
         //+0x34
-        uint16_t ChunksCount;
+        le_uint16_t ChunksCount;
         //+0x36
-      } PACK_POST;
-  #ifdef USE_PRAGMA_PACK
-  #pragma pack(pop)
-  #endif
+      };
 
       static bool FastCheck(const RawHeader& header, std::size_t size)
       {
-        const uint_t depackerSize = 0x14 + fromLE(header.RestDepackerSize);
-        const uint_t chunksCount = fromLE(header.ChunksCount);
-        //at least one byte per chunk
-        if (chunksCount > MAX_DECODED_SIZE ||
-            depackerSize > size ||
-            !fromLE(header.PackedDataSize) ||
-            depackerSize < 257)
+        const uint_t depackerSize = 0x14 + header.RestDepackerSize;
+        const uint_t chunksCount = header.ChunksCount;
+        // at least one byte per chunk
+        if (chunksCount > MAX_DECODED_SIZE || depackerSize > size || !header.PackedDataSize || depackerSize < 257)
         {
           return false;
         }
-        return *(header.Padding1 + depackerSize - 256 - 1) == 0xc9;
+        const auto* const retPos = static_cast<const uint8_t*>(header.Padding1) + depackerSize - 256 - 1;
+        return *retPos == 0xc9;
       }
 
-      static_assert(sizeof(RawHeader) == 0x36, "Invalid layout");
+      static_assert(sizeof(RawHeader) * alignof(RawHeader) == 0x36, "Invalid layout");
     };
 
-    const String Version4::DESCRIPTION = Text::CC4_DECODER_DESCRIPTION;
-    const std::string Version4::DEPACKER_PATTERN(
-      "cd5200"  // call 0x52
-      "3b"      // dec sp
-      "3b"      // dec sp
-      "e1"      // pop hl
-      "011100"  // ld bc,0x0011 ;0x07
-      "09"      // add hl,bc
-      "11??"    // ld de,xxxx ;depacker addr
-      "01??"    // ld bc,xxxx ;depacker size +e
-      "d5"      // push de
-      "edb0"    // ldir
-      "c9"      // ret
-      //add hl,bc points here +14
-      "fde5"    // push iy
-      "11??"    // ld de,xxxx ;dst addr
-      "01??"    // ld bc,xxxx ;packed size +1a
-      "c5"      // push bc
-      "01??"    // ld bc,xxxx
-      "c5"      // push bc
-    );
+    const StringView Version4::DESCRIPTION = "CompressorCode v.4 by ZYX"sv;
+    const StringView Version4::DEPACKER_PATTERN =
+        "cd5200"  // call 0x52
+        "3b"      // dec sp
+        "3b"      // dec sp
+        "e1"      // pop hl
+        "011100"  // ld bc,0x0011 ;0x07
+        "09"      // add hl,bc
+        "11??"    // ld de,xxxx ;depacker addr
+        "01??"    // ld bc,xxxx ;depacker size +e
+        "d5"      // push de
+        "edb0"    // ldir
+        "c9"      // ret
+        // add hl,bc points here +14
+        "fde5"  // push iy
+        "11??"  // ld de,xxxx ;dst addr
+        "01??"  // ld bc,xxxx ;packed size +1a
+        "c5"    // push bc
+        "01??"  // ld bc,xxxx
+        "c5"    // push bc
+        ""sv;
 
-    const String Version4Plus::DESCRIPTION = Text::CC4PLUS_DECODER_DESCRIPTION;
-    const std::string Version4Plus::DEPACKER_PATTERN(
-      "cd5200"  // call 0x52
-      "3b"      // dec sp
-      "3b"      // dec sp
-      "e1"      // pop hl
-      "011100"  // ld bc,0x0011 ;0x07
-      "09"      // add hl,bc
-      "11??"    // ld de,xxxx ;depacker addr
-      "01??"    // ld bc,xxxx ;depacker size +e
-      "d5"      // push de
-      "edb0"    // ldir
-      "c9"      // ret
-      //add hl,bc points here +14
-      "fde5"    // push iy
-      "e5"      // push hl
-      "dde1"    // pop ix
-      "11??"    // ld de,xxxx ;dst addr
-      "01??"    // ld bc,xxxx ;huffman packed size +1d
-    );
+    const StringView Version4Plus::DESCRIPTION = "CompressorCode v.4+ by ZYX"sv;
+    const StringView Version4Plus::DEPACKER_PATTERN =
+        "cd5200"  // call 0x52
+        "3b"      // dec sp
+        "3b"      // dec sp
+        "e1"      // pop hl
+        "011100"  // ld bc,0x0011 ;0x07
+        "09"      // add hl,bc
+        "11??"    // ld de,xxxx ;depacker addr
+        "01??"    // ld bc,xxxx ;depacker size +e
+        "d5"      // push de
+        "edb0"    // ldir
+        "c9"      // ret
+        // add hl,bc points here +14
+        "fde5"  // push iy
+        "e5"    // push hl
+        "dde1"  // pop ix
+        "11??"  // ld de,xxxx ;dst addr
+        "01??"  // ld bc,xxxx ;huffman packed size +1d
+        ""sv;
 
     template<class Version>
     class Container
@@ -175,8 +157,7 @@ namespace Packed
       Container(const void* data, std::size_t size)
         : Data(static_cast<const uint8_t*>(data))
         , Size(size)
-      {
-      }
+      {}
 
       bool FastCheck() const
       {
@@ -198,6 +179,7 @@ namespace Packed
         assert(Size >= sizeof(typename Version::RawHeader));
         return *safe_ptr_cast<const typename Version::RawHeader*>(Data);
       }
+
     private:
       const uint8_t* const Data;
       const std::size_t Size;
@@ -208,40 +190,36 @@ namespace Packed
     public:
       StreamAdapter(const uint8_t* data, std::size_t size)
         : ByteStream(data, size)
-        , UsedData(0)
-      {
-      }
+      {}
 
       std::size_t GetUsedData() const
       {
         return UsedData;
       }
 
-      uint8_t operator * ()
+      uint8_t operator*()
       {
         Require(!Eof());
         ++UsedData;
         return GetByte();
       }
 
-      StreamAdapter& operator ++ (int)
+      StreamAdapter& operator++(int)
       {
         return *this;
       }
 
     private:
-      std::size_t UsedData;
+      std::size_t UsedData = 0;
     };
 
     class RawDataDecoder
     {
     public:
-      RawDataDecoder(const uint8_t* data, std::size_t size, uint_t chunksCount)
-        : IsValid(true)
-        , Stream(data, size)
+      RawDataDecoder(const uint8_t* data, std::size_t dataSize, uint_t chunksCount)
+        : Stream(data, dataSize)
         , ChunksCount(chunksCount)
-        , Result(new Dump())
-        , Decoded(*Result)
+        , Decoded(2 * ChunksCount)
       {
         if (IsValid && !Stream.Eof())
         {
@@ -249,28 +227,25 @@ namespace Packed
         }
       }
 
-      std::unique_ptr<Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid
-          ? std::move(Result)
-          : std::unique_ptr<Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
 
       std::size_t GetUsedSize() const
       {
         return Stream.GetUsedData();
       }
+
     private:
       bool DecodeData()
       {
         try
         {
           uint_t chunksCount = ChunksCount;
-          Decoded.reserve(2 * chunksCount);
           StreamAdapter& source(Stream);
-          std::back_insert_iterator<Dump> target(Decoded);
-          //assume that first byte always exists due to header format
-          while (chunksCount-- && Decoded.size() < MAX_DECODED_SIZE)
+          // assume that first byte always exists due to header format
+          while (chunksCount-- && Decoded.Size() < MAX_DECODED_SIZE)
           {
             const uint8_t data = *source;
             const uint_t count = (data >> 5);
@@ -283,75 +258,79 @@ namespace Packed
               }
               continue;
             }
-            uint_t len = (data & 1)
-              ? 256 * count + *source
-              : count + 3;
+            uint_t len = (data & 1) ? 256 * count + *source : count + 3;
             switch (data & 0x1f)
             {
             case 0:
               len -= 2;
+              [[fallthrough]];
             case 1:
               while (len--)
               {
-                *target = *source;
+                Decoded.AddByte(*source);
               }
               break;
             case 2:
               --len;
+              [[fallthrough]];
             case 3:
-              std::fill_n(target, len, 0);
+              Fill(Decoded, len, 0);
               break;
             case 4:
               --len;
+              [[fallthrough]];
             case 5:
-              std::fill_n(target, len, 0xff);
+              Fill(Decoded, len, 0xff);
               break;
             case 6:
             case 7:
-              std::fill_n(target, len, *source);
+              Fill(Decoded, len, *source);
               break;
             case 8:
               ++len;
+              [[fallthrough]];
             case 9:
               for (uint8_t data = *source, delta = *source; len; --len, data += delta)
               {
-                *target = data;
+                Decoded.AddByte(data);
               }
               break;
             case 0xa:
               --len;
+              [[fallthrough]];
             case 0xb:
               for (const uint8_t data1 = *source, data2 = *source; len; --len)
               {
-                *target = data1;
-                *target = data2;
+                Decoded.AddByte(data1);
+                Decoded.AddByte(data2);
               }
               break;
             case 0xc:
               --len;
+              [[fallthrough]];
             case 0xd:
               for (const uint8_t data1 = *source, data2 = *source, data3 = *source; len; --len)
               {
-                *target = data1;
-                *target = data2;
-                *target = data3;
+                Decoded.AddByte(data1);
+                Decoded.AddByte(data2);
+                Decoded.AddByte(data3);
               }
               break;
             case 0xe:
             case 0xf:
               for (const uint8_t data = *source; len; --len)
               {
-                  *target = data;
-                  *target = *source;
+                Decoded.AddByte(data);
+                Decoded.AddByte(*source);
               }
               break;
             case 0x10:
             case 0x11:
               for (const uint8_t data = *source; len; --len)
               {
-                  *target = data;
-                  *target = *source;
-                  *target = *source;
+                Decoded.AddByte(data);
+                Decoded.AddByte(*source);
+                Decoded.AddByte(*source);
               }
               break;
             case 0x12:
@@ -359,33 +338,34 @@ namespace Packed
               for (const uint8_t base = *source; len; --len)
               {
                 const uint8_t data = *source;
-                *target = base + (data >> 4);
-                *target = base + (data & 0x0f);
+                Decoded.AddByte(static_cast<uint8_t>(base + (data >> 4)));
+                Decoded.AddByte(static_cast<uint8_t>(base + (data & 0x0f)));
               }
               break;
             case 0x14:
             case 0x15:
+            {
+              const uint_t offset = *source;
+              if (!CopyFromBack(offset, Decoded, len))
               {
-                const uint_t offset = *source;
-                if (!CopyFromBack(offset, Decoded, len))
-                {
-                  return false;
-                }
+                return false;
               }
-              break;
+            }
+            break;
             case 0x16:
               ++len;
+              [[fallthrough]];
             case 0x17:
+            {
+              const uint_t hiOff = *source;
+              const uint_t loOff = *source;
+              const uint_t offset = 256 * hiOff + loOff;
+              if (!CopyFromBack(offset, Decoded, len))
               {
-                const uint_t hiOff = *source;
-                const uint_t loOff = *source;
-                const uint_t offset = 256 * hiOff + loOff;
-                if (!CopyFromBack(offset, Decoded, len))
-                {
-                  return false;
-                }
+                return false;
               }
-              break;
+            }
+            break;
             }
           }
           return true;
@@ -395,12 +375,12 @@ namespace Packed
           return false;
         }
       }
+
     private:
-      bool IsValid;
+      bool IsValid = true;
       StreamAdapter Stream;
       const uint_t ChunksCount;
-      std::unique_ptr<Dump> Result;
-      Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
 
     template<class Version>
@@ -412,41 +392,35 @@ namespace Packed
     public:
       explicit DataDecoder(const Container<Version4>& container)
         : Header(container.GetHeader())
-        , DataOffset(0x14 + fromLE(Header.RestDepackerSize))
+        , DataOffset(0x14 + Header.RestDepackerSize)
         , Delegate(container.FastCheck()
-          ? new RawDataDecoder(Header.Padding1 + DataOffset, container.GetAvailableData() - DataOffset, fromLE(Header.ChunksCount))
-          : nullptr)
-      {
-      }
+                       ? new RawDataDecoder(static_cast<const uint8_t*>(Header.Padding1) + DataOffset,
+                                            container.GetAvailableData() - DataOffset, Header.ChunksCount)
+                       : nullptr)
+      {}
 
-      std::unique_ptr<Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return Delegate.get()
-          ? Delegate->GetResult()
-          : std::unique_ptr<Dump>();
+        return Delegate ? Delegate->GetResult() : Binary::Container::Ptr();
       }
 
       std::size_t GetUsedSize() const
       {
-        return Delegate.get()
-          ? DataOffset + Delegate->GetUsedSize()
-          : 0;
+        return Delegate ? DataOffset + Delegate->GetUsedSize() : 0;
       }
+
     private:
       const Version4::RawHeader& Header;
       const std::size_t DataOffset;
       const std::unique_ptr<RawDataDecoder> Delegate;
     };
 
-
     class Bitstream
     {
     public:
       Bitstream(const uint8_t* data, std::size_t size)
         : Source(data, size)
-        , Bits(), Mask(0)
-      {
-      }
+      {}
 
       std::size_t GetUsedData() const
       {
@@ -475,7 +449,7 @@ namespace Packed
 
       uint_t GetIndex()
       {
-        if (uint_t len = GetBits(3))
+        if (const uint_t len = GetBits(3))
         {
           return GetBits(len) | (1 << len);
         }
@@ -484,10 +458,11 @@ namespace Packed
           return GetBit();
         }
       }
+
     private:
       StreamAdapter Source;
-      uint_t Bits;
-      uint_t Mask;
+      uint_t Bits = 0;
+      uint_t Mask = 0;
     };
 
     template<>
@@ -496,39 +471,37 @@ namespace Packed
     public:
       explicit DataDecoder(const Container<Version4Plus>& container)
         : Header(container.GetHeader())
-        , DataOffset(0x14 + fromLE(Header.RestDepackerSize))
-        , DataSize(0)
+        , DataOffset(0x14 + Header.RestDepackerSize)
       {
         if (container.FastCheck() && DecodeHuffman(container.GetAvailableData() - DataOffset))
         {
-          Delegate.reset(new RawDataDecoder(UnhuffmanData.data(), UnhuffmanData.size(), fromLE(Header.ChunksCount)));
+          Delegate = std::make_unique<RawDataDecoder>(&UnhuffmanData.Get<uint8_t>(0), UnhuffmanData.Size(),
+                                                      Header.ChunksCount);
         }
       }
 
-      std::unique_ptr<Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return Delegate.get()
-          ? Delegate->GetResult()
-          : std::unique_ptr<Dump>();
+        return Delegate ? Delegate->GetResult() : Binary::Container::Ptr();
       }
 
       std::size_t GetUsedSize() const
       {
-        return Delegate.get()
-          ? DataOffset + DataSize
-          : 0;
+        return Delegate ? DataOffset + DataSize : 0;
       }
+
     private:
       bool DecodeHuffman(std::size_t availableSize)
       {
         try
         {
-          Bitstream stream(Header.Padding1 + DataOffset, availableSize);
-          const uint8_t* const table = Header.Padding1 + DataOffset - 256;
-          for (uint_t packedBytes = fromLE(Header.PackedDataSize); packedBytes; --packedBytes)
+          const auto* data = static_cast<const uint8_t*>(Header.Padding1) + DataOffset;
+          Bitstream stream(data, availableSize);
+          const auto* table = data - 256;
+          for (uint_t packedBytes = Header.PackedDataSize; packedBytes; --packedBytes)
           {
             const uint_t idx = stream.GetIndex();
-            UnhuffmanData.push_back(table[idx]);
+            UnhuffmanData.AddByte(table[idx]);
           }
           DataSize = stream.GetUsedData();
           return true;
@@ -538,14 +511,15 @@ namespace Packed
           return false;
         }
       }
+
     private:
       const Version4Plus::RawHeader& Header;
       const uint_t DataOffset;
-      std::size_t DataSize;
-      Dump UnhuffmanData;
+      std::size_t DataSize = 0;
+      Binary::DataBuilder UnhuffmanData;
       std::unique_ptr<RawDataDecoder> Delegate;
     };
-  }//namespace CompressorCode
+  }  // namespace CompressorCode
 
   template<class Version>
   class CompressorCodeDecoder : public Decoder
@@ -553,10 +527,9 @@ namespace Packed
   public:
     CompressorCodeDecoder()
       : Depacker(Binary::CreateFormat(Version::DEPACKER_PATTERN, Version::MIN_SIZE))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Version::DESCRIPTION;
     }
@@ -570,16 +543,17 @@ namespace Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const CompressorCode::Container<Version> container(rawData.Start(), rawData.Size());
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       CompressorCode::DataDecoder<Version> decoder(container);
       return CreateContainer(decoder.GetResult(), decoder.GetUsedSize());
     }
+
   private:
     const Binary::Format::Ptr Depacker;
   };
@@ -593,5 +567,4 @@ namespace Packed
   {
     return MakePtr<CompressorCodeDecoder<CompressorCode::Version4Plus> >();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

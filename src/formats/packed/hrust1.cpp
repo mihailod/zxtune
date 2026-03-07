@@ -1,60 +1,49 @@
 /**
-* 
-* @file
-*
-* @brief  Hrust v1.x packer support
-*
-* @author vitamin.caig@gmail.com
-*
-* @note   Based on XLook sources by HalfElf
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Hrust v1.x packer support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ * @note   Based on XLook sources by HalfElf
+ *
+ **/
 
-//local includes
 #include "formats/packed/container.h"
 #include "formats/packed/hrust1_bitstream.h"
 #include "formats/packed/pack_utils.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-//library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-#include <math/numeric.h>
-//std includes
-#include <numeric>
-#include <iterator>
-//text includes
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+#include "math/numeric.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
+#include <numeric>
+
+namespace Formats::Packed
 {
   namespace Hrust1
   {
     const std::size_t MAX_DECODED_SIZE = 0xc000;
 
-    const std::string FORMAT(
-      "'H'R"
-    );
+    const auto DESCRIPTION = "Hrust v1.x"sv;
+    const auto FORMAT = "'H'R"sv;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawHeader
+    struct RawHeader
     {
-      uint8_t ID[2];//'HR'
-      uint16_t DataSize;
-      uint16_t PackedSize;
+      uint8_t ID[2];  //'HR'
+      le_uint16_t DataSize;
+      le_uint16_t PackedSize;
       uint8_t LastBytes[6];
       uint8_t BitStream[2];
       uint8_t ByteStream[1];
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
+
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 15, "Invalid layout");
 
     const std::size_t MIN_SIZE = sizeof(RawHeader);
 
@@ -64,8 +53,7 @@ namespace Packed
       Container(const void* data, std::size_t size)
         : Data(static_cast<const uint8_t*>(data))
         , Size(size)
-      {
-      }
+      {}
 
       bool FastCheck() const
       {
@@ -81,125 +69,114 @@ namespace Packed
       uint_t GetUsedSize() const
       {
         const RawHeader& header = GetHeader();
-        return fromLE(header.PackedSize);
+        return header.PackedSize;
       }
 
       std::size_t GetUsedSizeWithPadding() const
       {
         const std::size_t usefulSize = GetUsedSize();
-        const std::size_t sizeOnDisk = Math::Align<std::size_t>(usefulSize, 256);
+        const auto sizeOnDisk = Math::Align<std::size_t>(usefulSize, 256);
         const std::size_t resultSize = std::min(sizeOnDisk, Size);
         const std::size_t paddingSize = resultSize - usefulSize;
         const std::size_t TRDOS_ENTRY_SIZE = 16;
         const std::size_t TRDOS_SHORT_ENTRY_SIZE = 14;
         const std::size_t MIN_SIGNATURE_MATCH = 6;
-        const std::size_t EXACT_SIGNATURE_MATCH = 17;//to capture version
+        const std::size_t EXACT_SIGNATURE_MATCH = 17;  // to capture version
         if (paddingSize < TRDOS_ENTRY_SIZE + MIN_SIGNATURE_MATCH)
         {
           return usefulSize;
         }
-        //max padding size is 255-14=241 bytes
-        //text is 65 bytes
-        static const uint8_t HRUST1_0_PADDING[] =
-        {
-          'h', 'r', 'u', 's', 't', '-', 'p', 'a', 'c', 'k', 'e', 'r', ' ', 'v', '1', '.', '0', ' ', 'b', 'y', ' ',
-          'D', 'i', 'm', 'a', ' ', 'P', 'y', 'a', 'n', 'k', 'o', 'v', ',', 'G', '-', 'A', 'l', 't', 'a', 'i', 's', 'k', ',',
-          '1', '2', '.', '9', '7', ' ', 't', 'e', 'l', '(', '3', '8', '8', '2', '2', ')', '4', '4', '2', '1', '1',
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        // max padding size is 255-14=241 bytes
+        // text is 65 bytes
+        static const uint8_t HRUST1_0_PADDING[] = {
+            'h', 'r', 'u', 's', 't', '-', 'p', 'a', 'c', 'k', 'e', 'r', ' ', 'v', '1', '.', '0', ' ', 'b', 'y', ' ',
+            'D', 'i', 'm', 'a', ' ', 'P', 'y', 'a', 'n', 'k', 'o', 'v', ',', 'G', '-', 'A', 'l', 't', 'a', 'i', 's',
+            'k', ',', '1', '2', '.', '9', '7', ' ', 't', 'e', 'l', '(', '3', '8', '8', '2', '2', ')', '4', '4', '2',
+            '1', '1', 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
         };
-        //max padding size is 255-16=239 bytes
-        //text is 48 bytes
-        //Hrust1.1 really stores redunand sector if packed data is aligned by sector. Do not pay attention on that case
-        static const uint8_t HRUST1_1_PADDING[] =
-        {
-          'h', 'r', 'u', 's', 't', '-', 'p', 'a', 'c', 'k', 'e', 'r', ' ', 'v', '1', '.', '1', ' ', 'b', 'y', ' ',
-          'D', 'i', 'm', 'a', ' ', 'P', 'y', 'a', 'n', 'k', 'o', 'v', ',', 'G', 'o', 'r', 'n', 'o', '-', 'A', 'l', 't', 'a', 'i', 's', 'k', '.',
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-        };
-        static const uint8_t HRUST1_2_PADDING[] =
-        {
-          'h', 'r', 'u', 's', 't', '-', 'p', 'a', 'c', 'k', 'e', 'r', ' ', 'v', '1', '.', '2', ' ', 'b', 'y', ' ',
-          'D', 'i', 'm', 'a', ' ', 'P', 'y', 'a', 'n', 'k', 'o', 'v', ',', 'G', 'o', 'r', 'n', 'o', '-', 'A', 'l', 't', 'a', 'i', 's', 'k', '.',
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-        };
-        static const uint8_t HRUST1_3_PADDING[] =
-        {
-          'h', 'r', 'u', 's', 't', '-', 'p', 'a', 'c', 'k', 'e', 'r', ' ', 'v', '1', '.', '3', ' ', 'b', 'y', ' ',
-          'D', 'i', 'm', 'a', ' ', 'P', 'y', 'a', 'n', 'k', 'o', 'v', ',', 'G', 'o', 'r', 'n', 'o', '-', 'A', 'l', 't', 'a', 'i', 's', 'k', '.',
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-        };
+        // max padding size is 255-16=239 bytes
+        // text is 48 bytes
+        // Hrust1.1 really stores redunand sector if packed data is aligned by sector. Do not pay attention on that case
+        static const uint8_t HRUST1_1_PADDING[] = {
+            'h', 'r', 'u', 's', 't', '-', 'p', 'a', 'c', 'k', 'e', 'r', ' ', 'v', '1', '.', '1', ' ', 'b', 'y',
+            ' ', 'D', 'i', 'm', 'a', ' ', 'P', 'y', 'a', 'n', 'k', 'o', 'v', ',', 'G', 'o', 'r', 'n', 'o', '-',
+            'A', 'l', 't', 'a', 'i', 's', 'k', '.', 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0};
+        static const uint8_t HRUST1_2_PADDING[] = {
+            'h', 'r', 'u', 's', 't', '-', 'p', 'a', 'c', 'k', 'e', 'r', ' ', 'v', '1', '.', '2', ' ', 'b', 'y',
+            ' ', 'D', 'i', 'm', 'a', ' ', 'P', 'y', 'a', 'n', 'k', 'o', 'v', ',', 'G', 'o', 'r', 'n', 'o', '-',
+            'A', 'l', 't', 'a', 'i', 's', 'k', '.', 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0};
+        static const uint8_t HRUST1_3_PADDING[] = {
+            'h', 'r', 'u', 's', 't', '-', 'p', 'a', 'c', 'k', 'e', 'r', ' ', 'v', '1', '.', '3', ' ', 'b', 'y',
+            ' ', 'D', 'i', 'm', 'a', ' ', 'P', 'y', 'a', 'n', 'k', 'o', 'v', ',', 'G', 'o', 'r', 'n', 'o', '-',
+            'A', 'l', 't', 'a', 'i', 's', 'k', '.', 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+            0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0};
         static_assert(sizeof(HRUST1_0_PADDING) == 255 - TRDOS_SHORT_ENTRY_SIZE, "Invalid layout");
         static_assert(sizeof(HRUST1_1_PADDING) == 255 - TRDOS_ENTRY_SIZE, "Invalid layout");
         static_assert(sizeof(HRUST1_2_PADDING) == 255 - TRDOS_ENTRY_SIZE, "Invalid layout");
         static_assert(sizeof(HRUST1_3_PADDING) == 255 - TRDOS_ENTRY_SIZE, "Invalid layout");
         const uint8_t* const paddingStart = Data + usefulSize;
         const uint8_t* const paddingEnd = Data + resultSize;
-        //special case due to distinct offset
-        const std::size_t padv0 = MatchedSize(paddingStart + TRDOS_SHORT_ENTRY_SIZE, paddingEnd, HRUST1_0_PADDING, std::end(HRUST1_0_PADDING));
+        // special case due to distinct offset
+        const std::size_t padv0 = MatchedSize(paddingStart + TRDOS_SHORT_ENTRY_SIZE, paddingEnd, HRUST1_0_PADDING,
+                                              std::end(HRUST1_0_PADDING));
         if (padv0 >= MIN_SIGNATURE_MATCH)
         {
-          //version 1.0 match
+          // version 1.0 match
           return usefulSize + TRDOS_SHORT_ENTRY_SIZE + padv0;
         }
-        const std::size_t padv1 = MatchedSize(paddingStart + TRDOS_ENTRY_SIZE, paddingEnd, HRUST1_1_PADDING, std::end(HRUST1_1_PADDING));
+        const std::size_t padv1 =
+            MatchedSize(paddingStart + TRDOS_ENTRY_SIZE, paddingEnd, HRUST1_1_PADDING, std::end(HRUST1_1_PADDING));
         if (padv1 >= EXACT_SIGNATURE_MATCH)
         {
-          //version 1.1 match
+          // version 1.1 match
           return usefulSize + TRDOS_ENTRY_SIZE + padv1;
         }
-        const std::size_t padv2 = MatchedSize(paddingStart + TRDOS_ENTRY_SIZE, paddingEnd, HRUST1_2_PADDING, std::end(HRUST1_2_PADDING));
+        const std::size_t padv2 =
+            MatchedSize(paddingStart + TRDOS_ENTRY_SIZE, paddingEnd, HRUST1_2_PADDING, std::end(HRUST1_2_PADDING));
         if (padv2 >= EXACT_SIGNATURE_MATCH)
         {
-          //version 1.2 match
+          // version 1.2 match
           return usefulSize + TRDOS_ENTRY_SIZE + padv2;
         }
-        const std::size_t padv3 = MatchedSize(paddingStart + TRDOS_ENTRY_SIZE, paddingEnd, HRUST1_3_PADDING, std::end(HRUST1_3_PADDING));
+        const std::size_t padv3 =
+            MatchedSize(paddingStart + TRDOS_ENTRY_SIZE, paddingEnd, HRUST1_3_PADDING, std::end(HRUST1_3_PADDING));
         if (padv3 >= EXACT_SIGNATURE_MATCH)
         {
-          //version 1.3 match
+          // version 1.3 match
           return usefulSize + TRDOS_ENTRY_SIZE + padv3;
         }
         const std::size_t pad = std::min(padv1, std::min(padv2, padv3));
@@ -215,6 +192,7 @@ namespace Packed
         assert(Size >= sizeof(RawHeader));
         return *safe_ptr_cast<const RawHeader*>(Data);
       }
+
     private:
       const uint8_t* const Data;
       const std::size_t Size;
@@ -227,8 +205,6 @@ namespace Packed
         : IsValid(container.FastCheck())
         , Header(container.GetHeader())
         , Stream(Header.BitStream, container.GetUsedSize() - 12)
-        , Result(new Dump())
-        , Decoded(*Result)
       {
         if (IsValid && !Stream.Eof())
         {
@@ -236,26 +212,25 @@ namespace Packed
         }
       }
 
-      std::unique_ptr<Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid
-          ? std::move(Result)
-          : std::unique_ptr<Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
+
     private:
       bool DecodeData()
       {
-        Decoded.reserve(fromLE(Header.DataSize));
+        Decoded = Binary::DataBuilder(Header.DataSize);
 
-        //put first byte
-        Decoded.push_back(Stream.GetByte());
+        // put first byte
+        Decoded.AddByte(Stream.GetByte());
         uint_t refBits = 2;
-        while (!Stream.Eof() && Decoded.size() < MAX_DECODED_SIZE)
+        while (!Stream.Eof() && Decoded.Size() < MAX_DECODED_SIZE)
         {
           //%1 - put byte
           if (Stream.GetBit())
           {
-            Decoded.push_back(Stream.GetByte());
+            Decoded.AddByte(Stream.GetByte());
             continue;
           }
           uint_t len = Stream.GetLen();
@@ -286,7 +261,7 @@ namespace Packed
                 byte ^= 2;
                 byte &= 0xff;
 
-                if (byte == 0xff)//inc refsize
+                if (byte == 0xff)  // inc refsize
                 {
                   ++refBits;
                   continue;
@@ -335,7 +310,7 @@ namespace Packed
               const uint_t count = 2 * (6 + Stream.GetBits(4));
               for (uint_t bytes = 0; bytes < count; ++bytes)
               {
-                Decoded.push_back(Stream.GetByte());
+                Decoded.AddByte(Stream.GetByte());
               }
               continue;
             }
@@ -344,7 +319,7 @@ namespace Packed
               len = Stream.GetBits(7);
               if (0xf == len)
               {
-                break;//EOF
+                break;  // EOF
               }
               else if (len < 0xf)
               {
@@ -402,50 +377,47 @@ namespace Packed
             return false;
           }
         }
-        //put remaining bytes
-        std::copy(Header.LastBytes, std::end(Header.LastBytes), std::back_inserter(Decoded));
+        // put remaining bytes
+        Decoded.Add(Header.LastBytes);
         return true;
       }
 
       bool CopyByteFromBack(int_t offset)
       {
         assert(offset <= 0);
-        const std::size_t size = Decoded.size();
+        const std::size_t size = Decoded.Size();
         if (uint_t(-offset) > size)
         {
-          return false;//invalid backreference
+          return false;  // invalid backreference
         }
-        const Dump::value_type val = Decoded[size + offset];
-        Decoded.push_back(val);
+        const auto val = Decoded.Get<uint8_t>(size + offset);
+        Decoded.AddByte(val);
         return true;
       }
 
       bool CopyBreaked(int_t offset)
       {
-        return CopyByteFromBack(offset) && 
-               (Decoded.push_back(Stream.GetByte()), true) && 
-               CopyByteFromBack(offset);
+        return CopyByteFromBack(offset) && (Decoded.AddByte(Stream.GetByte()), true) && CopyByteFromBack(offset);
       }
+
     private:
       bool IsValid;
       const RawHeader& Header;
       Hrust1Bitstream Stream;
-      std::unique_ptr<Dump> Result;
-      Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
-  }//namespace Hrust1
+  }  // namespace Hrust1
 
   class Hrust1Decoder : public Decoder
   {
   public:
     Hrust1Decoder()
       : Format(Binary::CreateFormat(Hrust1::FORMAT, Hrust1::MIN_SIZE))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Text::HRUST1_DECODER_DESCRIPTION;
+      return Hrust1::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -457,16 +429,17 @@ namespace Packed
     {
       if (!Format->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const Hrust1::Container container(rawData.Start(), rawData.Size());
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       Hrust1::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), container.GetUsedSizeWithPadding());
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -475,5 +448,4 @@ namespace Packed
   {
     return MakePtr<Hrust1Decoder>();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

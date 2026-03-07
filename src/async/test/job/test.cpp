@@ -1,64 +1,72 @@
 /**
-* 
-* @file
-*
-* @brief Job test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Job test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <error.h>
-#include <pointers.h>
-#include <async/worker.h>
-#include <thread>
+#include "async/worker.h"
+
+#include "error.h"
+#include "pointers.h"
+
 #include <iostream>
+#include <thread>
 
-#define FILE_TAG 8D106607
+bool operator!=(const Error& lh, const Error& rh)
+{
+  return lh.ToString() != rh.ToString();
+}
+
+std::ostream& operator<<(std::ostream& o, const Error& e)
+{
+  o << e.ToString();
+  return o;
+}
 
 namespace
 {
-	using namespace Async;
-	
-	Error FailedToInitializeError()
+  using namespace Async;
+
+  Error FailedToInitializeError()
   {
-    return Error(THIS_LINE, "Failed to initialize");
+    return {THIS_LINE, "Failed to initialize"};
   }
 
-	Error FailedToFinalizeError()
+  Error FailedToFinalizeError()
   {
-    return Error(THIS_LINE, "Failed to finalize");
+    return {THIS_LINE, "Failed to finalize"};
   }
 
-	Error FailedToSuspendError()
+  Error FailedToSuspendError()
   {
-    return Error(THIS_LINE, "Failed to suspend");
+    return {THIS_LINE, "Failed to suspend"};
   }
 
-	Error FailedToResumeError()
+  Error FailedToResumeError()
   {
-    return Error(THIS_LINE, "Failed to resume");
+    return {THIS_LINE, "Failed to resume"};
   }
 
-	Error FailedToExecuteError()
+  Error FailedToExecuteError()
   {
-    return Error(THIS_LINE, "Failed to execute");
+    return {THIS_LINE, "Failed to execute"};
   }
 
-	class TempWorker : public Worker
-	{
-	public:
-    TempWorker()
-      : Finished(true)
-    {
-    }
-    
+  class TempWorker : public Worker
+  {
+  public:
+    TempWorker() = default;
+
     void Initialize() override
     {
       std::cerr << " " << __FUNCTION__ << " called (" << InitError << ")" << std::endl;
       ThrowIfError(InitError);
     }
-    
+
     void Finalize() override
     {
       std::cerr << " " << __FUNCTION__ << " called (" << FinalError << ")" << std::endl;
@@ -70,7 +78,7 @@ namespace
       std::cerr << " " << __FUNCTION__ << " called (" << SuspendError << ")" << std::endl;
       ThrowIfError(SuspendError);
     }
-    
+
     void Resume() override
     {
       std::cerr << " " << __FUNCTION__ << " called (" << ResumeError << ")" << std::endl;
@@ -84,7 +92,7 @@ namespace
 #endif
       ThrowIfError(ExecError);
     }
-    
+
     bool IsFinished() const override
     {
 #ifndef NDEBUG
@@ -98,8 +106,8 @@ namespace
     Error SuspendError;
     Error ResumeError;
     Error ExecError;
-    bool Finished;
-	};
+    bool Finished = true;
+  };
 
   void CheckActive(const Job& job, Error::LocationRef loc)
   {
@@ -133,25 +141,43 @@ namespace
     }
   }
 
-	void TestInvalidWorker()
-	{
-		std::cout << "Test for invalid worker" << std::endl;
-    TempWorker worker;
-    const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
-    const Error& initErr = FailedToInitializeError();
-    worker.InitError = initErr;
+  template<class F>
+  void CheckNoThrow(Error::LocationRef loc, F&& func)
+  {
     try
     {
-      job->Start();
-			throw Error(THIS_LINE, "Should not start job");
-		}
-		catch (const Error& err)
+      func();
+    }
+    catch (const Error& err)
     {
-      if (err != initErr)
+      throw Error(loc, "Unexpected error thrown").AddSuberror(err);
+    }
+  }
+
+  template<class F>
+  void CheckThrow(Error::LocationRef loc, const Error& expected, F&& func)
+  {
+    try
+    {
+      func();
+      throw Error(THIS_LINE, "No expected throw");
+    }
+    catch (const Error& err)
+    {
+      if (err != expected)
       {
-        throw Error(THIS_LINE, "Invalid error returned for initialize").AddSuberror(err);
+        throw Error(loc, "Broken expectation").AddSuberror(err);
       }
     }
+  }
+
+  void TestInvalidWorker()
+  {
+    std::cout << "Test for invalid worker" << std::endl;
+    TempWorker worker;
+    const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+    worker.InitError = FailedToInitializeError();
+    CheckThrow(THIS_LINE, worker.InitError, [&job]() { job->Start(); });
     CheckNotActive(*job, THIS_LINE);
     std::cout << "Succeed\n";
   }
@@ -160,9 +186,8 @@ namespace
   {
     std::cout << "Test for no cycle worker" << std::endl;
     TempWorker worker;
-    const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
-    const Error& execErr = FailedToExecuteError();
-    worker.ExecError = execErr;
+    const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+    worker.ExecError = FailedToExecuteError();
     job->Start();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     CheckNotActive(*job, THIS_LINE);
@@ -175,51 +200,29 @@ namespace
   {
     std::cout << "Test for first cycle error worker" << std::endl;
     TempWorker worker;
-    const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+    const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
     worker.Finished = false;
-    const Error& execErr = FailedToExecuteError();
-    worker.ExecError = execErr;
+    worker.ExecError = FailedToExecuteError();
     job->Start();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     CheckNotActive(*job, THIS_LINE);
-    try
-    {
-      job->Stop();
-      throw Error(THIS_LINE, "Should not stop failed job");
-    }
-    catch (const Error& err)
-    {
-      if (err != execErr)
-      {
-        throw Error(THIS_LINE, "Invalid error returned for stop failed").AddSuberror(err);
-      }
-    }
+    // See @Async::StopStopped behaviour
+    CheckNoThrow(THIS_LINE, [&job]() { job->Stop(); });
     CheckNotActive(*job, THIS_LINE);
     std::cout << "Succeed\n";
-	}
+  }
 
-	void TestErrorStopWorker()
+  void TestErrorStopWorker()
   {
     std::cout << "Test for deinit error worker" << std::endl;
     TempWorker worker;
-    const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+    const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
     worker.Finished = false;
-    const Error& finErr = FailedToFinalizeError();
-    worker.FinalError = finErr;
+    worker.FinalError = FailedToFinalizeError();
     job->Start();
     CheckActive(*job, THIS_LINE);
-    try
-    {
-      job->Stop();
-      throw Error(THIS_LINE, "Should not stop failed job");
-    }
-    catch (const Error& err)
-    {
-      if (err != finErr)
-      {
-        throw Error(THIS_LINE, "Invalid error returned for stop failed").AddSuberror(err);
-      }
-    }
+    // See @Async::StopStopped behaviour
+    CheckNoThrow(THIS_LINE, [&job]() { job->Stop(); });
     CheckNotActive(*job, THIS_LINE);
     std::cout << "Succeed\n";
   }
@@ -228,24 +231,13 @@ namespace
   {
     std::cout << "Test for suspend error worker" << std::endl;
     TempWorker worker;
-    const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+    const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
     worker.Finished = false;
-    const Error& suspErr = FailedToSuspendError();
-    worker.SuspendError = suspErr;
+    worker.SuspendError = FailedToSuspendError();
     job->Start();
     CheckActive(*job, THIS_LINE);
-    try
-    {
-      job->Pause();
-      throw Error(THIS_LINE, "Should not pause failed job");
-    }
-    catch (const Error& err)
-    {
-      if (err != suspErr)
-      {
-        throw Error(THIS_LINE, "Invalid error returned for pause failed").AddSuberror(err);
-      }
-    }
+    // See @Async::PauseStopped behaviour
+    CheckNoThrow(THIS_LINE, [&job]() { job->Pause(); });
     CheckNotActive(*job, THIS_LINE);
     std::cout << "Succeed\n";
   }
@@ -254,45 +246,23 @@ namespace
   {
     std::cout << "Test for resume error worker" << std::endl;
     TempWorker worker;
-    const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+    const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
     worker.Finished = false;
-    const Error& resErr = FailedToResumeError();
-    worker.ResumeError = resErr;
+    worker.ResumeError = FailedToResumeError();
     job->Start();
     CheckActive(*job, THIS_LINE);
     job->Pause();
     CheckActive(*job, THIS_LINE);
-    try
-    {
-      job->Start();
-      throw Error(THIS_LINE, "Should not resume failed job");
-    }
-    catch (const Error& err)
-    {
-      if (err != resErr)
-      {
-        throw Error(THIS_LINE, "Invalid error returned for resume failed").AddSuberror(err);
-      }
-    }
+    // See Async::CoroutineJob::FinishAction behaviour
+    CheckNoThrow(THIS_LINE, [&job]() { job->Start(); });
     CheckNotActive(*job, THIS_LINE);
     job->Start();
     CheckActive(*job, THIS_LINE);
     job->Pause();
     CheckActive(*job, THIS_LINE);
-    try
-    {
-      job->Stop();
-      throw Error(THIS_LINE, "Job::Worker::Resume is not called");
-    }
-    catch (const Error& err)
-    {
-      if (err != resErr)
-      {
-        throw Error(THIS_LINE, "Invalid error returned for resume while stopping failed").AddSuberror(err);
-      }
-    }
+    // See Async::CoroutineJob::FinishAction behaviour
+    CheckNoThrow(THIS_LINE, [&job]() { job->Stop(); });
     CheckNotActive(*job, THIS_LINE);
-
     std::cout << "Succeed\n";
   }
 
@@ -300,7 +270,7 @@ namespace
   {
     std::cout << "Test for simple workflow" << std::endl;
     TempWorker worker;
-    const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+    const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
     worker.Finished = false;
     CheckNotActive(*job, THIS_LINE);
     CheckNotPaused(*job, THIS_LINE);
@@ -322,7 +292,7 @@ namespace
   {
     std::cout << "Test for double workflow" << std::endl;
     TempWorker worker;
-    const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+    const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
     worker.Finished = false;
     for (int i = 1; i < 2; ++i)
     {
@@ -347,7 +317,7 @@ namespace
   {
     std::cout << "Test for duplicated calls" << std::endl;
     TempWorker worker;
-    const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+    const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
     worker.Finished = false;
     CheckNotActive(*job, THIS_LINE);
     CheckNotPaused(*job, THIS_LINE);
@@ -379,20 +349,20 @@ namespace
     std::cout << "Test for stopping on destruction" << std::endl;
     {
       TempWorker worker;
-      const Job::Ptr job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
+      const auto job = CreateJob(Worker::Ptr(&worker, NullDeleter<Worker>()));
       worker.Finished = false;
       job->Start();
       std::this_thread::sleep_for(std::chrono::milliseconds(3000));
     }
     std::cout << "Succeed\n";
   }
-}
+}  // namespace
 
 int main()
 {
   try
   {
-		TestInvalidWorker();
+    TestInvalidWorker();
     TestNoCycleWorker();
     TestErrorCycleWorker();
     TestErrorStopWorker();
@@ -405,7 +375,8 @@ int main()
   }
   catch (const Error& err)
   {
-		std::cout << "Failed: \n";
-		std::cerr << err.ToString();
+    std::cout << "Failed: \n";
+    std::cerr << err.ToString();
+    return 1;
   }
 }

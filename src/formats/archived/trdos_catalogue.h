@@ -1,37 +1,37 @@
 /**
-* 
-* @file
-*
-* @brief  TR-DOS catalogue helpers
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TR-DOS catalogue helpers
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//library includes
-#include <formats/archived.h>
+#include "formats/archived.h"
+
+#include "string_view.h"
+#include "types.h"
 
 namespace TRDos
 {
   class File : public Formats::Archived::File
   {
   public:
-    typedef std::shared_ptr<const File> Ptr;
+    using Ptr = std::shared_ptr<const File>;
 
     virtual std::size_t GetOffset() const = 0;
 
-    static Ptr Create(Binary::Container::Ptr data, const String& name, std::size_t off, std::size_t size);
-    static Ptr CreateReference(const String& name, std::size_t off, std::size_t size);
+    static Ptr Create(Binary::Container::Ptr data, StringView name, std::size_t off, std::size_t size);
+    static Ptr CreateReference(StringView name, std::size_t off, std::size_t size);
   };
 
   class CatalogueBuilder
   {
   public:
-    typedef std::unique_ptr<CatalogueBuilder> Ptr;
+    using Ptr = std::unique_ptr<CatalogueBuilder>;
     virtual ~CatalogueBuilder() = default;
 
     virtual void SetRawData(Binary::Container::Ptr data) = 0;
@@ -42,4 +42,4 @@ namespace TRDos
     static Ptr CreateGeneric();
     static Ptr CreateFlat();
   };
-}
+}  // namespace TRDos

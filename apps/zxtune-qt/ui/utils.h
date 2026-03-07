@@ -1,39 +1,42 @@
 /**
-* 
-* @file
-*
-* @brief Different utilities
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Different utilities
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//qt includes
-#include <QtCore/QString>
+#include "string_type.h"
+#include "string_view.h"
+
+#include <QtCore/QLatin1String>
 #include <QtCore/QMetaType>
 #include <QtCore/QObject>
+#include <QtCore/QString>
 
-inline QString ToQString(const String& str)
+inline auto ToQString(StringView str)
 {
-#ifdef UNICODE
-  return QString::fromStdWString(str);
-#else
   return QString::fromUtf8(str.data(), static_cast<int>(str.size()));
-#endif
 }
 
-inline String FromQString(const QString& str)
+inline auto ToLatin(StringView str)
 {
-#ifdef UNICODE
-  return str.toStdWString();
-#else
-  const QByteArray& raw = str.toUtf8();
-  return raw.constData();
-#endif
+  return QLatin1String{str.data(), static_cast<int>(str.size())};
+}
+
+inline auto FromQString(const QString& str)
+{
+  const auto& raw = str.toUtf8();
+  return String{raw.constData(), static_cast<std::size_t>(raw.size())};
+}
+
+inline constexpr auto operator"" _latin(const char* txt, std::size_t size)
+{
+  return QLatin1String(txt, size);
 }
 
 template<class T>
@@ -51,17 +54,19 @@ public:
   explicit AutoBlockSignal(QObject& obj)
     : Obj(obj)
     , Previous(Obj.blockSignals(true))
-  {
-  }
+  {}
 
   ~AutoBlockSignal()
   {
     Obj.blockSignals(Previous);
   }
+
 private:
   QObject& Obj;
   const bool Previous;
 };
 
-
-#define REGISTER_METATYPE(A) {static AutoMetaTypeRegistrator<A> tmp(#A);}
+#define REGISTER_METATYPE(A)                                                                                           \
+  {                                                                                                                    \
+    static AutoMetaTypeRegistrator<A> tmp(#A);                                                                         \
+  }

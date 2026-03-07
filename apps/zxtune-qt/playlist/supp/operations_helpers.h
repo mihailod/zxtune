@@ -1,22 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief Playlist operations helpers interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playlist operations helpers interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "model.h"
+#include "apps/zxtune-qt/playlist/supp/model.h"
 
-namespace Playlist
+namespace Playlist::Item
 {
-  namespace Item
-  {
-    void ExecuteOperation(const class Storage& stor, Model::IndexSet::Ptr selectedItems, class Visitor& visitor, Log::ProgressCallback& cb);
-  }
-}
+  void ExecuteOperation(const class Storage& stor, const Model::IndexSet::Ptr& selectedItems, class Visitor& visitor,
+                        Log::ProgressCallback& cb);
+}  // namespace Playlist::Item

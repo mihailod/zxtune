@@ -1,128 +1,103 @@
 /**
-* 
-* @file
-*
-* @brief  MP3 support plugin
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  MP3 support plugin
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-//common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-//library includes
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/decoders.h>
-#include <formats/chiptune/music/mp3.h>
-#include <module/players/analyzer.h>
-#include <module/players/properties_helper.h>
-#include <module/players/properties_meta.h>
-#include <module/players/streaming.h>
-#include <parameters/tracking_helper.h>
-#include <sound/render_params.h>
-#include <sound/resampler.h>
-//3rdparty
-#define MINIMP3_IMPLEMENTATION
-#define MINIMP3_NONSTANDARD_BUT_LOGICAL
-#include <3rdparty/minimp3/minimp3.h>
+#include "formats/chiptune/music/mp3.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
 
-#define FILE_TAG 04123EA8
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "sound/resampler.h"
 
-namespace Module
-{
-namespace Mp3
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
+#include "3rdparty/minimp3/minimp3.h"
+
+namespace Module::Mp3
 {
   const Debug::Stream Dbg("Core::Mp3Supp");
-  
-  struct Accumulator
-  {
-    uint64_t Total = 0;
-    uint_t Count = 0;
-    uint_t Min = 0;
-    uint_t Max = 0;
 
-    void Add(uint_t val)
+  const auto SEEK_PRECISION = Time::Milliseconds(2000);
+
+  struct SeekPoint
+  {
+    Time::AtMillisecond Start;
+    uint_t Offset;
+    uint_t Frames = 1;
+
+    SeekPoint(Time::AtMillisecond start, uint_t offset)
+      : Start(start)
+      , Offset(offset)
+    {}
+
+    bool operator<(Time::AtMillisecond pos) const
     {
-      Total += val;
-      if (Count++)
-      {
-        Min = std::min(Min, val);
-        Max = std::max(Max, val);
-      }
-      else
-      {
-        Min = Max = val;
-      }
-    }
-    
-    const uint_t* SingleValue() const
-    {
-      return Min == Max ? &Min : nullptr;
-    }
-    
-    uint_t Avg() const
-    {
-      return static_cast<uint_t>((Total + (Count / 2)) / Count);
+      return Start < pos;
     }
   };
-  
+
   struct Model
   {
     using RWPtr = std::shared_ptr<Model>;
     using Ptr = std::shared_ptr<const Model>;
-    
-    Accumulator Frequency;
-    Accumulator Samples;
-    std::vector<Formats::Chiptune::Mp3::Frame::DataLocation> Frames;
+
+    std::vector<SeekPoint> Lookup;
     Time::Microseconds Duration;
     Binary::Data::Ptr Content;
   };
-  
+
   struct FrameSound
   {
     uint_t Frequency = 0;
     Sound::Chunk Data;
 
-    FrameSound()
-      : Data(MINIMP3_MAX_SAMPLES_PER_FRAME / 2)
-    {
-    }
-    
+    FrameSound() = default;
     FrameSound(const FrameSound&) = delete;
-    FrameSound& operator = (const FrameSound&) = delete;
-    FrameSound(FrameSound&& rh) noexcept// = default
-      : Frequency(rh.Frequency)
-      , Data(std::move(rh.Data))
-    {
-    }
-    
+    FrameSound& operator=(const FrameSound&) = delete;
+    FrameSound(FrameSound&& rh) noexcept = default;
+    FrameSound& operator=(FrameSound&& rh) noexcept = default;
+
     Sound::Sample::Type* GetTarget()
     {
-       return safe_ptr_cast<Sound::Sample::Type*>(Data.data());
+      Data.resize(MINIMP3_MAX_SAMPLES_PER_FRAME);
+      return safe_ptr_cast<Sound::Sample::Type*>(Data.data());
     }
-    
+
     void Finalize(uint_t resultSamples, const mp3dec_frame_info_t& info)
     {
-      if (1 == info.channels)
+      if (resultSamples)
       {
-        const auto pcm = GetTarget();
-        for (std::size_t idx = resultSamples; idx != 0; --idx)
+        if (1 == info.channels)
         {
-          const auto mono = pcm[idx - 1];
-          Data[idx - 1] = Sound::Sample(mono, mono);
+          auto* const pcm = GetTarget();
+          for (std::size_t idx = resultSamples; idx != 0; --idx)
+          {
+            const auto mono = pcm[idx - 1];
+            Data[idx - 1] = Sound::Sample(mono, mono);
+          }
         }
+        Data.resize(resultSamples);
+        Frequency = info.hz;
       }
-      Data.resize(resultSamples);
-      Frequency = info.hz;
+      else
+      {
+        Data.clear();
+      }
     }
   };
-  
+
   class Mp3Tune
   {
   public:
@@ -134,94 +109,109 @@ namespace Mp3
       static_assert(Sound::Sample::BITS == 16, "Incompatible sound sample bits count");
       static_assert(Sound::Sample::MID == 0, "Incompatible sound sample type");
     }
-    
-    FrameSound RenderFrame(uint_t idx)
-    {
-      const uint_t RENDER_FRAMES_LOOKAHEAD = 4;
-      const auto& frame = GetMergedFrame(idx, RENDER_FRAMES_LOOKAHEAD);
-      FrameSound result;
-      mp3dec_frame_info_t info;
-      const auto resultSamples = ::mp3dec_decode_frame(&Decoder, static_cast<const uint8_t*>(Data->Content->Start()) + frame.Offset, int(frame.Size), result.GetTarget(), &info);
-      if (!resultSamples)
-      {
-        Dbg("No samples for frame @0x%1$08x..0x%2$08x", frame.Offset, frame.Offset + frame.Size - 1);
-      }
-      result.Finalize(resultSamples, info);
-      return result;
-    }
-    
+
     void Reset()
     {
       ::mp3dec_init(&Decoder);
+      Offset = Data->Lookup.front().Offset;
     }
-    
-    void Seek(uint_t idx)
+
+    bool IsEnd() const
     {
-      Reset();
-      const uint_t SEEK_FRAMES_LOOKAHEAD = 8;
-      auto frame = idx <= SEEK_FRAMES_LOOKAHEAD ? GetMergedFrame(0, idx) : GetMergedFrame(idx - SEEK_FRAMES_LOOKAHEAD, SEEK_FRAMES_LOOKAHEAD);
-      while (frame.Size)
+      return Offset == Data->Content->Size();
+    }
+
+    FrameSound RenderNextFrame()
+    {
+      const auto total = Data->Content->Size();
+      FrameSound result;
+      mp3dec_frame_info_t info;
+      while (Offset < total)
       {
-        mp3dec_frame_info_t info;
-        ::mp3dec_decode_frame(&Decoder, static_cast<const uint8_t*>(Data->Content->Start()) + frame.Offset, int(frame.Size), nullptr, &info);
-        if (info.frame_bytes)
+        const auto resultSamples = ::mp3dec_decode_frame(&Decoder,
+                                                         static_cast<const uint8_t*>(Data->Content->Start()) + Offset,
+                                                         int(total - Offset), result.GetTarget(), &info);
+        Offset += info.frame_bytes;
+        result.Finalize(resultSamples, info);
+        if (resultSamples || !info.frame_bytes)
         {
-          frame.Offset += info.frame_bytes;
-          frame.Size -= info.frame_bytes;
-        }
-        else
-        {
-          Dbg("Failed to decode frame @0x%1$08x..0x%2$08x", frame.Offset, frame.Offset + frame.Size - 1);
+          break;
         }
       }
-    }
-  private:
-    Formats::Chiptune::Mp3::Frame::DataLocation GetMergedFrame(uint_t start, uint_t size) const
-    {
-      auto result = Data->Frames.at(start);
-      const auto end = start + size;
-      const auto limit = end < Data->Frames.size() ? Data->Frames[end].Offset : Data->Content->Size();
-      result.Size = limit - result.Offset;
       return result;
     }
+
+    // Returns real position
+    Time::AtMicrosecond Seek(Time::AtMillisecond request)
+    {
+      Reset();
+      auto lookup = std::lower_bound(Data->Lookup.begin(), Data->Lookup.end(), request);
+      for (uint_t preFrames = 0; lookup != Data->Lookup.begin() && preFrames < 10;)
+      {
+        --lookup;
+        preFrames += lookup->Frames;
+      }
+      const auto* raw = static_cast<const uint8_t*>(Data->Content->Start());
+      auto offset = lookup->Offset;
+      auto size = Data->Content->Size() - offset;
+      const Time::AtMicrosecond target = request;
+      Time::AtMicrosecond pos = lookup->Start;
+      while (pos < target)
+      {
+        mp3dec_frame_info_t info;
+        if (const auto samples = ::mp3dec_decode_frame(&Decoder, raw + offset, int(size), nullptr, &info))
+        {
+          offset += info.frame_bytes;
+          size -= info.frame_bytes;
+          pos += Time::Microseconds::FromRatio(samples, info.hz);
+        }
+        else if (!info.frame_bytes)
+        {
+          Dbg("Failed to decode frame for seek @0x{:08x}", offset);
+          break;
+        }
+      }
+      Offset = offset;
+      return pos;
+    }
+
   private:
     const Model::Ptr Data;
     mp3dec_t Decoder;
+    std::size_t Offset = 0;
   };
-  
-  class MultiFreqTargetsDispatcher
+
+  class MultiFreqResampler
   {
   public:
-    explicit MultiFreqTargetsDispatcher(Sound::Receiver::Ptr target)
-      : Target(target)
-      , TargetFreq()
+    explicit MultiFreqResampler(uint_t samplerate)
+      : TargetFreq(samplerate)
+    {}
+
+    Sound::Chunk Apply(FrameSound frame)
     {
-    }
-    
-    void SetTargetFreq(uint_t freq)
-    {
-      if (TargetFreq != freq)
+      if (frame.Data.empty())
       {
-        Resamplers.clear();
+        return {};
       }
-      TargetFreq = freq;
-    }
-    
-    void Put(FrameSound frame)
-    {
-      if (!frame.Data.empty())
+      else if (frame.Frequency == TargetFreq)
       {
-        GetTarget(frame.Frequency).ApplyData(std::move(frame.Data));
+        return std::move(frame.Data);
+      }
+      else
+      {
+        return GetTarget(frame.Frequency).Apply(std::move(frame.Data));
       }
     }
-    
+
+    Sound::Chunk MakeStub(Time::Microseconds duration)
+    {
+      return Sound::Chunk(TargetFreq * duration.Get() / duration.PER_SECOND);
+    }
+
   private:
-    Sound::Receiver& GetTarget(uint_t freq)
+    Sound::Converter& GetTarget(uint_t freq)
     {
-      if (freq == TargetFreq)
-      {
-        return *Target;
-      }
       for (const auto& resampled : Resamplers)
       {
         if (freq == resampled.first)
@@ -229,104 +219,81 @@ namespace Mp3
           return *resampled.second;
         }
       }
-      const auto res = Sound::CreateResampler(freq, TargetFreq, Target);
+      const auto res = Sound::CreateResampler(freq, TargetFreq);
       Resamplers.emplace_back(freq, res);
       return *res;
     }
+
   private:
-    const Sound::Receiver::Ptr Target;
     uint_t TargetFreq;
-    std::vector<std::pair<uint_t, Sound::Receiver::Ptr> > Resamplers;
+    std::vector<std::pair<uint_t, Sound::Converter::Ptr> > Resamplers;
   };
-  
+
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(Model::Ptr data, StateIterator::Ptr iterator, Sound::Receiver::Ptr target, Parameters::Accessor::Ptr params)
-      : Tune(std::move(data))
-      , Iterator(std::move(iterator))
-      , State(Iterator->GetStateObserver())
-      , Analyzer(Module::CreateSoundAnalyzer())
-      , SoundParams(Sound::RenderParameters::Create(std::move(params)))
-      , Target(std::move(target))
-      , Looped()
-    {
-      ApplyParameters();
-    }
+    Renderer(const Model::Ptr& data, uint_t samplerate)
+      : Tune(data)
+      , State(MakePtr<TimedState>(data->Duration))
+      , Target(samplerate)
+    {}
 
     Module::State::Ptr GetState() const override
     {
       return State;
     }
 
-    Module::Analyzer::Ptr GetAnalyzer() const override
+    Sound::Chunk Render() override
     {
-      return Analyzer;
-    }
-
-    bool RenderFrame() override
-    {
-      try
+      // assume that rendered duration is lesser or equal to reported
+      auto frame = Tune.RenderNextFrame();
+      if (frame.Data.empty())
       {
-        ApplyParameters();
-
-        auto frame = Tune.RenderFrame(State->Frame());
-        Analyzer->AddSoundData(frame.Data);
-        Target.Put(std::move(frame));
-        Iterator->NextFrame(Looped);
-        return Iterator->IsValid();
+        // premature end, force end/loop
+        const auto avail = State->ConsumeRest();
+        Tune.Reset();
+        return Target.MakeStub(avail);
       }
-      catch (const std::exception&)
+      const auto rendered = Time::Microseconds::FromRatio(frame.Data.size(), frame.Frequency);
+      const auto loops = State->LoopCount();
+      State->ConsumeUpTo(rendered);
+      if (loops != State->LoopCount())
       {
-        return false;
+        Tune.Reset();
       }
+      return Target.Apply(std::move(frame));
     }
 
     void Reset() override
     {
       Tune.Reset();
-      SoundParams.Reset();
-      Iterator->Reset();
-      Looped = {};
+      State->Reset();
     }
 
-    void SetPosition(uint_t frame) override
+    void SetPosition(Time::AtMillisecond request) override
     {
-      Tune.Seek(frame);
-      Module::SeekIterator(*Iterator, frame);
+      State->Seek(request);
+      const auto realPos = Tune.Seek(State->At());
+      State->Seek(realPos);
     }
-  private:
-    void ApplyParameters()
-    {
-      if (SoundParams.IsChanged())
-      {
-        Looped = SoundParams->Looped();
-        Target.SetTargetFreq(SoundParams->SoundFreq());
-      }
-    }
+
   private:
     Mp3Tune Tune;
-    const StateIterator::Ptr Iterator;
-    const Module::State::Ptr State;
-    const Module::SoundAnalyzer::Ptr Analyzer;
-    Parameters::TrackingHelper<Sound::RenderParameters> SoundParams;
-    MultiFreqTargetsDispatcher Target;
-    Sound::LoopParameters Looped;
+    const TimedState::Ptr State;
+    MultiFreqResampler Target;
   };
-  
+
   class Holder : public Module::Holder
   {
   public:
     Holder(Model::Ptr data, Parameters::Accessor::Ptr props)
       : Data(std::move(data))
-      , Info(CreateStreamInfo(static_cast<uint_t>(Data->Frames.size())))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     Module::Information::Ptr GetModuleInformation() const override
     {
-      return Info;
+      return CreateTimedInfo(Data->Duration.CastTo<Time::Millisecond>());
     }
 
     Parameters::Accessor::Ptr GetModuleProperties() const override
@@ -334,18 +301,18 @@ namespace Mp3
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
     {
-      return MakePtr<Renderer>(Data, Module::CreateStreamStateIterator(Info), target, params);
+      return MakePtr<Renderer>(Data, samplerate);
     }
+
   private:
     const Model::Ptr Data;
-    const Information::Ptr Info;
     const Parameters::Accessor::Ptr Properties;
   };
-  
+
   static const auto MIN_DURATION = Time::Seconds(1);
-  
+
   class DataBuilder : public Formats::Chiptune::Mp3::Builder
   {
   public:
@@ -353,8 +320,7 @@ namespace Mp3
       : Data(MakeRWPtr<Model>())
       , Properties(props)
       , Meta(props)
-    {
-    }
+    {}
 
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
@@ -363,64 +329,48 @@ namespace Mp3
 
     void AddFrame(const Formats::Chiptune::Mp3::Frame& frame) override
     {
-      Data->Frames.push_back(frame.Location);
-      Data->Frequency.Add(frame.Properties.Samplerate);
-      Data->Samples.Add(frame.Properties.SamplesCount);
+      const auto pos = Time::AtMillisecond() + Data->Duration.CastTo<Time::Millisecond>();
+      if (Data->Lookup.empty() || Data->Lookup.back().Start + SEEK_PRECISION < pos)
+      {
+        Data->Lookup.emplace_back(pos, frame.Location.Offset);
+      }
+      else
+      {
+        Data->Lookup.back().Frames++;
+      }
       Data->Duration += Time::Microseconds::FromRatio(frame.Properties.SamplesCount, frame.Properties.Samplerate);
     }
-    
+
     void SetContent(Binary::Data::Ptr data)
     {
       Data->Content = std::move(data);
     }
-    
+
     Model::Ptr GetResult()
     {
       if (Data->Duration < MIN_DURATION)
       {
-        return Model::Ptr();
+        return {};
       }
       else
       {
-        const auto freq = GetFrequency();
-        if (const auto frameSamples = Data->Samples.SingleValue())
-        {
-          Properties.SetFramesParameters(*frameSamples, freq);
-        }
-        else
-        {
-          const auto avg = Data->Samples.Avg();
-          Dbg("Use average frame samples %1%", avg);
-          Properties.SetFramesParameters(avg, freq);
-        }
-        Data->Frames.shrink_to_fit();
+        Dbg("Built {} seek points", Data->Lookup.size());
+        Data->Lookup.shrink_to_fit();
         return Data;
       }
     }
-  private:
-    uint_t GetFrequency() const
-    {
-      if (const auto singleFreq = Data->Frequency.SingleValue())
-      {
-        return *singleFreq;
-      }
-      else
-      {
-        const auto avg = Data->Frequency.Avg();
-        Dbg("Use average frequency %1%", avg);
-        return avg;
-      }
-    }
+
   private:
     const Model::RWPtr Data;
     PropertiesHelper& Properties;
     MetaProperties Meta;
   };
-  
+
   class Factory : public Module::Factory
   {
   public:
-    Module::Holder::Ptr CreateModule(const Parameters::Accessor& /*params*/, const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    Module::Holder::Ptr CreateModule(const Parameters::Accessor& /*params*/, const Binary::Container& rawData,
+                                     Parameters::Container::Ptr properties) const override
     {
       try
       {
@@ -428,36 +378,33 @@ namespace Mp3
         DataBuilder dataBuilder(props);
         if (const auto container = Formats::Chiptune::Mp3::Parse(rawData, dataBuilder))
         {
-          if (const auto data = dataBuilder.GetResult())
+          if (auto data = dataBuilder.GetResult())
           {
             props.SetSource(*container);
             dataBuilder.SetContent(container);
-            return MakePtr<Holder>(data, properties);
+            return MakePtr<Holder>(std::move(data), std::move(properties));
           }
         }
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create MP3: %s", e.what());
+        Dbg("Failed to create MP3: {}", e.what());
       }
-      return Module::Holder::Ptr();
+      return {};
     }
   };
-}
-}
+}  // namespace Module::Mp3
 
 namespace ZXTune
 {
   void RegisterMP3Plugin(PlayerPluginsRegistrator& registrator)
   {
-    const Char ID[] = {'M', 'P', '3', 0};
+    const auto ID = "MP3"_id;
     const uint_t CAPS = Capabilities::Module::Type::STREAM | Capabilities::Module::Device::DAC;
 
-    const auto decoder = Formats::Chiptune::CreateMP3Decoder();
-    const auto factory = MakePtr<Module::Mp3::Factory>();
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, CAPS, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::CreateMP3Decoder();
+    auto factory = MakePtr<Module::Mp3::Factory>();
+    auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
-}
-
-#undef FILE_TAG
+}  // namespace ZXTune

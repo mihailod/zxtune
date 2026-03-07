@@ -1,133 +1,126 @@
 /**
-* 
-* @file
-*
-* @brief  ASCLZSPack packer support
-*
-* @author vitamin.caig@gmail.com
-*
-* @note   Based on XLook sources by HalfElf
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ASCLZSPack packer support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ * @note   Based on XLook sources by HalfElf
+ *
+ **/
 
-//local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-//library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-//std includes
+
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <algorithm>
 #include <iterator>
-//text includes
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace LZS
   {
     const std::size_t MAX_DECODED_SIZE = 0xc000;
 
-    const std::string DEPACKER_PATTERN(
-      "cd??"    // call xxxx
-      "?"       // di/nop
-      "ed73??"  // ld (xxxx),sp
-      "21??"    // ld hl,xxxx
-      "11??"    // ld de,xxxx
-      "01??"    // ld bc,xxxx
-      "d5"      // push de
-      "edb0"    // ldir
-      "21??"    // ld hl,xxxx ;src of packed (data = +x15)
-      "11??"    // ld de,xxxx ;dst of packed (data = +x18)
-      "01??"    // ld bc,xxxx ;size of packed. (data = +x1b)
-      "c9"      // ret
-      //+1e
-      "ed?"     // lddr/ldir  ;+x1f
-      "21??"    // ld hl,xxxx ;src of packed (data = +x21)
-      "11??"    // ld de,xxxx ;target to depack (data = +0x24)
-      "06?"     // ld b,xx (0)
-      "7e"      // ld a,(hl)
-      "cb7f"    // bit 7,a
-      "201d"    // jr nz,...
-      "e6?"     // and xx (0xf)
-      "47"      // ld b,a
-      "ed6f"    // rld
-      "c6?"     // add a,xx (3)
-      "4f"      // ld c,a
-      "23"      // inc hl
-      "7b"      // ld a,e
-      "96"      // sub (hl)
-      "23"      // inc hl
-      "f9"      // ld sp,hl
-      "66"      // ld h,(hl)
-      "6f"      // ld l,a
-      "7a"      // ld a,d
-      "98"      // sbc a,b
-      "44"      // ld b,h
-      "67"      // ld h,a
-      "78"      // ld a,b
-      "06?"     // ld b,xx (0)
-      "edb0"    // ldir
-      "60"      // ld h,b
-      "69"      // ld l,c
-      "39"      // add hl,sp
-      "18df"    // jr ...
-    /*
-      "e6?"     // and xx (0x7f)
-      "2819"    // jr z,...
-      "23"      // inc hl
-      "cb77"    // bit 6,a
-      "2005"    // jr nz,...
-      "4f"      // ld c,a
-      "edb0"    // ldir
-      "18d0"    // jr ...
-      "e6?"     // and xx, (0x3f)
-      "c6?"     // add a,xx (3)
-      "47"      // ld b,a
-      "7e"      // ld a,(hl)
-      "23"      // inc hl
-      "4e"      // ld c,(hl)
-      "12"      // ld (de),a
-      "13"      // inc de
-      "10fc"    // djnz ...
-      "79"      // ld a,c
-      "18c2"    // jr ...
-      "31??"    // ld sp,xxxx
-      "06?"     // ld b,xx (3)
-      "e1"      // pop hl
-      "3b"      // dec sp
-      "f1"      // pop af
-      "77"      // ld (hl),a
-      "10fa"    // djnz ...
-      "31??"    // ld sp,xxxx
-      "?"       // di/ei
-      "c3??"    // jp xxxx (0x0052)
-      */
-    );
+    const auto DESCRIPTION = "ASC LZS Pack"sv;
+    const auto DEPACKER_PATTERN =
+        "cd??"    // call xxxx
+        "?"       // di/nop
+        "ed73??"  // ld (xxxx),sp
+        "21??"    // ld hl,xxxx
+        "11??"    // ld de,xxxx
+        "01??"    // ld bc,xxxx
+        "d5"      // push de
+        "edb0"    // ldir
+        "21??"    // ld hl,xxxx ;src of packed (data = +x15)
+        "11??"    // ld de,xxxx ;dst of packed (data = +x18)
+        "01??"    // ld bc,xxxx ;size of packed. (data = +x1b)
+        "c9"      // ret
+        //+1e
+        "ed?"   // lddr/ldir  ;+x1f
+        "21??"  // ld hl,xxxx ;src of packed (data = +x21)
+        "11??"  // ld de,xxxx ;target to depack (data = +0x24)
+        "06?"   // ld b,xx (0)
+        "7e"    // ld a,(hl)
+        "cb7f"  // bit 7,a
+        "201d"  // jr nz,...
+        "e6?"   // and xx (0xf)
+        "47"    // ld b,a
+        "ed6f"  // rld
+        "c6?"   // add a,xx (3)
+        "4f"    // ld c,a
+        "23"    // inc hl
+        "7b"    // ld a,e
+        "96"    // sub (hl)
+        "23"    // inc hl
+        "f9"    // ld sp,hl
+        "66"    // ld h,(hl)
+        "6f"    // ld l,a
+        "7a"    // ld a,d
+        "98"    // sbc a,b
+        "44"    // ld b,h
+        "67"    // ld h,a
+        "78"    // ld a,b
+        "06?"   // ld b,xx (0)
+        "edb0"  // ldir
+        "60"    // ld h,b
+        "69"    // ld l,c
+        "39"    // add hl,sp
+        "18df"  // jr ...
+                /*
+                  "e6?"     // and xx (0x7f)
+                  "2819"    // jr z,...
+                  "23"      // inc hl
+                  "cb77"    // bit 6,a
+                  "2005"    // jr nz,...
+                  "4f"      // ld c,a
+                  "edb0"    // ldir
+                  "18d0"    // jr ...
+                  "e6?"     // and xx, (0x3f)
+                  "c6?"     // add a,xx (3)
+                  "47"      // ld b,a
+                  "7e"      // ld a,(hl)
+                  "23"      // inc hl
+                  "4e"      // ld c,(hl)
+                  "12"      // ld (de),a
+                  "13"      // inc de
+                  "10fc"    // djnz ...
+                  "79"      // ld a,c
+                  "18c2"    // jr ...
+                  "31??"    // ld sp,xxxx
+                  "06?"     // ld b,xx (3)
+                  "e1"      // pop hl
+                  "3b"      // dec sp
+                  "f1"      // pop af
+                  "77"      // ld (hl),a
+                  "10fa"    // djnz ...
+                  "31??"    // ld sp,xxxx
+                  "?"       // di/ei
+                  "c3??"    // jp xxxx (0x0052)
+                  */
+        ""sv;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawHeader
+    struct RawHeader
     {
       //+0
       uint8_t Padding1[0x15];
       //+0x15
-      uint16_t PackedSource;
+      le_uint16_t PackedSource;
       //+0x17
       uint8_t Padding2;
       //+0x18
-      uint16_t PackedTarget;
+      le_uint16_t PackedTarget;
       //+0x1a
       uint8_t Padding3;
       //+0x1b
-      uint16_t SizeOfPacked;
+      le_uint16_t SizeOfPacked;
       //+0x1c
       uint8_t Padding4[2];
       //+0x1f
@@ -135,18 +128,15 @@ namespace Packed
       //+0x20
       uint8_t Padding5;
       //+0x21
-      uint16_t FirstOfPacked;
+      le_uint16_t FirstOfPacked;
       //+0x23
       uint8_t Padding6[0x5f];
       //+0x82
       uint8_t Data[1];
       //+0x83
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
 
-    static_assert(sizeof(RawHeader) == 0x83, "Invalid layout");
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 0x83, "Invalid layout");
 
     const std::size_t MIN_SIZE = sizeof(RawHeader);
 
@@ -156,8 +146,7 @@ namespace Packed
       Container(const void* data, std::size_t size)
         : Data(static_cast<const uint8_t*>(data))
         , Size(size)
-      {
-      }
+      {}
 
       bool FastCheck() const
       {
@@ -166,27 +155,24 @@ namespace Packed
           return false;
         }
         const RawHeader& header = GetHeader();
-        const DataMovementChecker checker(fromLE(header.PackedSource), fromLE(header.PackedTarget), fromLE(header.SizeOfPacked), header.PackedDataCopyDirection);
+        const DataMovementChecker checker(header.PackedSource, header.PackedTarget, header.SizeOfPacked,
+                                          header.PackedDataCopyDirection);
         if (!checker.IsValid())
         {
           return false;
         }
-        if (checker.FirstOfMovedData() != fromLE(header.FirstOfPacked))
+        if (checker.FirstOfMovedData() != header.FirstOfPacked)
         {
           return false;
         }
         const std::size_t usedSize = GetUsedSize();
-        if (usedSize > Size)
-        {
-          return false;
-        }
-        return true;
+        return usedSize <= Size;
       }
 
       std::size_t GetUsedSize() const
       {
         const RawHeader& header = GetHeader();
-        const std::size_t defSize = sizeof(header) + fromLE(header.SizeOfPacked) - sizeof(header.Data);
+        const std::size_t defSize = sizeof(header) + header.SizeOfPacked - sizeof(header.Data);
         if (defSize < Size && 0xc9 == Data[defSize])
         {
           return defSize + 1;
@@ -199,6 +185,7 @@ namespace Packed
         assert(Size >= sizeof(RawHeader));
         return *safe_ptr_cast<const RawHeader*>(Data);
       }
+
     private:
       const uint8_t* const Data;
       const std::size_t Size;
@@ -210,9 +197,7 @@ namespace Packed
       explicit DataDecoder(const Container& container)
         : IsValid(container.FastCheck())
         , Header(container.GetHeader())
-        , Stream(Header.Data, fromLE(Header.SizeOfPacked))
-        , Result(new Dump())
-        , Decoded(*Result)
+        , Stream(Header.Data, Header.SizeOfPacked)
       {
         if (IsValid && !Stream.Eof())
         {
@@ -220,27 +205,26 @@ namespace Packed
         }
       }
 
-      std::unique_ptr<Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid
-          ? std::move(Result)
-          : std::unique_ptr<Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
+
     private:
       bool DecodeData()
       {
         // The main concern is to decode data as much as possible, skipping defenitely invalid structure
-        Decoded.reserve(2 * fromLE(Header.SizeOfPacked));
-        //assume that first byte always exists due to header format
-        while (!Stream.Eof() && Decoded.size() < MAX_DECODED_SIZE)
+        Decoded = Binary::DataBuilder(2 * Header.SizeOfPacked);
+        // assume that first byte always exists due to header format
+        while (!Stream.Eof() && Decoded.Size() < MAX_DECODED_SIZE)
         {
           const uint_t data = Stream.GetByte();
           if (0x80 == data)
           {
-            //exit
+            // exit
             break;
           }
-          //at least one more byte required
+          // at least one more byte required
           if (Stream.Eof())
           {
             return false;
@@ -252,7 +236,7 @@ namespace Packed
             assert(len);
             for (; len && !Stream.Eof(); --len)
             {
-              Decoded.push_back(Stream.GetByte());
+              Decoded.AddByte(Stream.GetByte());
             }
             if (len)
             {
@@ -263,7 +247,7 @@ namespace Packed
           {
             const std::size_t len = (data & 0x3f) + 3;
             const uint8_t filler = Stream.GetByte();
-            std::fill_n(std::back_inserter(Decoded), len, filler);
+            Fill(Decoded, len, filler);
           }
           else
           {
@@ -277,30 +261,29 @@ namespace Packed
         }
         while (!Stream.Eof())
         {
-          Decoded.push_back(Stream.GetByte());
+          Decoded.AddByte(Stream.GetByte());
         }
         return true;
       }
+
     private:
       bool IsValid;
       const RawHeader& Header;
       ByteStream Stream;
-      std::unique_ptr<Dump> Result;
-      Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
-  }//namespace LZS
+  }  // namespace LZS
 
   class LZSDecoder : public Decoder
   {
   public:
     LZSDecoder()
       : Depacker(Binary::CreateFormat(LZS::DEPACKER_PATTERN, LZS::MIN_SIZE))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Text::LZS_DECODER_DESCRIPTION;
+      return LZS::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -312,16 +295,17 @@ namespace Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const LZS::Container container(rawData.Start(), rawData.Size());
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       LZS::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), container.GetUsedSize());
     }
+
   private:
     const Binary::Format::Ptr Depacker;
   };
@@ -330,5 +314,4 @@ namespace Packed
   {
     return MakePtr<LZSDecoder>();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

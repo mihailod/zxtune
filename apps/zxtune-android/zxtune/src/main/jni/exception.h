@@ -1,20 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief Exception helpers
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Exception helpers
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <error.h>
-//platform includes
+#include "error.h"
+
 #include <jni.h>
-//std includes
+
 #include <type_traits>
 
 namespace Jni
@@ -24,36 +23,34 @@ namespace Jni
   public:
     explicit Exception(const char* type)
       : Exception(type, "")
-    {
-    }
-    
+    {}
+
     Exception(const char* type, const char* msg)
       : Type(type)
       , Message(msg)
-    {
-    }
-    
+    {}
+
     const char* GetType() const
     {
       return Type;
     }
-    
+
     const char* GetMessage() const
     {
       return Message;
     }
+
   protected:
     const char* const Type;
     const char* Message;
   };
-  
+
   class NullPointerException : public Exception
   {
   public:
-    NullPointerException()
-      : Exception("java/lang/NullPointerException")
-    {
-    }
+    explicit NullPointerException(const char* msg)
+      : Exception("java/lang/NullPointerException", msg)
+    {}
   };
 
   class IllegalArgumentException : public Exception
@@ -61,8 +58,7 @@ namespace Jni
   public:
     explicit IllegalArgumentException(const char* msg)
       : Exception("java/lang/IllegalArgumentException", msg)
-    {
-    }
+    {}
   };
 
   inline void CheckArgument(bool condition, const char* msg = "")
@@ -82,48 +78,54 @@ namespace Jni
     {
       Message = MessageStorage.c_str();
     }
+
   private:
     const String MessageStorage;
   };
 
   inline void Throw(JNIEnv* env, const char* clsName, const char* msg)
   {
-    const auto cls = env->FindClass(clsName);
+    auto* const cls = env->FindClass(clsName);
     env->ThrowNew(cls, msg);
   }
-  
+
   inline void Throw(JNIEnv* env, const char* msg)
   {
     Throw(env, "app/zxtune/core/jni/JniRuntimeException", msg);
   }
-  
+
   inline void Throw(JNIEnv* env, const Error& err)
   {
     Throw(env, err.GetText().c_str());
   }
-  
+
   inline void Throw(JNIEnv* env, const std::exception& err)
   {
     Throw(env, err.what());
   }
-  
-  inline void Throw(JNIEnv* env, jthrowable thr)
+
+  struct JThrowable
+  {
+    const jthrowable Exception;
+  };
+
+  inline void Throw(JNIEnv* env, const JThrowable& thr)
   {
     env->ExceptionClear();
-    env->Throw(thr);
+    env->Throw(thr.Exception);
   }
-  
+
   inline void Throw(JNIEnv* env, const Exception& ex)
   {
     Throw(env, ex.GetType(), ex.GetMessage());
   }
-  
+
   inline void ThrowIfError(JNIEnv* env)
   {
     if (const jthrowable e = env->ExceptionOccurred())
     {
       env->ExceptionDescribe();
-      throw e;
+      throw JThrowable{e};
     }
   }
 
@@ -139,9 +141,7 @@ namespace Jni
   template<>
   struct DefaultReturn<void>
   {
-    static void Get()
-    {
-    }
+    static void Get() {}
   };
 
   template<class Func>
@@ -151,7 +151,7 @@ namespace Jni
     {
       return f();
     }
-    catch (jthrowable e)
+    catch (const JThrowable& e)
     {
       Throw(env, e);
     }
@@ -173,4 +173,4 @@ namespace Jni
     }
     return DefaultReturn<typename std::result_of<Func()>::type>::Get();
   }
-}
+}  // namespace Jni

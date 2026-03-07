@@ -1,65 +1,62 @@
 /**
-* 
-* @file
-*
-* @brief  TurboFM Compiled support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TurboFM Compiled support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/chiptune/fm/tfc.h"
-#include "formats/chiptune/container.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <strings/encoding.h>
-#include <strings/trim.h>
-//std includes
-#include <array>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+#include "formats/chiptune/container.h"
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "strings/sanitize.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <array>
+
+namespace Formats::Chiptune
 {
   namespace TFC
   {
-    typedef std::array<uint8_t, 6> SignatureType;
+    const auto DESCRIPTION = "TurboFM Compiled Dump"sv;
 
-    const SignatureType SIGNATURE = { {'T', 'F', 'M', 'c', 'o', 'm'} };
+    using SignatureType = std::array<uint8_t, 6>;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct RawHeader
+    const SignatureType SIGNATURE = {{'T', 'F', 'M', 'c', 'o', 'm'}};
+
+    struct RawHeader
     {
       SignatureType Sign;
-      char Version[3];
+      std::array<char, 3> Version;
       uint8_t IntFreq;
-      std::array<uint16_t, 6> Offsets;
+      std::array<le_uint16_t, 6> Offsets;
       uint8_t Reserved[12];
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
-    const std::size_t MIN_SIZE = sizeof(RawHeader) + 3 + 6;//header + 3 empty strings + 6 finish markers
+    };
+
+    static_assert(sizeof(RawHeader) * alignof(RawHeader) == 34, "Invalid layout");
+
+    const std::size_t MIN_SIZE = sizeof(RawHeader) + 3 + 6;  // header + 3 empty strings + 6 finish markers
     const std::size_t MAX_STRING_SIZE = 64;
     const std::size_t MAX_COMMENT_SIZE = 384;
 
     class StubBuilder : public Builder
     {
     public:
-      void SetVersion(const String& /*version*/) override {}
+      MetaBuilder& GetMetaBuilder() override
+      {
+        return GetStubMetaBuilder();
+      }
+
+      void SetVersion(StringView /*version*/) override {}
       void SetIntFreq(uint_t /*freq*/) override {}
-      void SetTitle(const String& /*title*/) override {}
-      void SetAuthor(const String& /*author*/) override {}
-      void SetComment(const String& /*comment*/) override {}
 
       void StartChannel(uint_t /*idx*/) override {}
       void StartFrame() override {}
@@ -81,27 +78,26 @@ namespace Chiptune
       }
       const auto& hdr = *rawData.As<RawHeader>();
       return hdr.Sign == SIGNATURE
-        && hdr.Offsets.end() == std::find_if(hdr.Offsets.begin(), hdr.Offsets.end(),
-             [size](uint16_t o) {return fromLE(o) >= size;});
+             && hdr.Offsets.end()
+                    == std::find_if(hdr.Offsets.begin(), hdr.Offsets.end(), [size](auto o) { return o >= size; });
     }
 
-    const std::string FORMAT(
-      "'T'F'M'c'o'm"
-      "???"
-      "32|3c"
-    );
+    const auto FORMAT =
+        "'T'F'M'c'o'm"
+        "???"
+        "32|3c"
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
     public:
       Decoder()
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
-      {
-      }
+      {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
-        return Text::TFC_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -109,7 +105,7 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return FastCheck(rawData);
       }
@@ -119,20 +115,17 @@ namespace Chiptune
         Builder& stub = GetStubBuilder();
         return Parse(rawData, stub);
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
 
     struct Context
     {
-      std::size_t RetAddr;
-      std::size_t RepeatFrames;
+      std::size_t RetAddr = 0;
+      std::size_t RepeatFrames = 0;
 
-      Context()
-        : RetAddr()
-        , RepeatFrames()
-      {
-      }
+      Context() = default;
     };
 
     class Container
@@ -141,9 +134,7 @@ namespace Chiptune
       explicit Container(Binary::View data)
         : Data(data)
         , Min(Data.Size())
-        , Max(0)
-      {
-      }
+      {}
 
       std::size_t ParseFrameControl(std::size_t cursor, Builder& target, Context& context) const
       {
@@ -155,21 +146,21 @@ namespace Chiptune
         for (;;)
         {
           const uint_t cmd = Get<uint8_t>(cursor++);
-          if (cmd == 0x7f)//%01111111
+          if (cmd == 0x7f)  //%01111111
           {
             return 0;
           }
-          else if (0x7e == cmd)//%01111110
+          else if (0x7e == cmd)  //%01111110
           {
             target.SetLoop();
             continue;
           }
-          else if (0xd0 == cmd)//%11010000
+          else if (0xd0 == cmd)  //%11010000
           {
             Require(context.RepeatFrames == 0);
             Require(context.RetAddr == 0);
             context.RepeatFrames = Get<uint8_t>(cursor++);
-            const int_t offset = fromBE(Get<int16_t>(cursor));
+            const int_t offset = Get<be_int16_t>(cursor);
             context.RetAddr = cursor += 2;
             return AdvanceCursor(cursor, offset);
           }
@@ -183,22 +174,22 @@ namespace Chiptune
       std::size_t ParseFrameCommands(std::size_t cursor, Builder& target) const
       {
         const uint_t cmd = Get<uint8_t>(cursor++);
-        if (0xbf == cmd)//%10111111
+        if (0xbf == cmd)  //%10111111
         {
-          const int_t offset = fromBE(Get<int16_t>(cursor));
+          const int_t offset = Get<be_int16_t>(cursor);
           cursor += 2;
           ParseFrameData(AdvanceCursor(cursor, offset), target);
         }
-        else if (0xff == cmd)//%11111111
+        else if (0xff == cmd)  //%11111111
         {
           const int_t offset = -256 + Get<uint8_t>(cursor++);
           ParseFrameData(AdvanceCursor(cursor, offset), target);
         }
-        else if (cmd >= 0xe0)//%111ttttt
+        else if (cmd >= 0xe0)  //%111ttttt
         {
           target.SetSkip(256 - cmd);
         }
-        else if (cmd >= 0xc0)//%110ddddd
+        else if (cmd >= 0xc0)  //%110ddddd
         {
           target.SetSlide(cmd + 0x30);
         }
@@ -218,10 +209,11 @@ namespace Chiptune
       {
         return Max;
       }
+
     private:
       static std::size_t AdvanceCursor(std::size_t cursor, std::ptrdiff_t offset)
       {
-        //disable UB
+        // disable UB
         if (offset >= 0)
         {
           return cursor + offset;
@@ -233,7 +225,7 @@ namespace Chiptune
           return cursor - back;
         }
       }
-      
+
       std::size_t ParseFrameData(std::size_t cursor, Builder& target) const
       {
         const uint_t data = Get<uint8_t>(cursor++);
@@ -243,11 +235,11 @@ namespace Chiptune
         }
         if (0 != (data & 0x01))
         {
-          const uint_t freq = fromBE(Get<uint16_t>(cursor));
+          const uint_t freq = Get<be_uint16_t>(cursor);
           cursor += 2;
           target.SetFreq(freq);
         }
-        if (uint_t regs = (data & 0x3e) >> 1)
+        if (const uint_t regs = (data & 0x3e) >> 1)
         {
           for (uint_t i = 0; i != regs; ++i)
           {
@@ -262,6 +254,7 @@ namespace Chiptune
         }
         return cursor;
       }
+
     private:
       template<class T>
       const T& Get(std::size_t offset) const
@@ -272,40 +265,37 @@ namespace Chiptune
         Max = std::max(Max, offset + sizeof(T));
         return *ptr;
       }
+
     private:
       const Binary::View Data;
       mutable std::size_t Min;
-      mutable std::size_t Max;
+      mutable std::size_t Max = 0;
     };
-    
-    String DecodeString(StringView str)
-    {
-      return Strings::ToAutoUtf8(Strings::TrimSpaces(str));
-    }
 
     Formats::Chiptune::Container::Ptr Parse(const Binary::Container& rawData, Builder& target)
     {
       const Binary::View data(rawData);
       if (!FastCheck(data))
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
       try
       {
         Binary::DataInputStream stream(data);
-        const RawHeader& header = stream.ReadField<RawHeader>();
-        target.SetVersion(FromCharArray(header.Version));
+        const auto& header = stream.Read<RawHeader>();
+        target.SetVersion({header.Version.data(), header.Version.size()});
         target.SetIntFreq(header.IntFreq);
-        target.SetTitle(DecodeString(stream.ReadCString(MAX_STRING_SIZE)));
-        target.SetAuthor(DecodeString(stream.ReadCString(MAX_STRING_SIZE)));
-        target.SetComment(DecodeString(stream.ReadCString(MAX_COMMENT_SIZE)));
+        auto& meta = target.GetMetaBuilder();
+        meta.SetTitle(Strings::Sanitize(stream.ReadCString(MAX_STRING_SIZE)));
+        meta.SetAuthor(Strings::Sanitize(stream.ReadCString(MAX_STRING_SIZE)));
+        meta.SetComment(Strings::SanitizeMultiline(stream.ReadCString(MAX_COMMENT_SIZE)));
 
         const Container container(data);
         for (uint_t chan = 0; chan != 6; ++chan)
         {
           target.StartChannel(chan);
           Context context;
-          for (std::size_t cursor = fromLE(header.Offsets[chan]); cursor != 0;)
+          for (std::size_t cursor = header.Offsets[chan]; cursor != 0;)
           {
             if ((cursor = container.ParseFrameControl(cursor, target, context)))
             {
@@ -314,7 +304,7 @@ namespace Chiptune
             }
           }
         }
-        Require(container.GetMin() < container.GetMax());//anything parsed
+        Require(container.GetMin() < container.GetMax());  // anything parsed
 
         const std::size_t usedSize = std::max(container.GetMax(), stream.GetPosition());
         const std::size_t fixedOffset = container.GetMin();
@@ -323,7 +313,7 @@ namespace Chiptune
       }
       catch (const std::exception&)
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
 
@@ -332,11 +322,10 @@ namespace Chiptune
       static StubBuilder stub;
       return stub;
     }
-  }//namespace TFC
+  }  // namespace TFC
 
   Decoder::Ptr CreateTFCDecoder()
   {
     return MakePtr<TFC::Decoder>();
   }
-}//namespace Chiptune
-}//namespace Formats
+}  // namespace Formats::Chiptune

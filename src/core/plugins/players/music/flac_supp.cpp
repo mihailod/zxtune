@@ -1,55 +1,43 @@
 /**
-* 
-* @file
-*
-* @brief  FLAC support plugin
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  FLAC support plugin
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-//common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/input_stream.h>
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/decoders.h>
-#include <formats/chiptune/music/flac.h>
-#include <module/players/analyzer.h>
-#include <module/players/properties_helper.h>
-#include <module/players/properties_meta.h>
-#include <module/players/streaming.h>
-#include <parameters/tracking_helper.h>
-#include <sound/render_params.h>
-#include <sound/resampler.h>
-//3rdparty
-#define FLAC__NO_DLL
-#include <3rdparty/FLAC/stream_decoder.h>
+#include "formats/chiptune/music/flac.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
 
-#define FILE_TAG B064CB05
+#include "binary/input_stream.h"
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "sound/resampler.h"
 
-namespace Module
-{
-namespace Flac
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
+#include "3rdparty/FLAC/stream_decoder.h"
+
+namespace Module::Flac
 {
   const Debug::Stream Dbg("Core::FlacSupp");
-  
+
   struct Model
   {
     using RWPtr = std::shared_ptr<Model>;
     using Ptr = std::shared_ptr<const Model>;
-    
+
     uint_t Frequency = 0;
     uint_t TotalSamples = 0;
-    uint_t FramesCount = 0;
     uint_t MaxFrameSize = 0;
-    uint_t SamplesPerFrame = 0;
     Binary::Data::Ptr Content;
   };
 
@@ -102,14 +90,14 @@ namespace Flac
   };
 
   template<uint_t width>
-  static Sound::Sample MakeMonoSample(int32_t val)
+  Sound::Sample MakeMonoSample(int32_t val)
   {
     const auto converted = SampleTraits<width>::ConvertChannel(val);
     return Sound::Sample(converted, converted);
   }
 
   template<uint_t width>
-  static Sound::Sample MakeStereoSample(int32_t left, int32_t right)
+  Sound::Sample MakeStereoSample(int32_t left, int32_t right)
   {
     return Sound::Sample(SampleTraits<width>::ConvertChannel(left), SampleTraits<width>::ConvertChannel(right));
   }
@@ -119,33 +107,28 @@ namespace Flac
   public:
     explicit FlacTune(Model::Ptr data)
       : Data(std::move(data))
-      , Decoder( ::FLAC__stream_decoder_new(), &::FLAC__stream_decoder_delete)
+      , Decoder(::FLAC__stream_decoder_new(), &::FLAC__stream_decoder_delete)
       , Stream(*Data->Content)
     {
       static_assert(Sound::Sample::BITS == 16, "Incompatible sound sample bits count");
       static_assert(Sound::Sample::MID == 0, "Incompatible sound sample type");
       Require(Decoder.get());
       const auto status = ::FLAC__stream_decoder_init_stream(Decoder.get(), &DoRead, &DoSeek, &DoTell, &DoSize, &DoEof,
-        &DoWrite, nullptr, &DoError, this);
+                                                             &DoWrite, nullptr, &DoError, this);
       if (status != FLAC__STREAM_DECODER_INIT_STATUS_OK)
       {
-        throw MakeFormattedError(THIS_LINE, "Failed to init decoder. Status: %1%",
-          std::string( ::FLAC__StreamDecoderInitStatusString[status]));
+        throw MakeFormattedError(THIS_LINE, "Failed to create decoder. Error: {}",
+                                 ::FLAC__StreamDecoderInitStatusString[status]);
       }
       Reset();
     }
-    
-    uint_t GetFrequency() const
-    {
-      return Data->Frequency;
-    }
-    
+
     Sound::Chunk RenderFrame()
     {
       while (Chunk.empty())
       {
         Chunk.reserve(Data->MaxFrameSize);
-        Require( ::FLAC__stream_decoder_process_single(Decoder.get()));
+        Require(::FLAC__stream_decoder_process_single(Decoder.get()));
         const auto state = ::FLAC__stream_decoder_get_state(Decoder.get());
         if (state == FLAC__STREAM_DECODER_SEARCH_FOR_FRAME_SYNC)
         {
@@ -158,37 +141,36 @@ namespace Flac
       }
       return std::move(Chunk);
     }
-    
+
     void Reset()
     {
-      Require( ::FLAC__stream_decoder_reset(Decoder.get()));
-      Require( ::FLAC__stream_decoder_process_until_end_of_metadata(Decoder.get()));
+      Require(::FLAC__stream_decoder_reset(Decoder.get()));
+      Require(::FLAC__stream_decoder_process_until_end_of_metadata(Decoder.get()));
       Chunk.clear();
     }
-    
-    void Seek(uint_t frame)
+
+    void Seek(uint64_t sample)
     {
-      const auto sample = uint64_t(Data->SamplesPerFrame) * frame;
-      if (! ::FLAC__stream_decoder_seek_absolute(Decoder.get(), sample))
+      if (!::FLAC__stream_decoder_seek_absolute(Decoder.get(), sample))
       {
         throw Error(THIS_LINE, "Failed to seek");
       }
     }
+
   private:
     static Binary::DataInputStream& GetStream(void* param)
     {
       return static_cast<FlacTune*>(param)->Stream;
     }
 
-    static FLAC__StreamDecoderReadStatus DoRead(const FLAC__StreamDecoder* /*decoder*/, FLAC__byte buffer[], std::size_t* bytes, void* param)
+    static FLAC__StreamDecoderReadStatus DoRead(const FLAC__StreamDecoder* /*decoder*/, FLAC__byte buffer[],
+                                                std::size_t* bytes, void* param)
     {
       if (*bytes > 0)
       {
         auto& stream = GetStream(param);
         *bytes = stream.Read(buffer, *bytes);
-        return *bytes != 0
-          ? FLAC__STREAM_DECODER_READ_STATUS_CONTINUE
-          : FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
+        return *bytes != 0 ? FLAC__STREAM_DECODER_READ_STATUS_CONTINUE : FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
       }
       else
       {
@@ -196,7 +178,8 @@ namespace Flac
       }
     }
 
-    static FLAC__StreamDecoderSeekStatus DoSeek(const FLAC__StreamDecoder* /*decoder*/, FLAC__uint64 position, void* param)
+    static FLAC__StreamDecoderSeekStatus DoSeek(const FLAC__StreamDecoder* /*decoder*/, FLAC__uint64 position,
+                                                void* param)
     {
       try
       {
@@ -210,14 +193,16 @@ namespace Flac
       }
     }
 
-    static FLAC__StreamDecoderTellStatus DoTell(const FLAC__StreamDecoder* /*decoder*/, FLAC__uint64* position, void* param)
+    static FLAC__StreamDecoderTellStatus DoTell(const FLAC__StreamDecoder* /*decoder*/, FLAC__uint64* position,
+                                                void* param)
     {
       auto& stream = GetStream(param);
       *position = stream.GetPosition();
       return FLAC__STREAM_DECODER_TELL_STATUS_OK;
     }
 
-    static FLAC__StreamDecoderLengthStatus DoSize(const FLAC__StreamDecoder* /*decoder*/, FLAC__uint64* size, void* param)
+    static FLAC__StreamDecoderLengthStatus DoSize(const FLAC__StreamDecoder* /*decoder*/, FLAC__uint64* size,
+                                                  void* param)
     {
       auto& self = *static_cast<FlacTune*>(param);
       *size = self.Data->Content->Size();
@@ -230,7 +215,8 @@ namespace Flac
       return 0 == stream.GetRestSize();
     }
 
-    static FLAC__StreamDecoderWriteStatus DoWrite(const FLAC__StreamDecoder* /*decoder*/, const FLAC__Frame* frame, const FLAC__int32* const buffer[], void* param)
+    static FLAC__StreamDecoderWriteStatus DoWrite(const FLAC__StreamDecoder* /*decoder*/, const FLAC__Frame* frame,
+                                                  const FLAC__int32* const buffer[], void* param)
     {
       auto& self = *static_cast<FlacTune*>(param);
       if (frame->header.sample_rate != self.Data->Frequency)
@@ -241,7 +227,7 @@ namespace Flac
       const auto bits = frame->header.bits_per_sample;
       const auto samplesBefore = self.Chunk.size();
       self.Chunk.resize(samplesBefore + samples);
-      const auto target = self.Chunk.data() + samplesBefore;
+      auto* const target = self.Chunk.data() + samplesBefore;
       switch (frame->header.channels)
       {
       case 1:
@@ -256,13 +242,13 @@ namespace Flac
       return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
     }
 
-    static void DoError(const FLAC__StreamDecoder* /*decoder*/, FLAC__StreamDecoderErrorStatus /*status*/, void *param)
+    static void DoError(const FLAC__StreamDecoder* /*decoder*/, FLAC__StreamDecoderErrorStatus /*status*/, void* param)
     {
       auto& self = *static_cast<FlacTune*>(param);
       self.Chunk.clear();
     }
 
-    void RenderMono(const int32_t* mono, Sound::Sample* target, uint_t samples, uint_t width)
+    static void RenderMono(const int32_t* mono, Sound::Sample* target, uint_t samples, uint_t width)
     {
       switch (width)
       {
@@ -286,7 +272,8 @@ namespace Flac
       }
     }
 
-    void RenderStereo(const int32_t* left, const int32_t* right, Sound::Sample* target, uint_t samples, uint_t width)
+    static void RenderStereo(const int32_t* left, const int32_t* right, Sound::Sample* target, uint_t samples,
+                             uint_t width)
     {
       switch (width)
       {
@@ -309,6 +296,7 @@ namespace Flac
         break;
       }
     }
+
   private:
     const Model::Ptr Data;
     using FlacPtr = std::shared_ptr<FLAC__StreamDecoder>;
@@ -316,100 +304,60 @@ namespace Flac
     Binary::DataInputStream Stream;
     Sound::Chunk Chunk;
   };
-  
+
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(Model::Ptr data, StateIterator::Ptr iterator, Sound::Receiver::Ptr target, Parameters::Accessor::Ptr params)
-      : Tune(std::move(data))
-      , Iterator(std::move(iterator))
-      , State(Iterator->GetStateObserver())
-      , Analyzer(Module::CreateSoundAnalyzer())
-      , SoundParams(Sound::RenderParameters::Create(std::move(params)))
+    Renderer(const Model::Ptr& data, Sound::Converter::Ptr target)
+      : Tune(data)
+      , State(MakePtr<SampledState>(data->TotalSamples, data->Frequency))
       , Target(std::move(target))
-      , Looped()
-    {
-      ApplyParameters();
-    }
+    {}
 
     Module::State::Ptr GetState() const override
     {
       return State;
     }
 
-    Module::Analyzer::Ptr GetAnalyzer() const override
+    Sound::Chunk Render() override
     {
-      return Analyzer;
-    }
-
-    bool RenderFrame() override
-    {
-      try
+      auto frame = Tune.RenderFrame();
+      if (0 != State->Consume(frame.size()))
       {
-        ApplyParameters();
-
-        auto frame = Tune.RenderFrame();
-        Analyzer->AddSoundData(frame);
-        Resampler->ApplyData(std::move(frame));
-        Iterator->NextFrame(Looped);
-        if (0 == State->Frame())
-        {
-          Tune.Seek(0);
-        }
-        return Iterator->IsValid();
+        Tune.Seek(0);
       }
-      catch (const std::exception&)
-      {
-        return false;
-      }
+      return Target->Apply(std::move(frame));
     }
 
     void Reset() override
     {
       Tune.Reset();
-      SoundParams.Reset();
-      Iterator->Reset();
-      Looped = {};
+      State->Reset();
     }
 
-    void SetPosition(uint_t frame) override
+    void SetPosition(Time::AtMillisecond request) override
     {
-      Tune.Seek(frame);
-      Module::SeekIterator(*Iterator, frame);
+      State->Seek(request);
+      Tune.Seek(State->AtSample());
     }
-  private:
-    void ApplyParameters()
-    {
-      if (SoundParams.IsChanged())
-      {
-        Looped = SoundParams->Looped();
-        Resampler = Sound::CreateResampler(Tune.GetFrequency(), SoundParams->SoundFreq(), Target);
-      }
-    }
+
   private:
     FlacTune Tune;
-    const StateIterator::Ptr Iterator;
-    const Module::State::Ptr State;
-    const Module::SoundAnalyzer::Ptr Analyzer;
-    Parameters::TrackingHelper<Sound::RenderParameters> SoundParams;
-    const Sound::Receiver::Ptr Target;
-    Sound::Receiver::Ptr Resampler;
-    Sound::LoopParameters Looped;
+    const SampledState::Ptr State;
+    const Sound::Converter::Ptr Target;
   };
-  
+
   class Holder : public Module::Holder
   {
   public:
     Holder(Model::Ptr data, Parameters::Accessor::Ptr props)
       : Data(std::move(data))
-      , Info(CreateStreamInfo(Data->FramesCount))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     Module::Information::Ptr GetModuleInformation() const override
     {
-      return Info;
+      return CreateSampledInfo(Data->Frequency, Data->TotalSamples);
     }
 
     Parameters::Accessor::Ptr GetModuleProperties() const override
@@ -417,16 +365,16 @@ namespace Flac
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
     {
-      return MakePtr<Renderer>(Data, Module::CreateStreamStateIterator(Info), target, params);
+      return MakePtr<Renderer>(Data, Sound::CreateResampler(Data->Frequency, samplerate));
     }
+
   private:
     const Model::Ptr Data;
-    const Information::Ptr Info;
     const Parameters::Accessor::Ptr Properties;
   };
-  
+
   class DataBuilder : public Formats::Chiptune::Flac::Builder
   {
   public:
@@ -434,8 +382,7 @@ namespace Flac
       : Data(MakeRWPtr<Model>())
       , Properties(props)
       , Meta(props)
-    {
-    }
+    {}
 
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
@@ -464,34 +411,31 @@ namespace Flac
       Data->Content = std::move(data);
     }
 
-    void AddFrame(std::size_t /*offset*/) override
-    {
-      ++Data->FramesCount;
-    }
-    
+    void AddFrame(std::size_t /*offset*/) override {}
+
     Model::Ptr GetResult()
     {
-      if (Data->TotalSamples && Data->FramesCount)
+      if (Data->TotalSamples)
       {
-        Data->SamplesPerFrame = Data->TotalSamples / Data->FramesCount;
-        Properties.SetFramesParameters(Data->SamplesPerFrame, Data->Frequency); 
         return Data;
       }
       else
       {
-        return Model::Ptr();
+        return {};
       }
     }
+
   private:
     const Model::RWPtr Data;
     PropertiesHelper& Properties;
     MetaProperties Meta;
   };
-  
+
   class Factory : public Module::Factory
   {
   public:
-    Module::Holder::Ptr CreateModule(const Parameters::Accessor& params, const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    Module::Holder::Ptr CreateModule(const Parameters::Accessor& /*params*/, const Binary::Container& rawData,
+                                     Parameters::Container::Ptr properties) const override
     {
       try
       {
@@ -499,36 +443,33 @@ namespace Flac
         DataBuilder dataBuilder(props);
         if (const auto container = Formats::Chiptune::Flac::Parse(rawData, dataBuilder))
         {
-          if (const auto data = dataBuilder.GetResult())
+          if (auto data = dataBuilder.GetResult())
           {
             props.SetSource(*container);
             dataBuilder.SetContent(container);
-            return MakePtr<Holder>(data, properties);
+            return MakePtr<Holder>(std::move(data), std::move(properties));
           }
         }
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create FLAC: %s", e.what());
+        Dbg("Failed to create FLAC: {}", e.what());
       }
-      return Module::Holder::Ptr();
+      return {};
     }
   };
-}
-}
+}  // namespace Module::Flac
 
 namespace ZXTune
 {
   void RegisterFLACPlugin(PlayerPluginsRegistrator& registrator)
   {
-    const Char ID[] = {'F', 'L', 'A', 'C', 0};
+    const auto ID = "FLAC"_id;
     const uint_t CAPS = Capabilities::Module::Type::STREAM | Capabilities::Module::Device::DAC;
 
-    const auto decoder = Formats::Chiptune::CreateFLACDecoder();
-    const auto factory = MakePtr<Module::Flac::Factory>();
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, CAPS, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::CreateFLACDecoder();
+    auto factory = MakePtr<Module::Flac::Factory>();
+    auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
-}
-
-#undef FILE_TAG
+}  // namespace ZXTune

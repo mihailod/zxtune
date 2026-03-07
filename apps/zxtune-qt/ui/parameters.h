@@ -1,33 +1,26 @@
 /**
-* 
-* @file
-*
-* @brief UI parameters definition
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief UI parameters definition
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "app_parameters.h"
+#include "apps/zxtune-qt/app_parameters.h"
 
-namespace Parameters
+namespace Parameters::ZXTuneQT::UI
 {
-  namespace ZXTuneQT
-  {
-    namespace UI
-    {
-      const NameType PREFIX = ZXTuneQT::PREFIX + "UI";
+  const auto PREFIX = ZXTuneQT::PREFIX + "UI"_id;
 
-      const NameType LANGUAGE = PREFIX + "Language";
+  const auto LANGUAGE = PREFIX + "Language"_id;
 
-      const std::string PARAM_GEOMETRY("Geometry");
-      const std::string PARAM_LAYOUT("Layout");
-      const std::string PARAM_VISIBLE("Visible");
-      const std::string PARAM_INDEX("Index");
-      const std::string PARAM_SIZE("Size");
-    }
-  }
-}
+  const auto PARAM_GEOMETRY = "Geometry"sv;
+  const auto PARAM_LAYOUT = "Layout"sv;
+  const auto PARAM_VISIBLE = "Visible"sv;
+  const auto PARAM_INDEX = "Index"sv;
+  const auto PARAM_SIZE = "Size"sv;
+}  // namespace Parameters::ZXTuneQT::UI

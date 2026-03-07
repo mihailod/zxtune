@@ -1,34 +1,29 @@
 /**
-* 
-* @file
-*
-* @brief  DAC sample interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  DAC sample interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <sound/sample.h>
-//std includes
+#include "sound/sample.h"
+
 #include <memory>
 
-namespace Devices
+namespace Devices::DAC
 {
-  namespace DAC
+  class Sample
   {
-    class Sample
-    {
-    public:
-      typedef std::shared_ptr<const Sample> Ptr;
-      virtual ~Sample() = default;
+  public:
+    using Ptr = std::unique_ptr<const Sample>;
+    virtual ~Sample() = default;
 
-      virtual Sound::Sample::Type Get(std::size_t pos) const = 0;
-      virtual std::size_t Size() const = 0;
-      virtual std::size_t Loop() const = 0;
-      virtual uint_t Rms() const = 0;
-    };
-  }
-}
+    virtual Sound::Sample::Type Get(std::size_t pos) const = 0;
+    virtual std::size_t Size() const = 0;
+    virtual std::size_t Loop() const = 0;
+  };
+}  // namespace Devices::DAC

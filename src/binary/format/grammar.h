@@ -1,21 +1,18 @@
 /**
-*
-* @file
-*
-* @brief  Format grammar declaration
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Format grammar declaration
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "lexic_analysis.h"
+#include "binary/format/lexic_analysis.h"
 
-namespace Binary
-{
-namespace FormatDSL
+namespace Binary::FormatDSL
 {
   const LexicalAnalysis::TokenType DELIMITER = 0;
   const LexicalAnalysis::TokenType CONSTANT = 1;
@@ -44,5 +41,4 @@ namespace FormatDSL
   const char DELIMITER_TEXT = ',';
 
   LexicalAnalysis::Grammar::Ptr CreateFormatGrammar();
-}
-}
+}  // namespace Binary::FormatDSL

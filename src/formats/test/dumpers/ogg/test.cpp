@@ -1,45 +1,60 @@
 /**
-*
-* @file
-*
-* @brief  OGG dumper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  OGG dumper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../../utils.h"
-#include <formats/chiptune/music/oggvorbis.h>
-#include <strings/format.h>
+#include "formats/chiptune/music/oggvorbis.h"
+#include "formats/test/utils.h"
+
+#include "strings/format.h"
+
+#include "string_view.h"
 
 namespace
 {
   using namespace Formats::Chiptune;
 
-  class OggBuilder : public OggVorbis::Builder, public MetaBuilder
+  class OggBuilder
+    : public OggVorbis::Builder
+    , public MetaBuilder
   {
   public:
-    void SetProgram(const String& program) override
+    void SetProgram(StringView program) override
     {
       std::cout << "Program: " << program << std::endl;
     }
-    
-    void SetTitle(const String& title) override
+
+    void SetTitle(StringView title) override
     {
       std::cout << "Title: " << title << std::endl;
     }
-    
-    void SetAuthor(const String& author) override
+
+    void SetAuthor(StringView author) override
     {
       std::cout << "Author: " << author << std::endl;
     }
-    
+
     void SetStrings(const Strings::Array& strings) override
     {
       for (const auto& str : strings)
       {
-        std::cout << "Strings: " <<  str << std::endl;
+        std::cout << "Strings: " << str << std::endl;
       }
+    }
+
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
+    }
+
+    void SetPicture(Binary::View content) override
+    {
+      std::cout << "Picture: " << content.Size() << " bytes" << std::endl;
     }
 
     MetaBuilder& GetMetaBuilder() override
@@ -51,7 +66,12 @@ namespace
     {
       std::cout << "StreamId: " << id << std::endl;
     }
-    
+
+    void AddUnknownPacket(Binary::View data) override
+    {
+      std::cout << "Unknown data for " << data.Size() << " bytes" << std::endl;
+    }
+
     void SetProperties(uint_t channels, uint_t frequency, uint_t blockSizeLo, uint_t blockSizeHi) override
     {
       std::cout << "Channels: " << channels << std::endl
@@ -59,18 +79,19 @@ namespace
                 << "BlockSizeLo: " << blockSizeLo << std::endl
                 << "BlockSizeHi: " << blockSizeHi << std::endl;
     }
-    
+
     void SetSetup(Binary::View data) override
     {
       std::cout << "Setup: " << data.Size() << " bytes" << std::endl;
     }
-    
-    void AddFrame(std::size_t offset, uint_t samplesCount, Binary::View data) override
+
+    void AddFrame(std::size_t offset, uint64_t positionInFrames, Binary::View data) override
     {
-      std::cout << Strings::Format("Frame: @%1%(0x%1$08x) %2% samples, %3% bytes\n", offset, samplesCount, data.Size());
+      std::cout << Strings::Format("Frame: @{0} (0x{0:08x}) at frame {1}, {2} bytes\n", offset, positionInFrames,
+                                   data.Size());
     }
   };
-}
+}  // namespace
 
 int main(int argc, char* argv[])
 {
@@ -80,9 +101,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Dump> rawData(new Dump());
-    Test::OpenFile(argv[1], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[1]);
     OggBuilder builder;
     if (const auto result = Formats::Chiptune::OggVorbis::Parse(*data, builder))
     {

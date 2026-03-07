@@ -1,36 +1,34 @@
 /**
-*
-* @file
-*
-* @brief  SharedLibrary implementation for Windows
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SharedLibrary implementation for Windows
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "platform/src/shared_library_common.h"
-//common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-//library includes
-#include <l10n/api.h>
-//platform includes
+
+#include "l10n/api.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <windows.h>
 //std includes
 #include <iterator>
 
-#define FILE_TAG 326CACD8
+#include <algorithm>
 
 namespace
 {
   const L10n::TranslateFunctor translate = L10n::TranslateFunctor("platform");
 }
 
-namespace Platform
-{
-namespace Details
+namespace Platform::Details
 {
   class WindowsSharedLibrary : public SharedLibrary
   {
@@ -49,58 +47,57 @@ namespace Details
       }
     }
 
-    void* GetSymbol(const std::string& name) const override
+    void* GetSymbol(const String& name) const override
     {
       if (void* res = reinterpret_cast<void*>(::GetProcAddress(Handle, name.c_str())))
       {
         return res;
       }
-      throw MakeFormattedError(THIS_LINE,
-        translate("Failed to find symbol '%1%' in dynamic library."), FromStdString(name));
+      throw MakeFormattedError(THIS_LINE, translate("Failed to find symbol '{}' in dynamic library."), name);
     }
+
   private:
     const HMODULE Handle;
   };
 
-  //TODO: String GetWindowsError()
+  // TODO: String GetWindowsError()
   uint_t GetWindowsError()
   {
     return ::GetLastError();
   }
 
-  const std::string SUFFIX(".dll");
-  
-  std::string BuildLibraryFilename(const std::string& name)
+  const auto SUFFIX = ".dll"sv;
+
+  String BuildLibraryFilename(StringView name)
   {
-    return name + SUFFIX;
+    // TODO: Concat(StringView...)
+    return String(name).append(SUFFIX);
   }
 
-  Error LoadSharedLibrary(const std::string& fileName, SharedLibrary::Ptr& res)
+  Error LoadSharedLibrary(const String& fileName, SharedLibrary::Ptr& res)
   {
     if (HMODULE handle = ::LoadLibrary(fileName.c_str()))
     {
       res = MakePtr<WindowsSharedLibrary>(handle);
       return Error();
     }
-    return MakeFormattedError(THIS_LINE,
-      translate("Failed to load dynamic library '%1%' (error code is %2%)."), FromStdString(fileName), GetWindowsError());
+    return MakeFormattedError(THIS_LINE, translate("Failed to load dynamic library '{0}' (error code is {1})."),
+                              fileName, GetWindowsError());
   }
 
-
-  std::string GetSharedLibraryFilename(const std::string& name)
+  String GetSharedLibraryFilename(StringView name)
   {
-    return name.find(SUFFIX) == name.npos
-      ? BuildLibraryFilename(name)
-      : name;
+    return name.find(SUFFIX) == name.npos ? BuildLibraryFilename(name) : String{name};
   }
 
-  std::vector<std::string> GetSharedLibraryFilenames(const SharedLibrary::Name& name)
+  std::vector<String> GetSharedLibraryFilenames(const SharedLibrary::Name& name)
   {
-    std::vector<std::string> res;
-    res.push_back(GetSharedLibraryFilename(name.Base()));
-    const std::vector<std::string>& alternatives = name.WindowsAlternatives();
-    std::transform(alternatives.begin(), alternatives.end(), std::back_inserter(res), std::ptr_fun(&GetSharedLibraryFilename));
+    std::vector<String> res;
+    res.emplace_back(GetSharedLibraryFilename(name.Base()));
+    for (const auto& alt : name.WindowsAlternatives())
+    {
+      res.emplace_back(GetSharedLibraryFilename(alt));
+    }
     return res;
   }
-}
-}
+}  // namespace Platform::Details

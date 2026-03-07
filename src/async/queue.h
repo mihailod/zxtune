@@ -1,16 +1,15 @@
 /**
-* 
-* @file
-*
-* @brief Typed thread-safe queue interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Typed thread-safe queue interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//std includes
 #include <memory>
 
 namespace Async
@@ -19,7 +18,7 @@ namespace Async
   class Queue
   {
   public:
-    typedef std::shared_ptr<Queue<T> > Ptr;
+    using Ptr = std::shared_ptr<Queue<T>>;
 
     virtual ~Queue() = default;
 
@@ -34,4 +33,4 @@ namespace Async
     //! @brief Wait until queue become empty
     virtual void Flush() = 0;
   };
-}
+}  // namespace Async

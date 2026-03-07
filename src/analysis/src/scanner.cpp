@@ -1,21 +1,21 @@
 /**
-* 
-* @file
-*
-* @brief Scanner implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Scanner implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
-#include <contract.h>
-#include <iterator.h>
-#include <make_ptr.h>
-//library includes
-#include <analysis/scanner.h>
-#include <debug/log.h>
-//std includes
+#include "analysis/scanner.h"
+
+#include "debug/log.h"
+#include "tools/iterators.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <deque>
 #include <list>
 
@@ -47,7 +47,7 @@ namespace Analysis
 
     DecoderPtrType FetchDecoder()
     {
-      const DecoderPtrType result = Storage.front().Decoder;
+      auto result = Storage.front().Decoder;
       Storage.pop_front();
       return result;
     }
@@ -61,6 +61,7 @@ namespace Analysis
       }
       Storage.swap(other);
     }
+
   private:
     struct PositionAndDecoder
     {
@@ -70,15 +71,14 @@ namespace Analysis
       PositionAndDecoder(std::size_t pos, DecoderPtrType decoder)
         : Position(pos)
         , Decoder(std::move(decoder))
-      {
-      }
+      {}
 
-      bool operator < (const PositionAndDecoder& rh) const
+      bool operator<(const PositionAndDecoder& rh) const
       {
         return Position < rh.Position;
       }
     };
-    typedef std::list<PositionAndDecoder> StorageType;
+    using StorageType = std::list<PositionAndDecoder>;
     StorageType Storage;
   };
 
@@ -89,9 +89,7 @@ namespace Analysis
       : Delegate(delegate)
       , Limit(Delegate.Size())
       , Content(static_cast<const uint8_t*>(Delegate.Start()))
-      , Offset(0)
-    {
-    }
+    {}
 
     std::size_t GetOffset() const
     {
@@ -119,7 +117,7 @@ namespace Analysis
       Offset = Limit;
     }
 
-    //Binary::Container
+    // Binary::Container
     const void* Start() const override
     {
       return Content + Offset;
@@ -134,11 +132,12 @@ namespace Analysis
     {
       return Delegate.GetSubcontainer(Offset + offset, size);
     }
+
   private:
     const Binary::Container& Delegate;
     const std::size_t Limit;
     const uint8_t* const Content;
-    std::size_t Offset;
+    std::size_t Offset = 0;
   };
 
   template<class Traits>
@@ -150,8 +149,7 @@ namespace Analysis
       , Base(base)
       , Window(data)
       , Unrecognized(data)
-    {
-    }
+    {}
 
     void Scan(Scanner::Target& target)
     {
@@ -167,6 +165,7 @@ namespace Analysis
       }
       FlushUnrecognized(target);
     }
+
   private:
     bool IsFinished() const
     {
@@ -216,7 +215,7 @@ namespace Analysis
       if (const typename Traits::Container::Ptr result = decoder->Decode(Window))
       {
         const std::size_t used = Traits::GetUsedSize(*result);
-        Dbg("Found %1% at %2%+%3% in %4% bytes", decoder->GetDescription(), Base, Window.GetOffset(), used);
+        Dbg("Found {} at {}+{} in {} bytes", decoder->GetDescription(), Base, Window.GetOffset(), used);
         FlushUnrecognized(target);
         target.Apply(*decoder, Base + Window.GetOffset(), result);
         Schedule(decoder, used);
@@ -237,23 +236,23 @@ namespace Analysis
       const std::size_t unmatchedAt = Unrecognized.GetOffset();
       if (till > unmatchedAt)
       {
-        Dbg("Unrecognized %1%+(%2%..%3%)", Base, unmatchedAt, till);
+        Dbg("Unrecognized {}+({}..{})", Base, unmatchedAt, till);
         target.Apply(Base + unmatchedAt, Unrecognized.GetSubcontainer(0, till - unmatchedAt));
       }
     }
 
     void Schedule(typename Traits::Decoder::Ptr decoder, std::size_t delta)
     {
-      const String id = decoder->GetDescription();
+      const auto id = decoder->GetDescription();
       if (delta != Window.Size())
       {
         const std::size_t nextPos = Window.GetOffset() + delta;
-        Dbg("Skip %1% for %2% bytes (check at %3%+%4%)", id, delta, Base, nextPos);
+        Dbg("Skip {} for {} bytes (check at {}+{})", id, delta, Base, nextPos);
         Scheduled.Add(nextPos, decoder);
       }
       else
       {
-        Dbg("Disable %1% for future scans", id);
+        Dbg("Disable {} for future scans", id);
       }
     }
 
@@ -267,9 +266,10 @@ namespace Analysis
 
     void Reschedule(typename Traits::Decoder::Ptr decoder)
     {
-      Dbg("Schedule to check %1% at %2%", decoder->GetDescription(), Window.GetOffset());
+      Dbg("Schedule to check {} at {}", decoder->GetDescription(), Window.GetOffset());
       Scheduled.Add(Window.GetOffset(), decoder);
     }
+
   private:
     RangeIterator<typename Traits::DecodersList::const_iterator> Unprocessed;
     DecodersQueue<typename Traits::Decoder::Ptr> Scheduled;
@@ -280,9 +280,9 @@ namespace Analysis
 
   struct ArchivedDataTraits
   {
-    typedef Archived::Decoder Decoder;
-    typedef Archived::Container Container;
-    typedef std::deque<Decoder::Ptr> DecodersList;
+    using Decoder = Archived::Decoder;
+    using Container = Archived::Container;
+    using DecodersList = std::deque<Decoder::Ptr>;
 
     static std::size_t GetUsedSize(const Container& container)
     {
@@ -292,9 +292,9 @@ namespace Analysis
 
   struct PackedDataTraits
   {
-    typedef Packed::Decoder Decoder;
-    typedef Packed::Container Container;
-    typedef std::deque<Decoder::Ptr> DecodersList;
+    using Decoder = Packed::Decoder;
+    using Container = Packed::Container;
+    using DecodersList = std::deque<Decoder::Ptr>;
 
     static std::size_t GetUsedSize(const Container& container)
     {
@@ -304,9 +304,9 @@ namespace Analysis
 
   struct ImageDataTraits
   {
-    typedef Image::Decoder Decoder;
-    typedef Image::Container Container;
-    typedef std::deque<Decoder::Ptr> DecodersList;
+    using Decoder = Image::Decoder;
+    using Container = Image::Container;
+    using DecodersList = std::deque<Decoder::Ptr>;
 
     static std::size_t GetUsedSize(const Container& container)
     {
@@ -316,9 +316,9 @@ namespace Analysis
 
   struct ChiptuneDataTraits
   {
-    typedef Chiptune::Decoder Decoder;
-    typedef Chiptune::Container Container;
-    typedef std::deque<Decoder::Ptr> DecodersList;
+    using Decoder = Chiptune::Decoder;
+    using Container = Chiptune::Container;
+    using DecodersList = std::deque<Decoder::Ptr>;
 
     static std::size_t GetUsedSize(const Container& container)
     {
@@ -338,12 +338,12 @@ namespace Analysis
   class DecodeUnrecognizedTarget : public Scanner::Target
   {
   public:
-    DecodeUnrecognizedTarget(const typename Traits::DecodersList& decoders, Scanner::Target& recognized, Scanner::Target& unrecognized)
+    DecodeUnrecognizedTarget(const typename Traits::DecodersList& decoders, Scanner::Target& recognized,
+                             Scanner::Target& unrecognized)
       : Decoders(decoders)
       , Recognized(recognized)
       , Unrecognized(unrecognized)
-    {
-    }
+    {}
 
     void Apply(const Archived::Decoder& decoder, std::size_t offset, Archived::Container::Ptr data) override
     {
@@ -373,13 +373,12 @@ namespace Analysis
 
     Scanner::Target& GetUnrecognizedTarget()
     {
-      return Decoders.empty()
-        ? Unrecognized
-        : *this;
+      return Decoders.empty() ? Unrecognized : *this;
     }
+
   private:
     const typename Traits::DecodersList& Decoders;
-    Scanner::Target& Recognized; 
+    Scanner::Target& Recognized;
     Scanner::Target& Unrecognized;
   };
 
@@ -408,7 +407,7 @@ namespace Analysis
 
     void Scan(Binary::Container::Ptr data, Target& target) const override
     {
-      //order: Archive -> Packed -> Image -> Chiptune -> unrecognized with possible skipping
+      // order: Archive -> Packed -> Image -> Chiptune -> unrecognized with possible skipping
       DecodeUnrecognizedTarget<ChiptuneDataTraits> chiptune(Decoders.Chiptune, target, target);
       DecodeUnrecognizedTarget<ImageDataTraits> image(Decoders.Image, target, chiptune.GetUnrecognizedTarget());
       DecodeUnrecognizedTarget<PackedDataTraits> packed(Decoders.Packed, target, image.GetUnrecognizedTarget());
@@ -416,10 +415,11 @@ namespace Analysis
 
       archived.Apply(0, data);
     }
+
   private:
     DecodersSet Decoders;
   };
-}
+}  // namespace Analysis
 
 namespace Analysis
 {
@@ -427,4 +427,4 @@ namespace Analysis
   {
     return MakeRWPtr<LinearScanner>();
   }
-}
+}  // namespace Analysis

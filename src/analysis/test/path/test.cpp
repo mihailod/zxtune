@@ -1,14 +1,15 @@
 /**
-* 
-* @file
-*
-* @brief Test for Analysis::Path
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Test for Analysis::Path
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <analysis/path.h>
+#include "analysis/path.h"
+
 #include <iostream>
 
 namespace
@@ -17,33 +18,23 @@ namespace
   {
     std::cout << (res ? "Passed" : "Failed") << " test '" << text << "' " << std::endl;
     if (!res)
+    {
       throw 1;
+    }
   }
 
-  void TestPath(const String& context, const Analysis::Path& path, const String& val,
-    const String& first = String(), const String& second = String(), const String& third = String())
+  void TestPath(const String& context, const Analysis::Path& path, const String& val, const String& first = String(),
+                const String& second = String(), const String& third = String())
   {
     Test(path.Empty() == val.empty(), context + " Empty");
     const String asStr = path.AsString();
     Test(asStr == val, context + " AsString");
-    const Analysis::Path::Iterator::Ptr iter = path.GetIterator();
-    Test(iter->IsValid() == !val.empty(), context + " GetIterator");
-    if (!first.empty())
-    {
-      Test(iter->IsValid() && iter->Get() == first, context + " check iterator step 1");
-      iter->Next();
-      if (!second.empty())
-      {
-        Test(iter->IsValid() && iter->Get() == second, context + " check iterator step 2");
-        iter->Next();
-        if (!third.empty())
-        {
-          Test(iter->IsValid() && iter->Get() == third, context + " check iterator step 3");
-          iter->Next();
-        }
-      }
-    }
-    Test(!iter->IsValid(), context + " check iterator at end");
+    const auto elems = path.Elements();
+    Test(!elems.empty() == !val.empty(), context + " Elements");
+    Test(elems.size() == std::size_t(!first.empty() + !second.empty() + !third.empty()), "  size()");
+    Test(first.empty() || (elems[0] == first), "  [0]");
+    Test(second.empty() || (elems[1] == second), "  [1]");
+    Test(third.empty() || (elems[2] == third), "  [2]");
   }
 
   const String EMPTY_PATH = String();
@@ -53,7 +44,7 @@ namespace
   const String SINGLE_PATH(FIRST_ELEMENT);
   const String DOUBLE_PATH(FIRST_ELEMENT + '/' + SECOND_ELEMENT);
   const String TREBLE_PATH(FIRST_ELEMENT + '/' + SECOND_ELEMENT + '/' + THIRD_ELEMENT);
-}
+}  // namespace
 
 int main()
 {
@@ -92,7 +83,8 @@ int main()
       TestPath("double element path", *dbl, DOUBLE_PATH, FIRST_ELEMENT, SECOND_ELEMENT);
       TestPath("double element path parent", *dbl->GetParent(), SINGLE_PATH, FIRST_ELEMENT);
       const Analysis::Path::Ptr dblPlusNotEmpty = dbl->Append(THIRD_ELEMENT);
-      TestPath("double path plus not empty", *dblPlusNotEmpty, TREBLE_PATH, FIRST_ELEMENT, SECOND_ELEMENT, THIRD_ELEMENT);
+      TestPath("double path plus not empty", *dblPlusNotEmpty, TREBLE_PATH, FIRST_ELEMENT, SECOND_ELEMENT,
+               THIRD_ELEMENT);
       const Analysis::Path::Ptr dblPlusEmpty = dbl->Append(EMPTY_PATH);
       TestPath("double path plus empty", *dblPlusEmpty, DOUBLE_PATH, FIRST_ELEMENT, SECOND_ELEMENT);
       const Analysis::Path::Ptr dblExtractEmpty = dbl->Extract(EMPTY_PATH);

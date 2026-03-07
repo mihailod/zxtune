@@ -1,22 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  ETracker chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  ETracker chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <module/players/factory.h>
+#include "module/players/factory.h"
 
-namespace Module
+namespace Module::ETracker
 {
-  namespace ETracker
-  {
-    Factory::Ptr CreateFactory();
-  }
-}
+  Factory::Ptr CreateFactory();
+}  // namespace Module::ETracker

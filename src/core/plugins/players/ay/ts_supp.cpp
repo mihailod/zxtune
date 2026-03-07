@@ -1,34 +1,27 @@
 /**
-* 
-* @file
-*
-* @brief  TurboSound containers support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TurboSound containers support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "core/plugins/enumerator.h"
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-#include "core/src/callback.h"
-//common includes
-#include <error.h>
-#include <make_ptr.h>
-//library includes
-#include <core/module_open.h>
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/aym/turbosound.h>
-#include <module/players/properties_helper.h>
-#include <module/players/tracking.h>
-#include <module/players/aym/aym_base.h>
-#include <module/players/aym/turbosound.h>
+#include "formats/chiptune/aym/turbosound.h"
+#include "module/players/aym/aym_base.h"
+#include "module/players/aym/turbosound.h"
+#include "module/players/properties_helper.h"
+#include "module/players/tracking.h"
 
-namespace Module
-{
-namespace TS
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+
+#include "make_ptr.h"
+
+namespace Module::TS
 {
   const Debug::Stream Dbg("Core::TSSupp");
 
@@ -38,8 +31,7 @@ namespace TS
     DataBuilder(const Parameters::Accessor& params, const Binary::Container& data)
       : Params(params)
       , Data(data)
-    {
-    }
+    {}
 
     void SetFirstSubmoduleLocation(std::size_t offset, std::size_t size) override
     {
@@ -71,20 +63,43 @@ namespace TS
     {
       return Second;
     }
+
   private:
     AYM::Chiptune::Ptr LoadChiptune(std::size_t offset, std::size_t size) const
     {
-      const Binary::Container::Ptr content = Data.GetSubcontainer(offset, size);
-      if (const AYM::Holder::Ptr holder = std::dynamic_pointer_cast<const AYM::Holder>(Module::Open(Params, *content)))
+      const auto content = Data.GetSubcontainer(offset, size);
+      if (const auto holder = std::dynamic_pointer_cast<const AYM::Holder>(TryOpenAYModule(*content)))
       {
         return holder->GetChiptune();
       }
       else
       {
-        return AYM::Chiptune::Ptr();
+        return {};
       }
-
     }
+
+    Module::Holder::Ptr TryOpenAYModule(const Binary::Container& data) const
+    {
+      const auto initialProperties = Parameters::Container::Create();
+      for (const auto& plugin : ZXTune::PlayerPlugin::Enumerate())
+      {
+        if (!IsAYPlugin(*plugin))
+        {
+          continue;
+        }
+        if (auto result = plugin->TryOpen(Params, data, initialProperties))
+        {
+          return result;
+        }
+      }
+      return {};
+    }
+
+    static bool IsAYPlugin(const ZXTune::PlayerPlugin& plugin)
+    {
+      return 0 != (plugin.Capabilities() & ZXTune::Capabilities::Module::Device::AY38910);
+    }
+
   private:
     const Parameters::Accessor& Params;
     const Binary::Container& Data;
@@ -97,48 +112,43 @@ namespace TS
   public:
     explicit Factory(Formats::Chiptune::TurboSound::Decoder::Ptr decoder)
       : Decoder(std::move(decoder))
-    {
-    }
+    {}
 
-    Module::Holder::Ptr CreateModule(const Parameters::Accessor& params, const Binary::Container& data, Parameters::Container::Ptr properties) const override
+    Module::Holder::Ptr CreateModule(const Parameters::Accessor& params, const Binary::Container& data,
+                                     Parameters::Container::Ptr properties) const override
     {
-      try
+      DataBuilder dataBuilder(params, data);
+      if (const auto container = Decoder->Parse(data, dataBuilder))
       {
-        DataBuilder dataBuilder(params, data);
-        if (const Formats::Chiptune::Container::Ptr container = Decoder->Parse(data, dataBuilder))
+        if (dataBuilder.HasResult())
         {
-          if (dataBuilder.HasResult())
-          {
-            PropertiesHelper props(*properties);
-            props.SetSource(*container);
-            const TurboSound::Chiptune::Ptr chiptune = TurboSound::CreateChiptune(properties,
-              dataBuilder.GetFirst(), dataBuilder.GetSecond());
-            return TurboSound::CreateHolder(chiptune);
-          }
+          PropertiesHelper props(*properties);
+          props.SetSource(*container);
+          props.SetChannels(TurboSound::MakeChannelsNames());
+          auto chiptune =
+              TurboSound::CreateChiptune(std::move(properties), dataBuilder.GetFirst(), dataBuilder.GetSecond());
+          return TurboSound::CreateHolder(std::move(chiptune));
         }
       }
-      catch (const Error&)
-      {
-      }
-      return Module::Holder::Ptr();
+      return {};
     }
+
   private:
     const Formats::Chiptune::TurboSound::Decoder::Ptr Decoder;
   };
-}
-}
+}  // namespace Module::TS
 
 namespace ZXTune
 {
   void RegisterTSSupport(PlayerPluginsRegistrator& registrator)
   {
-    //plugin attributes
-    const Char ID[] = {'T', 'S', 0};
+    // plugin attributes
+    const auto ID = "TS"_id;
     const uint_t CAPS = Capabilities::Module::Type::MULTI | Capabilities::Module::Device::TURBOSOUND;
 
-    const Formats::Chiptune::TurboSound::Decoder::Ptr decoder = Formats::Chiptune::TurboSound::CreateDecoder();
-    const Module::Factory::Ptr factory = MakePtr<Module::TS::Factory>(decoder);
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, CAPS, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::TurboSound::CreateDecoder();
+    auto factory = MakePtr<Module::TS::Factory>(decoder);
+    auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
-}
+}  // namespace ZXTune

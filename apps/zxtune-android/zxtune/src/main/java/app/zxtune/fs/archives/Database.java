@@ -13,14 +13,13 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.net.Uri;
 
+import java.io.IOException;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import app.zxtune.BuildConfig;
 import app.zxtune.Log;
 import app.zxtune.fs.dbhelpers.DBProvider;
 import app.zxtune.fs.dbhelpers.Objects;
-import app.zxtune.fs.dbhelpers.Transaction;
 import app.zxtune.fs.dbhelpers.Utils;
 
 /*
@@ -101,7 +100,7 @@ import app.zxtune.fs.dbhelpers.Utils;
 class Database {
 
   private static final String NAME = "archives";
-  private static final int VERSION = BuildConfig.VERSION_CODE;
+  private static final int VERSION = BuildConfig.VERSION;
   private static final String TAG = Database.class.getName();
 
   static final class Tables {
@@ -158,7 +157,7 @@ class Database {
         super(helper, NAME, "INSERT", Fields.values().length);
       }
 
-      final void add(Archive obj) {
+      void add(Archive obj) {
         add(obj.path.toString(), obj.modules);
       }
     }
@@ -201,8 +200,8 @@ class Database {
         super(helper, NAME, "INSERT", Fields.values().length);
       }
 
-      final void add(Track obj) {
-        add(obj.path.toString(), obj.description, obj.duration.convertTo(TimeUnit.MILLISECONDS));
+      void add(Track obj) {
+        add(obj.path.toString(), obj.description, obj.duration.toMilliseconds());
       }
     }
 
@@ -254,7 +253,7 @@ class Database {
         super(helper, NAME, "INSERT", Fields.values().length);
       }
 
-      final void add(DirEntry dir) {
+      void add(DirEntry dir) {
         add(dir.path.toString(), dir.parent.toString());
       }
     }
@@ -288,8 +287,8 @@ class Database {
     this.tracks = new Tables.Tracks(dbHelper);
   }
 
-  final Transaction startTransaction() {
-    return Transaction.create(dbHelper.getWritableDatabase());
+  final void runInTransaction(Utils.ThrowingRunnable cmd) throws IOException {
+    Utils.runInTransaction(dbHelper, cmd);
   }
 
   final Cursor queryArchive(Uri path) {

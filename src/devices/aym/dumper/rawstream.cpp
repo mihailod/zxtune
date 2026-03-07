@@ -1,24 +1,22 @@
 /**
-* 
-* @file
-*
-* @brief  Raw stream dumper implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Raw stream dumper implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "devices/aym/dumper/dump_builder.h"
-//common includes
-#include <make_ptr.h>
-//std includes
-#include <algorithm>
-#include <iterator>
 
-namespace Devices
-{
-namespace AYM
+#include "binary/data_builder.h"
+
+#include "make_ptr.h"
+
+#include <algorithm>
+
+namespace Devices::AYM
 {
   class RawDumpBuilder : public FramedDumpBuilder
   {
@@ -27,35 +25,23 @@ namespace AYM
     {
       NO_R13 = 0xff
     };
-    
-    void Initialize() override
-    {
-      Data.clear();
-    }
 
-    void GetResult(Dump& data) const override
+    void Initialize() override {}
+
+    Binary::Data::Ptr GetResult() override
     {
-      data = Data;
+      return Data.CaptureResult();
     }
 
     void WriteFrame(uint_t framesPassed, const Registers& state, const Registers& update) override
     {
-      assert(framesPassed);
-      std::back_insert_iterator<Dump> inserter(Data);
       if (const uint_t toSkip = framesPassed - 1)
       {
-        Dump dup;
-        if (Data.empty())
+        const auto size = Data.Size();
+        auto* target = static_cast<uint8_t*>(Data.Allocate(Registers::TOTAL * toSkip));
+        if (size >= Registers::TOTAL)
         {
-          dup.resize(Registers::TOTAL);
-        }
-        else
-        {
-          dup.assign(Data.end() - Registers::TOTAL, Data.end());
-        }
-        for (uint_t skips = 0; skips < toSkip; ++skips)
-        {
-          std::copy(dup.begin(), dup.end(), inserter);
+          std::copy_n(&Data.Get<uint8_t>(size - Registers::TOTAL), Registers::TOTAL * toSkip, target);
         }
       }
       Registers fixedState(state);
@@ -64,10 +50,11 @@ namespace AYM
         fixedState[Registers::ENV] = NO_R13;
       }
       const uint8_t* const rawStart = &fixedState[Registers::TONEA_L];
-      std::copy(rawStart, rawStart + Registers::TOTAL, inserter);
+      Data.Add(Binary::View{rawStart, Registers::TOTAL});
     }
+
   private:
-    Dump Data;
+    Binary::DataBuilder Data;
   };
 
   FramedDumpBuilder::Ptr CreateRawDumpBuilder()
@@ -75,10 +62,9 @@ namespace AYM
     return MakePtr<RawDumpBuilder>();
   }
 
-  Dumper::Ptr CreateRawStreamDumper(DumperParameters::Ptr params)
+  Dumper::Ptr CreateRawStreamDumper(const DumperParameters& params)
   {
-    const FramedDumpBuilder::Ptr builder = CreateRawDumpBuilder();
-    return CreateDumper(params, builder);
+    auto builder = CreateRawDumpBuilder();
+    return CreateDumper(params, std::move(builder));
   }
-}
-}
+}  // namespace Devices::AYM

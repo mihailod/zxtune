@@ -1,26 +1,28 @@
 /**
-* 
-* @file
-*
-* @brief Format tools implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Format tools implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//library includes
-#include <module/attributes.h>
-#include <parameters/template.h>
-#include <strings/template.h>
+#include "module/attributes.h"
+#include "parameters/template.h"
+#include "strings/template.h"
 
-String GetModuleTitle(const String& format, const Parameters::Accessor& props)
+#include "string_view.h"
+
+String GetModuleTitle(StringView format, const Parameters::Accessor& props)
 {
-  const Strings::Template::Ptr fmtTemplate = Strings::Template::Create(format);
-  const String& emptyTitle = fmtTemplate->Instantiate(Strings::SkipFieldsSource());
-  String curTitle = fmtTemplate->Instantiate(Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource>(props));
+  // TODO: remove duplicate of this logic
+  const auto fmtTemplate = Strings::Template::Create(format);
+  const auto& emptyTitle = fmtTemplate->Instantiate(Strings::SkipFieldsSource());
+  auto curTitle = fmtTemplate->Instantiate(Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource>(props));
   if (curTitle == emptyTitle)
   {
-    props.FindValue(Module::ATTR_FULLPATH, curTitle);
+    curTitle = Parameters::GetString(props, Module::ATTR_FULLPATH);
   }
   return curTitle;
 }

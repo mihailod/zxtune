@@ -1,41 +1,39 @@
 /**
-* 
-* @file
-*
-* @brief  AY/EMUL containers support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AY/EMUL containers support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <binary/container_base.h>
-#include <binary/format_factories.h>
-#include <formats/archived/decoders.h>
-#include <formats/chiptune/emulation/ay.h>
-#include <strings/prefixed_index.h>
-//std includes
+#include "formats/chiptune/emulation/ay.h"
+
+#include "formats/archived/decoders.h"
+#include "formats/archived/multitrack/filename.h"
+
+#include "binary/container_base.h"
+#include "binary/format_factories.h"
+#include "strings/prefixed_index.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <algorithm>
 #include <utility>
-//text includes
-#include <formats/text/archived.h>
 
-namespace Formats
-{
-namespace Archived
+namespace Formats::Archived
 {
   namespace MultiAY
   {
     class File : public Archived::File
     {
     public:
-      File(String name, Binary::Container::Ptr data)
-        : Name(std::move(name))
+      File(StringView name, Binary::Container::Ptr data)
+        : Name(name)
         , Data(std::move(data))
-      {
-      }
+      {}
 
       String GetName() const override
       {
@@ -51,6 +49,7 @@ namespace Archived
       {
         return Data;
       }
+
     private:
       const String Name;
       const Binary::Container::Ptr Data;
@@ -61,47 +60,45 @@ namespace Archived
     public:
       explicit Container(Binary::Container::Ptr data)
         : BaseContainer(std::move(data))
-      {
-      }
+      {}
 
       void ExploreFiles(const Container::Walker& walker) const override
       {
         for (uint_t idx = 0, total = CountFiles(); idx < total; ++idx)
         {
-          const Formats::Chiptune::AY::BlobBuilder::Ptr builder = Formats::Chiptune::AY::CreateFileBuilder();
-          if (const Formats::Chiptune::Container::Ptr parsed = Formats::Chiptune::AY::Parse(*Delegate, idx, *builder))
+          const auto builder = Formats::Chiptune::AY::CreateFileBuilder();
+          if (const auto parsed = Formats::Chiptune::AY::Parse(*Delegate, idx, *builder))
           {
-            const String subPath = Strings::PrefixedIndex(Text::MULTITRACK_FILENAME_PREFIX, idx).ToString();
-            const Binary::Container::Ptr subData = builder->Result();
-            const File file(subPath, subData);
+            const auto& subPath = MultitrackArchives::CreateFilename(idx);
+            auto subData = builder->Result();
+            const File file(subPath, std::move(subData));
             walker.OnFile(file);
           }
         }
       }
 
-      File::Ptr FindFile(const String& name) const override
+      File::Ptr FindFile(StringView name) const override
       {
-        const Strings::PrefixedIndex rawName(Text::AY_RAW_FILENAME_PREFIX, name);
-        const Strings::PrefixedIndex ayName(Text::MULTITRACK_FILENAME_PREFIX, name);
-        if (!rawName.IsValid() && !ayName.IsValid())
+        const auto rawName = Strings::PrefixedIndex::Parse("@"sv, name);
+        const auto ayIndex = MultitrackArchives::ParseFilename(name);
+        if (!rawName.IsValid() && !ayIndex)
         {
-          return File::Ptr();
+          return {};
         }
-        const uint_t index = rawName.IsValid() ? rawName.GetIndex() : ayName.GetIndex();
+        const uint_t index = rawName.IsValid() ? rawName.GetIndex() : *ayIndex;
         const uint_t subModules = Formats::Chiptune::AY::GetModulesCount(*Delegate);
         if (subModules < index)
         {
-          return File::Ptr();
+          return {};
         }
-        const Formats::Chiptune::AY::BlobBuilder::Ptr builder = rawName.IsValid()
-          ? Formats::Chiptune::AY::CreateMemoryDumpBuilder()
-          : Formats::Chiptune::AY::CreateFileBuilder();
+        const auto builder = rawName.IsValid() ? Formats::Chiptune::AY::CreateMemoryDumpBuilder()
+                                               : Formats::Chiptune::AY::CreateFileBuilder();
         if (!Formats::Chiptune::AY::Parse(*Delegate, index, *builder))
         {
-          return File::Ptr();
+          return {};
         }
-        const Binary::Container::Ptr data = builder->Result();
-        return MakePtr<File>(name, data);
+        auto data = builder->Result();
+        return MakePtr<File>(name, std::move(data));
       }
 
       uint_t CountFiles() const override
@@ -110,23 +107,23 @@ namespace Archived
       }
     };
 
-    const std::string HEADER_FORMAT(
-      "'Z'X'A'Y" // uint8_t Signature[4];
-      "'E'M'U'L" // only one type is supported now
-    );
-  }//namespace MultiAY
+    const auto DESCRIPTION = "Multi-AY/EMUL"sv;
+    const auto HEADER_FORMAT =
+        "'Z'X'A'Y"  // uint8_t Signature[4];
+        "'E'M'U'L"  // only one type is supported now
+        ""sv;
+  }  // namespace MultiAY
 
   class MultiAYDecoder : public Decoder
   {
   public:
     MultiAYDecoder()
       : Format(Binary::CreateFormat(MultiAY::HEADER_FORMAT))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Text::AY_ARCHIVE_DECODER_DESCRIPTION;
+      return MultiAY::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -139,27 +136,28 @@ namespace Archived
       const uint_t subModules = Formats::Chiptune::AY::GetModulesCount(rawData);
       if (subModules < 2)
       {
-        return Container::Ptr();
+        return {};
       }
-      Formats::Chiptune::AY::Builder& stub = Formats::Chiptune::AY::GetStubBuilder();
+      auto& stub = Formats::Chiptune::AY::GetStubBuilder();
       std::size_t maxSize = 0;
       for (uint_t idx = subModules; idx; --idx)
       {
-        if (Formats::Chiptune::Container::Ptr ayData = Formats::Chiptune::AY::Parse(rawData, idx - 1, stub))
+        if (auto ayData = Formats::Chiptune::AY::Parse(rawData, idx - 1, stub))
         {
           maxSize = std::max(maxSize, ayData->Size());
         }
       }
       if (maxSize)
       {
-        const Binary::Container::Ptr ayData = rawData.GetSubcontainer(0, maxSize);
-        return MakePtr<MultiAY::Container>(ayData);
+        auto ayData = rawData.GetSubcontainer(0, maxSize);
+        return MakePtr<MultiAY::Container>(std::move(ayData));
       }
       else
       {
-        return Container::Ptr();
+        return {};
       }
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -168,5 +166,4 @@ namespace Archived
   {
     return MakePtr<MultiAYDecoder>();
   }
-}//namespace Archived
-}//namespace Formats
+}  // namespace Formats::Archived

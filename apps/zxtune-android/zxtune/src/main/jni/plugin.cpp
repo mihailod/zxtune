@@ -1,19 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief Plugins operating
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Plugins operating
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "jni_plugin.h"
-#include "properties.h"
-//library includes
-#include <core/plugin.h>
-#include <core/plugin_attrs.h>
+#include "apps/zxtune-android/zxtune/src/main/jni/plugin.h"
+
+#include "apps/zxtune-android/zxtune/src/main/jni/defines.h"
+#include "apps/zxtune-android/zxtune/src/main/jni/properties.h"
+
+#include "core/plugin.h"
+#include "core/plugin_attrs.h"
 
 namespace
 {
@@ -23,10 +24,8 @@ namespace
     static void Init(JNIEnv* env)
     {
       const jclass classType = env->FindClass("app/zxtune/core/jni/Plugins$Visitor");
-      OnPlayerPlugin = env->GetMethodID(classType,
-        "onPlayerPlugin", "(ILjava/lang/String;Ljava/lang/String;)V");
-      OnContainerPlugin = env->GetMethodID(classType,
-        "onContainerPlugin", "(ILjava/lang/String;Ljava/lang/String;)V");
+      OnPlayerPlugin = env->GetMethodID(classType, "onPlayerPlugin", "(ILjava/lang/String;Ljava/lang/String;)V");
+      OnContainerPlugin = env->GetMethodID(classType, "onContainerPlugin", "(ILjava/lang/String;Ljava/lang/String;)V");
     }
 
     static void Cleanup(JNIEnv* /*env*/)
@@ -34,14 +33,16 @@ namespace
       OnPlayerPlugin = OnContainerPlugin = 0;
     }
 
-    static void CallOnPlayerPlugin(JNIEnv* env, jobject delegate, jint type, const String& plugId, const String& plugDescr)
+    static void CallOnPlayerPlugin(JNIEnv* env, jobject delegate, jint type, const String& plugId,
+                                   const String& plugDescr)
     {
       const Jni::TempJString id(env, plugId);
       const Jni::TempJString descr(env, plugDescr);
       env->CallVoidMethod(delegate, OnPlayerPlugin, type, id.Get(), descr.Get());
     }
 
-    static void CallOnContainerPlugin(JNIEnv* env, jobject delegate, jint type, const String& plugId, const String& plugDescr)
+    static void CallOnContainerPlugin(JNIEnv* env, jobject delegate, jint type, const String& plugId,
+                                      const String& plugDescr)
     {
       const Jni::TempJString id(env, plugId);
       const Jni::TempJString descr(env, plugDescr);
@@ -55,7 +56,7 @@ namespace
 
   jmethodID NativePluginJni::OnPlayerPlugin;
   jmethodID NativePluginJni::OnContainerPlugin;
-}
+}  // namespace
 
 namespace Plugin
 {
@@ -68,30 +69,44 @@ namespace Plugin
   {
     NativePluginJni::Cleanup(env);
   }
-}
 
-JNIEXPORT void JNICALL Java_app_zxtune_core_jni_Plugins_enumerate
-  (JNIEnv* env, jclass /*self*/, jobject visitor)
-{
-  for (const auto iter = ZXTune::EnumeratePlugins(); iter->IsValid(); iter->Next())
+  class Visitor : public ZXTune::PluginVisitor
   {
-    const ZXTune::Plugin::Ptr plug = iter->Get();
-    const uint_t caps = plug->Capabilities();
-    const String id = plug->Id();
-    const String desc = plug->Description();
+  public:
+    Visitor(JNIEnv* env, jobject delegate)
+      : Env(env)
+      , Delegate(delegate)
+    {}
 
-    //TODO: remove hardcode
-    using namespace ZXTune::Capabilities;
-    switch (caps & Category::MASK)
+    void Visit(const ZXTune::Plugin& plug) override
     {
-    case Category::MODULE:
-      NativePluginJni::CallOnPlayerPlugin(env, visitor, (caps & Module::Device::MASK) >> 4, id, desc);
-      break;
-    case Category::CONTAINER:
-      NativePluginJni::CallOnContainerPlugin(env, visitor, (caps & Container::Type::MASK) >> 0, id, desc);
-      break;
-    default:
-      break;
+      const auto caps = plug.Capabilities();
+      const auto id = String{plug.Id()};
+      const auto desc = String{plug.Description()};
+
+      // TODO: remove hardcode
+      using namespace ZXTune::Capabilities;
+      switch (caps & Category::MASK)
+      {
+      case Category::MODULE:
+        NativePluginJni::CallOnPlayerPlugin(Env, Delegate, (caps & Module::Device::MASK) >> 4, id, desc);
+        break;
+      case Category::CONTAINER:
+        NativePluginJni::CallOnContainerPlugin(Env, Delegate, (caps & Container::Type::MASK) >> 0, id, desc);
+        break;
+      default:
+        break;
+      }
     }
-  }
+
+  private:
+    JNIEnv* const Env;
+    const jobject Delegate;
+  };
+}  // namespace Plugin
+
+EXPORTED void JNICALL Java_app_zxtune_core_jni_JniApi_enumeratePlugins(JNIEnv* env, jobject /*self*/, jobject visitor)
+{
+  Plugin::Visitor adapter(env, visitor);
+  ZXTune::EnumeratePlugins(adapter);
 }

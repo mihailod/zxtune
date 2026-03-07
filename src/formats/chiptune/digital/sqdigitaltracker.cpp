@@ -1,43 +1,42 @@
 /**
-* 
-* @file
-*
-* @brief  SQDigitalTracker support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SQDigitalTracker support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/chiptune/digital/sqdigitaltracker.h"
+
 #include "formats/chiptune/container.h"
-//common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <indices.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-//library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <strings/format.h>
-#include <strings/optimize.h>
-//std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "strings/format.h"
+#include "strings/optimize.h"
+#include "tools/indices.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <array>
 #include <cstring>
-//text includes
-#include <formats/text/chiptune.h>
 
-namespace Formats
-{
-namespace Chiptune
+namespace Formats::Chiptune
 {
   namespace SQDigitalTracker
   {
     const Debug::Stream Dbg("Formats::Chiptune::SQDigitalTracker");
 
-    //const std::size_t MAX_MODULE_SIZE = 0x4400 + 8 * 0x4000;
+    const auto DESCRIPTION = "SQ Digital Tracker"sv;
+
+    // const std::size_t MAX_MODULE_SIZE = 0x4400 + 8 * 0x4000;
     const std::size_t MAX_POSITIONS_COUNT = 100;
     const std::size_t MAX_PATTERN_SIZE = 64;
     const std::size_t PATTERNS_COUNT = 32;
@@ -48,14 +47,11 @@ namespace Chiptune
     const std::size_t SAMPLES_ADDR = 0xc000;
     const std::size_t SAMPLES_LIMIT = 0x10000;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-    PACK_PRE struct Pattern
+    struct Pattern
     {
-      PACK_PRE struct Line
+      struct Line
       {
-        PACK_PRE struct Channel
+        struct Channel
         {
           uint8_t NoteCmd;
           uint8_t SampleEffect;
@@ -72,8 +68,7 @@ namespace Chiptune
 
           const uint8_t* GetNewTempo() const
           {
-            return 62 == NoteCmd
-              ? &SampleEffect : nullptr;
+            return 62 == NoteCmd ? &SampleEffect : nullptr;
           }
 
           bool IsEndOfPattern() const
@@ -83,15 +78,14 @@ namespace Chiptune
 
           const uint8_t* GetVolumeSlidePeriod() const
           {
-            return 64 == NoteCmd
-              ? &SampleEffect : nullptr;
+            return 64 == NoteCmd ? &SampleEffect : nullptr;
           }
 
           int_t GetVolumeSlideDirection() const
           {
-            //0 - no slide,
-            //1 - -1
-            //2,3 - +1
+            // 0 - no slide,
+            // 1 - -1
+            // 2,3 - +1
             if (const int_t val = NoteCmd >> 6)
             {
               return val == 1 ? -1 : +1;
@@ -116,40 +110,36 @@ namespace Chiptune
           {
             return SampleEffect >> 4;
           }
-        } PACK_POST;
+        };
 
         Channel Channels[CHANNELS_COUNT];
 
         bool IsEmpty() const
         {
-          return Channels[0].IsEmpty()
-              && Channels[1].IsEmpty()
-              && Channels[2].IsEmpty()
-              && Channels[3].IsEmpty()
-          ;
+          return Channels[0].IsEmpty() && Channels[1].IsEmpty() && Channels[2].IsEmpty() && Channels[3].IsEmpty();
         }
-      } PACK_POST;
+      };
 
       Line Lines[MAX_PATTERN_SIZE];
-    } PACK_POST;
+    };
 
-    PACK_PRE struct SampleInfo
+    struct SampleInfo
     {
-      uint16_t Start;
-      uint16_t Loop;
+      le_uint16_t Start;
+      le_uint16_t Loop;
       uint8_t IsLooped;
       uint8_t Bank;
       uint8_t Padding[2];
-    } PACK_POST;
+    };
 
-    PACK_PRE struct LayoutInfo
+    struct LayoutInfo
     {
-      uint16_t Address;
+      le_uint16_t Address;
       uint8_t Bank;
       uint8_t Sectors;
-    } PACK_POST;
+    };
 
-    PACK_PRE struct Header
+    struct Header
     {
       //+0
       uint8_t SamplesData[0x80];
@@ -184,12 +174,9 @@ namespace Chiptune
       //+0x400
       std::array<Pattern, PATTERNS_COUNT> Patterns;
       //+0x4400
-    } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+    };
 
-    static_assert(sizeof(Header) == 0x4400, "Invalid layout");
+    static_assert(sizeof(Header) * alignof(Header) == 0x4400, "Invalid layout");
 
     const std::size_t MIN_SIZE = sizeof(Header);
 
@@ -226,8 +213,7 @@ namespace Chiptune
         : Delegate(delegate)
         , UsedPatterns(0, PATTERNS_COUNT - 1)
         , UsedSamples(0, SAMPLES_COUNT - 1)
-      {
-      }
+      {}
 
       MetaBuilder& GetMetaBuilder() override
       {
@@ -302,6 +288,7 @@ namespace Chiptune
         Require(!UsedSamples.Empty());
         return UsedSamples;
       }
+
     private:
       Builder& Delegate;
       Indices UsedPatterns;
@@ -316,7 +303,7 @@ namespace Chiptune
         , Source(*RawData.As<Header>())
         , Ranges(RangeChecker::Create(RawData.Size()))
       {
-        //info
+        // info
         AddRange(0, sizeof(Source));
       }
 
@@ -325,17 +312,17 @@ namespace Chiptune
         target.SetInitialTempo(Source.Tempo);
         MetaBuilder& meta = target.GetMetaBuilder();
         const auto title = *Source.Title.begin() == '|' && *Source.Title.rbegin() == '|'
-          ? StringView(Source.Title.data() + 1, &Source.Title.back())
-          : StringView(Source.Title);
+                               ? MakeStringView(Source.Title.data() + 1, &Source.Title.back())
+                               : MakeStringView(Source.Title.begin(), Source.Title.end());
         meta.SetTitle(Strings::OptimizeAscii(title));
-        meta.SetProgram(Text::SQDIGITALTRACKER_DECODER_DESCRIPTION);
+        meta.SetProgram(DESCRIPTION);
         Strings::Array names;
         names.reserve(SAMPLES_COUNT);
         for (const auto& name : Source.SampleNames)
         {
-          names.push_back(Strings::OptimizeAscii(name));
+          names.emplace_back(Strings::OptimizeAscii(name));
         }
-        meta.SetStrings(std::move(names));
+        meta.SetStrings(names);
       }
 
       void ParsePositions(Builder& target) const
@@ -343,7 +330,7 @@ namespace Chiptune
         Positions positions;
         positions.Loop = Source.Loop;
         positions.Lines.assign(Source.Positions.begin(), Source.Positions.begin() + Source.LastPosition + 1);
-        Dbg("Positions: %1%, loop to %2%", positions.GetSize(), positions.GetLoop());
+        Dbg("Positions: {}, loop to {}", positions.GetSize(), positions.GetLoop());
         target.SetPositions(std::move(positions));
       }
 
@@ -352,7 +339,7 @@ namespace Chiptune
         for (Indices::Iterator it = pats.Items(); it; ++it)
         {
           const uint_t patIndex = *it;
-          Dbg("Parse pattern %1%", patIndex);
+          Dbg("Parse pattern {}", patIndex);
           const Pattern& source = Source.Patterns[patIndex];
           PatternBuilder& patBuilder = target.StartPattern(patIndex);
           ParsePattern(source, patBuilder, target);
@@ -361,17 +348,17 @@ namespace Chiptune
 
       void ParseSamples(const Indices& sams, Builder& target) const
       {
-        Dbg("Parse %1% samples", sams.Count());
+        Dbg("Parse {} samples", sams.Count());
         //[bank & 7] => <offset, size>
         std::pair<std::size_t, std::size_t> regions[8] = {};
         for (std::size_t layIdx = 0, cursor = sizeof(Source); layIdx != Source.Layouts.size(); ++layIdx)
         {
           const LayoutInfo& layout = Source.Layouts[layIdx];
-          const std::size_t addr = fromLE(layout.Address);
+          const std::size_t addr = layout.Address;
           const std::size_t size = 256 * layout.Sectors;
           if (addr >= BIG_SAMPLE_ADDR && addr + size <= SAMPLES_LIMIT)
           {
-            Dbg("Used bank %1% at %2$04x..%3$04x", uint_t(layout.Bank), addr, addr + size);
+            Dbg("Used bank {} at {:04x}..{:04x}", uint_t(layout.Bank), addr, addr + size);
             regions[layout.Bank & 0x07] = std::make_pair(cursor, size);
           }
           AddRange(cursor, size);
@@ -381,12 +368,11 @@ namespace Chiptune
         {
           const uint_t samIdx = *it;
           const SampleInfo& info = Source.Samples[samIdx];
-          const std::size_t rawAddr = fromLE(info.Start);
-          const std::size_t rawLoop = fromLE(info.Loop);
-          if (rawAddr < BIG_SAMPLE_ADDR
-           || rawLoop < rawAddr)
+          const std::size_t rawAddr = info.Start;
+          const std::size_t rawLoop = info.Loop;
+          if (rawAddr < BIG_SAMPLE_ADDR || rawLoop < rawAddr)
           {
-            Dbg("Skip sample %1%", samIdx);
+            Dbg("Skip sample {}", samIdx);
             continue;
           }
           const uint_t bank = info.Bank & 0x07;
@@ -397,18 +383,18 @@ namespace Chiptune
           const std::size_t offset = offsetSize.first + rawAddr - sampleBase;
           if (const auto sample = GetSample(offset, size))
           {
-            Dbg("Sample %1%: start=#%2$04x loop=#%3$04x size=#%4$04x bank=%5%", 
-              samIdx, rawAddr, rawLoop, sample.Size(), uint_t(info.Bank));
+            Dbg("Sample {}: start=#{:04x} loop=#{:04x} size=#{:04x} bank={}", samIdx, rawAddr, rawLoop, sample.Size(),
+                uint_t(info.Bank));
             const std::size_t loop = info.IsLooped ? rawLoop - sampleBase : sample.Size();
             target.SetSample(samIdx, loop, sample);
           }
           else
           {
-            Dbg("Empty sample %1%", samIdx);
+            Dbg("Empty sample {}", samIdx);
           }
         }
       }
-      
+
       std::size_t GetSize() const
       {
         return Ranges->GetAffectedRange().second;
@@ -416,8 +402,9 @@ namespace Chiptune
 
       RangeChecker::Range GetFixedArea() const
       {
-        return RangeChecker::Range(offsetof(Header, Patterns), sizeof(Source.Patterns));
+        return {offsetof(Header, Patterns), sizeof(Source.Patterns)};
       }
+
     private:
       static void ParsePattern(const Pattern& src, PatternBuilder& patBuilder, Builder& target)
       {
@@ -484,43 +471,43 @@ namespace Chiptune
         const uint8_t* const end = std::find(start, start + size, 0);
         return RawData.SubView(offset, end - start);
       }
+
     private:
       const Binary::View RawData;
       const Header& Source;
       const RangeChecker::Ptr Ranges;
     };
 
-    const std::string FORMAT(
-      "?{192}"
-      //layouts
-      "(0080-c0 58-5f 01-80){8}"
-      "?{32}"
-      //title
-      "20-7f{32}"
-      "?{128}"
-      //positions
-      "00-1f{100}"
-      "ff"
-      "?{11}"
-      //tempo???
-      "02-10"
-      //loop
-      "00-63"
-      //length
-      "01-64"
-    );
+    const auto FORMAT =
+        "?{192}"
+        // layouts
+        "(0080-c0 58-5f 01-80){8}"
+        "?{32}"
+        // title
+        "20-7f{32}"
+        "?{128}"
+        // positions
+        "00-1f{100}"
+        "ff"
+        "?{11}"
+        // tempo???
+        "02-10"
+        // loop
+        "00-63"
+        // length
+        "01-64"
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
     public:
       Decoder()
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
-      {
-      }
+      {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
-        return Text::SQDIGITALTRACKER_DECODER_DESCRIPTION;
+        return DESCRIPTION;
       }
 
       Binary::Format::Ptr GetFormat() const override
@@ -528,7 +515,7 @@ namespace Chiptune
         return Format;
       }
 
-      bool Check(const Binary::Container& rawData) const override
+      bool Check(Binary::View rawData) const override
       {
         return Format->Match(rawData);
       }
@@ -537,11 +524,12 @@ namespace Chiptune
       {
         if (!Format->Match(rawData))
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
         Builder& stub = GetStubBuilder();
         return Parse(rawData, stub);
       }
+
     private:
       const Binary::Format::Ptr Format;
     };
@@ -565,12 +553,13 @@ namespace Chiptune
         Require(format.GetSize() >= MIN_SIZE);
         auto subData = rawData.GetSubcontainer(0, format.GetSize());
         const auto fixedRange = format.GetFixedArea();
-        return CreateCalculatingCrcContainer(std::move(subData), fixedRange.first, fixedRange.second - fixedRange.first);
+        return CreateCalculatingCrcContainer(std::move(subData), fixedRange.first,
+                                             fixedRange.second - fixedRange.first);
       }
       catch (const std::exception&)
       {
         Dbg("Failed to create");
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
 
@@ -579,11 +568,10 @@ namespace Chiptune
       static StubBuilder stub;
       return stub;
     }
-  }//namespace SQDigitalTracker
+  }  // namespace SQDigitalTracker
 
   Decoder::Ptr CreateSQDigitalTrackerDecoder()
   {
     return MakePtr<SQDigitalTracker::Decoder>();
   }
-} //namespace Chiptune
-} //namespace Formats
+}  // namespace Formats::Chiptune

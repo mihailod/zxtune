@@ -1,88 +1,72 @@
 /**
-*
-* @file
-*
-* @brief  Mixer test
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Mixer test
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include <error_tools.h>
-#include <math/numeric.h>
-#include <sound/matrix_mixer.h>
-#include <sound/mixer_parameters.h>
+#include "math/numeric.h"
+#include "sound/matrix_mixer.h"
+#include "sound/mixer_parameters.h"
 
-#include <iostream>
+#include "error_tools.h"
+
 #include <iomanip>
-
-#include <boost/range/size.hpp>
-
-#define FILE_TAG 25E829A2
+#include <iostream>
 
 namespace Sound
 {
-  const int_t THRESHOLD = 5 * (Sample::MAX - Sample::MIN) / 1000;//0.5%
+  const int_t THRESHOLD = 5 * (Sample::MAX - Sample::MIN) / 1000;  // 0.5%
 
   Gain CreateGain(double l, double r)
   {
-    return Gain(Gain::Type(l), Gain::Type(r));
+    return {Gain::Type(l), Gain::Type(r)};
   }
-  
-  const Gain GAINS[] = {
-    CreateGain(0.0, 0.0),
-    CreateGain(1.0, 1.0),
-    CreateGain(1.0, 0.0),
-    CreateGain(0.0, 1.0),
-    CreateGain(0.5, 0.5),
-    CreateGain(0.1, 0.9)
-  };
-  
-  const String GAIN_NAMES[] = {
-    "empty", "full", "left", "right", "middle", "-10dB,-0.45dB"
-  };
-  
+
+  const Gain GAINS[] = {CreateGain(0.0, 0.0), CreateGain(1.0, 1.0), CreateGain(1.0, 0.0),
+                        CreateGain(0.0, 1.0), CreateGain(0.5, 0.5), CreateGain(0.1, 0.9)};
+
+  const String GAIN_NAMES[] = {"empty", "full", "left", "right", "middle", "-10dB,-0.45dB"};
+
   const Gain INVALID_GAIN = CreateGain(2.0, 3.0);
 
-  const Sample::Type INPUTS[] = {
-    Sample::MIN,
-    Sample::MID,
-    Sample::MAX
-  };
-  
-  const String INPUT_NAMES[] = {
-    "min", "mid", "max"
-  };
+  const Sample::Type INPUTS[] = {Sample::MIN, Sample::MID, Sample::MAX};
 
-  
+  const String INPUT_NAMES[] = {"min", "mid", "max"};
+
   const Sample OUTS[] = {
-  //zero matrix
-     Sample(Sample::MID, Sample::MID),
-     Sample(Sample::MID, Sample::MID),
-     Sample(Sample::MID, Sample::MID),
-  //full matrix
-     Sample(Sample::MIN, Sample::MIN),
-     Sample(Sample::MID, Sample::MID),
-     Sample(Sample::MAX, Sample::MAX),
-  //left matrix
-     Sample(Sample::MIN, Sample::MID),
-     Sample(Sample::MID, Sample::MID),
-     Sample(Sample::MAX, Sample::MID),
-  //right matrix
-     Sample(Sample::MID, Sample::MIN),
-     Sample(Sample::MID, Sample::MID),
-     Sample(Sample::MID, Sample::MAX),
-  //mid matrix
-     Sample((Sample::MID+Sample::MIN)/2, (Sample::MID+Sample::MIN)/2),
-     Sample(Sample::MID, Sample::MID),
-     Sample((Sample::MID+Sample::MAX)/2, (Sample::MID+Sample::MAX)/2),
-  //balanced
-     //left=25 right=230
-     //(25*32768)/256, (230*32768)/256
-     //(25*65535)/256, (230*65535)/256
-     Sample(Sample::MID+(int_t(Sample::MIN)-Sample::MID)/10, Sample::MID+9*(int_t(Sample::MIN)-Sample::MID)/10),
-     Sample(Sample::MID, Sample::MID),
-     Sample(Sample::MID+(int_t(Sample::MAX)-Sample::MID)/10, Sample::MID+9*(int_t(Sample::MAX)-Sample::MID)/10),
+      // zero matrix
+      Sample(Sample::MID, Sample::MID),
+      Sample(Sample::MID, Sample::MID),
+      Sample(Sample::MID, Sample::MID),
+      // full matrix
+      Sample(Sample::MIN, Sample::MIN),
+      Sample(Sample::MID, Sample::MID),
+      Sample(Sample::MAX, Sample::MAX),
+      // left matrix
+      Sample(Sample::MIN, Sample::MID),
+      Sample(Sample::MID, Sample::MID),
+      Sample(Sample::MAX, Sample::MID),
+      // right matrix
+      Sample(Sample::MID, Sample::MIN),
+      Sample(Sample::MID, Sample::MID),
+      Sample(Sample::MID, Sample::MAX),
+      // mid matrix
+      Sample((Sample::MID + Sample::MIN) / 2, (Sample::MID + Sample::MIN) / 2),
+      Sample(Sample::MID, Sample::MID),
+      Sample((Sample::MID + Sample::MAX) / 2, (Sample::MID + Sample::MAX) / 2),
+      // balanced
+      // left=25 right=230
+      //(25*32768)/256, (230*32768)/256
+      //(25*65535)/256, (230*65535)/256
+      Sample(Sample::MID + (int_t(Sample::MIN) - Sample::MID) / 10,
+             Sample::MID + 9 * (int_t(Sample::MIN) - Sample::MID) / 10),
+      Sample(Sample::MID, Sample::MID),
+      Sample(Sample::MID + (int_t(Sample::MAX) - Sample::MID) / 10,
+             Sample::MID + 9 * (int_t(Sample::MAX) - Sample::MID) / 10),
   };
 
   template<class Res>
@@ -101,15 +85,6 @@ namespace Sound
     return res;
   }
 
-  bool ShowIfError(const Error& e)
-  {
-    if (e)
-    {
-      std::cerr << e.ToString();
-    }
-    return e;
-  }
-
   bool Check(Sample::Type data, Sample::Type ref)
   {
     return Math::Absolute(int_t(data) - ref) <= THRESHOLD;
@@ -124,8 +99,8 @@ namespace Sound
     else
     {
       std::cout << " failed\n";
-      throw MakeFormattedError(THIS_LINE, "Value=<%1%,%2%> while expected=<%3%,%4%>",
-        data.Left(), data.Right(), ref.Left(), ref.Right());
+      throw MakeFormattedError(THIS_LINE, "Value=<{},{}> while expected=<{},{}>", data.Left(), data.Right(), ref.Left(),
+                               ref.Right());
     }
   }
 
@@ -133,9 +108,9 @@ namespace Sound
   void TestMixer()
   {
     std::cout << "**** Testing for " << Channels << " channels ****\n";
- 
+
     const typename FixedChannelsMatrixMixer<Channels>::Ptr mixer = FixedChannelsMatrixMixer<Channels>::Create();
-    
+
     std::cout << "--- Test for invalid matrix---\n";
     try
     {
@@ -152,16 +127,16 @@ namespace Sound
       throw Error(THIS_LINE, str);
     }
 
-    assert(boost::size(OUTS) == boost::size(GAINS) * boost::size(INPUTS));
-    assert(boost::size(GAINS) == boost::size(GAIN_NAMES));
-    assert(boost::size(INPUTS) == boost::size(INPUT_NAMES));
-    
+    assert(std::size(OUTS) == std::size(GAINS) * std::size(INPUTS));
+    assert(std::size(GAINS) == std::size(GAIN_NAMES));
+    assert(std::size(INPUTS) == std::size(INPUT_NAMES));
+
     const Sample* result(OUTS);
-    for (unsigned matrix = 0; matrix != boost::size(GAINS); ++matrix)
+    for (unsigned matrix = 0; matrix != std::size(GAINS); ++matrix)
     {
       std::cout << "--- Test for " << GAIN_NAMES[matrix] << " matrix ---\n";
       mixer->SetMatrix(MakeMatrix<Channels>(GAINS[matrix]));
-      for (unsigned input = 0; input != boost::size(INPUTS); ++input, ++result)
+      for (unsigned input = 0; input != std::size(INPUTS); ++input, ++result)
       {
         std::cout << "Checking for " << INPUT_NAMES[input] << " input: ";
         Check(mixer->ApplyData(MakeSample<MultichannelSample<Channels> >(INPUTS[input])), *result);
@@ -172,13 +147,13 @@ namespace Sound
     {
       for (uint_t outChan = 0; outChan != Sample::CHANNELS; ++outChan)
       {
-        const Parameters::NameType name = Parameters::ZXTune::Sound::Mixer::LEVEL(Channels, inChan, outChan);
-        const Parameters::IntType val = Parameters::ZXTune::Sound::Mixer::LEVEL_DEFAULT(Channels, inChan, outChan);
-        std::cout << name.FullPath() << ": " << val << std::endl;
+        const auto name = Parameters::ZXTune::Sound::Mixer::LEVEL(Channels, inChan, outChan);
+        const auto val = Parameters::ZXTune::Sound::Mixer::LEVEL_DEFAULT(Channels, inChan, outChan);
+        std::cout << name.AsString() << ": " << val << std::endl;
       }
     }
   }
-}
+}  // namespace Sound
 
 int main()
 {

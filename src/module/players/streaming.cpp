@@ -1,43 +1,58 @@
 /**
-* 
-* @file
-*
-* @brief  Streamed modules support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Streamed modules support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/streaming.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <sound/loop.h>
-//std includes
+
+#include "module/players/stream_model.h"
+
+#include "make_ptr.h"
+
 #include <utility>
 
 namespace Module
 {
-  const uint_t STREAM_CHANNELS = 1;
+  struct FramedStream
+  {
+    uint_t TotalFrames = 0;
+    uint_t LoopFrame = 0;
+    Time::Microseconds FrameDuration;
 
-  class StreamStateCursor : public State
+    void Sanitize()
+    {
+      if (LoopFrame >= TotalFrames)
+      {
+        LoopFrame = 0;
+      }
+    }
+  };
+
+  class FramedStreamStateCursor : public State
   {
   public:
-    typedef std::shared_ptr<StreamStateCursor> Ptr;
+    using Ptr = std::shared_ptr<FramedStreamStateCursor>;
 
-    explicit StreamStateCursor(Information::Ptr info)
-      : Info(std::move(info))
-      , CurFrame()
-      , Loops()
+    explicit FramedStreamStateCursor(FramedStream stream)
+      : Stream(stream)
     {
       Reset();
     }
 
-    //status functions
-    uint_t Frame() const override
+    // status functions
+    Time::AtMillisecond At() const override
     {
-      return CurFrame;
+      return Time::AtMillisecond() + (Stream.FrameDuration * CurFrame).CastTo<Time::Millisecond>();
+    }
+
+    Time::Milliseconds Total() const override
+    {
+      return TotalPlayed.CastTo<Time::Millisecond>();
     }
 
     uint_t LoopCount() const override
@@ -45,21 +60,27 @@ namespace Module
       return Loops;
     }
 
-    //navigation
+    uint_t Frame() const
+    {
+      return CurFrame;
+    }
+
+    // navigation
     bool IsValid() const
     {
-      return CurFrame < Info->FramesCount();
+      return CurFrame < Stream.TotalFrames;
     }
 
     void Reset()
     {
       CurFrame = 0;
+      TotalPlayed = {};
       Loops = 0;
     }
 
     void ResetToLoop()
     {
-      CurFrame = Info->LoopFrame();
+      CurFrame = Stream.LoopFrame;
       ++Loops;
     }
 
@@ -67,86 +88,161 @@ namespace Module
     {
       if (IsValid())
       {
+        TotalPlayed += Stream.FrameDuration;
         ++CurFrame;
       }
     }
+
   private:
-    const Information::Ptr Info;
-    uint_t CurFrame;
-    uint_t Loops;
+    const FramedStream Stream;
+    uint_t CurFrame = 0;
+    Time::Microseconds TotalPlayed;
+    uint_t Loops = 0;
   };
 
-  class StreamInfo : public Information
+  class FramedStreamInfo : public Information
   {
   public:
-    StreamInfo(uint_t frames, uint_t loopFrame)
-      : TotalFrames(frames)
-      , Loop(loopFrame)
+    FramedStreamInfo(FramedStream stream)
+      : Stream(stream)
+    {}
+
+    Time::Milliseconds Duration() const override
     {
+      return (Stream.FrameDuration * Stream.TotalFrames).CastTo<Time::Millisecond>();
     }
 
-    uint_t FramesCount() const override
+    Time::Milliseconds LoopDuration() const override
     {
-      return TotalFrames;
+      return (Stream.FrameDuration * (Stream.TotalFrames - Stream.LoopFrame)).CastTo<Time::Millisecond>();
     }
 
-    uint_t LoopFrame() const override
-    {
-      return Loop;
-    }
-
-    uint_t ChannelsCount() const override
-    {
-      return STREAM_CHANNELS;
-    }
   private:
-    const uint_t TotalFrames;
-    const uint_t Loop;
+    const FramedStream Stream;
   };
 
-  class StreamStateIterator : public StateIterator
+  class FramedStreamStateIterator : public StateIterator
   {
   public:
-    explicit StreamStateIterator(Information::Ptr info)
-      : Cursor(MakePtr<StreamStateCursor>(info))
-    {
-    }
+    explicit FramedStreamStateIterator(FramedStream stream)
+      : Cursor(MakePtr<FramedStreamStateCursor>(stream))
+    {}
 
-    //iterator functions
+    // iterator functions
     void Reset() override
     {
       Cursor->Reset();
     }
 
-    bool IsValid() const override
-    {
-      return Cursor->IsValid();
-    }
-
-    void NextFrame(const Sound::LoopParameters& looped) override
+    void NextFrame() override
     {
       Cursor->NextFrame();
-      if (!Cursor->IsValid() && looped(Cursor->LoopCount()))
+      if (!Cursor->IsValid())
       {
         Cursor->ResetToLoop();
       }
+    }
+
+    uint_t CurrentFrame() const override
+    {
+      return Cursor->Frame();
     }
 
     State::Ptr GetStateObserver() const override
     {
       return Cursor;
     }
+
   private:
-    const StreamStateCursor::Ptr Cursor;
+    const FramedStreamStateCursor::Ptr Cursor;
   };
 
-  Information::Ptr CreateStreamInfo(uint_t frames, uint_t loopFrame)
+  Information::Ptr CreateStreamInfo(Time::Microseconds frameDuration, const StreamModel& model)
   {
-    return MakePtr<StreamInfo>(frames, loopFrame);
+    FramedStream stream;
+    stream.FrameDuration = frameDuration;
+    stream.TotalFrames = model.GetTotalFrames();
+    stream.LoopFrame = model.GetLoopFrame();
+    stream.Sanitize();
+    return MakePtr<FramedStreamInfo>(stream);
   }
 
-  StateIterator::Ptr CreateStreamStateIterator(Information::Ptr info)
+  StateIterator::Ptr CreateStreamStateIterator(Time::Microseconds frameDuration, const StreamModel& model)
   {
-    return MakePtr<StreamStateIterator>(info);
+    FramedStream stream;
+    stream.FrameDuration = frameDuration;
+    stream.TotalFrames = model.GetTotalFrames();
+    stream.LoopFrame = model.GetLoopFrame();
+    stream.Sanitize();
+    return MakePtr<FramedStreamStateIterator>(stream);
   }
-}
+
+  class TimedInfo : public Module::Information
+  {
+  public:
+    TimedInfo(Time::Milliseconds duration, Time::Milliseconds loopDuration)
+      : DurationValue(duration)
+      , LoopDurationValue(loopDuration)
+    {}
+
+    Time::Milliseconds Duration() const override
+    {
+      return DurationValue;
+    }
+
+    Time::Milliseconds LoopDuration() const override
+    {
+      return LoopDurationValue;
+    }
+
+  private:
+    const Time::Milliseconds DurationValue;
+    const Time::Milliseconds LoopDurationValue;
+  };
+
+  Information::Ptr CreateTimedInfo(Time::Milliseconds duration)
+  {
+    return MakePtr<TimedInfo>(duration, duration);
+  }
+
+  Information::Ptr CreateTimedInfo(Time::Milliseconds duration, Time::Milliseconds loopDuration)
+  {
+    return MakePtr<TimedInfo>(duration, loopDuration);
+  }
+
+  template<class Unit>
+  auto Modulo(Time::Instant<Unit> pos, Time::Instant<Unit> limit)
+  {
+    return std::make_pair(Time::Instant<Unit>(pos.Get() % limit.Get()), pos.Get() / limit.Get());
+  }
+
+  Time::Microseconds TimedState::ConsumeUpTo(Time::Microseconds range)
+  {
+    const Time::Microseconds avail = Limit - Position;
+    const auto toConsume = std::min(range, avail);
+    const auto delta = Modulo(Position + toConsume, Limit);
+    Position = delta.first;
+    Loops += delta.second;
+    return toConsume;
+  }
+
+  Time::Microseconds TimedState::ConsumeRest()
+  {
+    return ConsumeUpTo(Limit - Position);
+  }
+
+  Information::Ptr CreateSampledInfo(uint_t samplerate, uint64_t totalSamples)
+  {
+    return CreateTimedInfo(Time::Milliseconds::FromRatio(totalSamples, samplerate));
+  }
+
+  uint_t SampledState::Consume(uint_t samples)
+  {
+    const auto nextSamples = samples ? DoneSamples + samples : TotalSamples;
+    DoneSamples = nextSamples % TotalSamples;
+    DoneSamplesTotal += samples;
+    const auto doneLoops = nextSamples / TotalSamples;
+    Loops += doneLoops;
+    return doneLoops;
+  }
+}  // namespace Module

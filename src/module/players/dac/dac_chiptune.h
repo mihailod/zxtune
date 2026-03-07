@@ -1,43 +1,49 @@
 /**
-* 
-* @file
-*
-* @brief  DAC-based chiptune interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  DAC-based chiptune interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <devices/dac.h>
-#include <parameters/accessor.h>
-#include <module/information.h>
-#include <module/players/iterator.h>
+#include "module/players/iterator.h"
+#include "module/players/track_model.h"
 
-namespace Module
+#include "devices/dac.h"
+#include "parameters/accessor.h"
+
+namespace Module::DAC
 {
-  namespace DAC
+  const auto BASE_FRAME_DURATION = Time::Microseconds::FromFrequency(50);
+
+  class DataIterator : public Iterator
   {
-    class DataIterator : public StateIterator
+  public:
+    using Ptr = std::unique_ptr<DataIterator>;
+
+    virtual State::Ptr GetStateObserver() const = 0;
+
+    virtual void GetData(Devices::DAC::Channels& data) const = 0;
+  };
+
+  class Chiptune
+  {
+  public:
+    using Ptr = std::unique_ptr<const Chiptune>;
+    virtual ~Chiptune() = default;
+
+    static Time::Microseconds GetFrameDuration()
     {
-    public:
-      typedef std::shared_ptr<DataIterator> Ptr;
+      return BASE_FRAME_DURATION;
+    }
 
-      virtual void GetData(Devices::DAC::Channels& data) const = 0;
-    };
-
-    class Chiptune
-    {
-    public:
-      typedef std::shared_ptr<const Chiptune> Ptr;
-      virtual ~Chiptune() = default;
-
-      virtual Information::Ptr GetInformation() const = 0;
-      virtual Parameters::Accessor::Ptr GetProperties() const = 0;
-      virtual DataIterator::Ptr CreateDataIterator() const = 0;
-      virtual void GetSamples(Devices::DAC::Chip::Ptr chip) const = 0;
-    };
-  }
-}
+    virtual TrackModel::Ptr GetTrackModel() const = 0;
+    virtual Parameters::Accessor::Ptr GetProperties() const = 0;
+    virtual DataIterator::Ptr CreateDataIterator() const = 0;
+    virtual void GetSamples(Devices::DAC::Chip& chip) const = 0;
+  };
+}  // namespace Module::DAC

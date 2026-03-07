@@ -1,21 +1,20 @@
 /**
-* 
-* @file
-*
-* @brief Asynchronous activity implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Asynchronous activity implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
+#include "async/activity.h"
+
 #include "async/src/event.h"
-//common includes
-#include <pointers.h>
-#include <make_ptr.h>
-//library includes
-#include <async/activity.h>
-//std includes
+
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <cassert>
 #include <thread>
 
@@ -32,13 +31,12 @@ namespace Async
   class ThreadActivity : public Activity
   {
   public:
-    typedef std::shared_ptr<ThreadActivity> Ptr;
+    using Ptr = std::shared_ptr<ThreadActivity>;
 
     explicit ThreadActivity(Operation::Ptr op)
       : Oper(std::move(op))
       , State(ActivityState::STOPPED)
-    {
-    }
+    {}
 
     ~ThreadActivity() override
     {
@@ -47,7 +45,7 @@ namespace Async
 
     void Start()
     {
-      Thread = std::thread(std::mem_fun(&ThreadActivity::WorkProc), this);
+      Thread = std::thread(&ThreadActivity::WorkProc, this);
       if (ActivityState::FAILED == State.WaitForAny(ActivityState::INITIALIZED, ActivityState::FAILED))
       {
         Thread.join();
@@ -70,6 +68,7 @@ namespace Async
       }
       ThrowIfError(LastError);
     }
+
   private:
     void WorkProc()
     {
@@ -88,6 +87,7 @@ namespace Async
         State.Set(ActivityState::FAILED);
       }
     }
+
   private:
     const Operation::Ptr Oper;
     Event<ActivityState> State;
@@ -103,17 +103,15 @@ namespace Async
       return false;
     }
 
-    void Wait() override
-    {
-    }
+    void Wait() override {}
   };
-}
+}  // namespace Async
 
 namespace Async
 {
   Activity::Ptr Activity::Create(Operation::Ptr operation)
   {
-    const ThreadActivity::Ptr result = MakePtr<ThreadActivity>(operation);
+    auto result = MakePtr<ThreadActivity>(std::move(operation));
     result->Start();
     return result;
   }
@@ -123,4 +121,4 @@ namespace Async
     static StubActivity stub;
     return MakeSingletonPointer(stub);
   }
-}
+}  // namespace Async

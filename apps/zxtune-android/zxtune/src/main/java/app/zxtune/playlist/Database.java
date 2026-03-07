@@ -16,12 +16,15 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteOpenHelper;
-import androidx.annotation.Nullable;
 import android.util.SparseIntArray;
+
+import androidx.annotation.Nullable;
 
 import java.util.Locale;
 
 import app.zxtune.Log;
+import app.zxtune.fs.dbhelpers.DBStatistics;
+import app.zxtune.fs.dbhelpers.Utils;
 
 /*
  * Playlist DB model.
@@ -151,6 +154,7 @@ public class Database {
 
   public Database(Context context) {
     this.dbHelper = new DBHelper(context);
+    DBStatistics.send(dbHelper);
   }
   
   // ! @return Cursor with statistics
@@ -192,8 +196,8 @@ public class Database {
     return db.update(Tables.Tracks.NAME, values, selection, selectionArgs);
   }
   
-  /*
-   * @param ids id => pos list
+  /**
+   * @param positions id => pos list
    */
   final void updatePlaylistItemsOrder(SparseIntArray positions) {
     //sqlite prior to 3.7.11 (api v14) does not support multiple values

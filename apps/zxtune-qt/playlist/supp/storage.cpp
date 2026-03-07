@@ -1,109 +1,30 @@
 /**
-* 
-* @file
-*
-* @brief Playlist storage implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Playlist storage implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "storage.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <debug/log.h>
-#include <math/numeric.h>
-//boost includes
-#include <boost/iterator/counting_iterator.hpp>
+#include "apps/zxtune-qt/playlist/supp/storage.h"
+
+#include "debug/log.h"
+#include "math/numeric.h"
+
+#include "make_ptr.h"
+
+#include <random>
+#include <utility>
 
 namespace
 {
   const Debug::Stream Dbg("Playlist::Storage");
 
-  typedef std::pair<Playlist::Item::Data::Ptr, Playlist::Model::IndexType> IndexedItem;
+  using IndexedItem = std::pair<Playlist::Item::Data::Ptr, Playlist::Model::IndexType>;
 
-  //simple std::list wrapper that guarantees contstant complexivity of size() method
-  class ItemsContainer : private std::list<IndexedItem>
-  {
-    typedef std::list<IndexedItem> Parent;
-  public:
-    using Parent::value_type;
-    using Parent::const_iterator;
-    using Parent::iterator;
-
-    using Parent::begin;
-    using Parent::end;
-    using Parent::sort;
-
-    ItemsContainer()
-      : Size()
-    {
-    }
-
-    ItemsContainer(const ItemsContainer& rh)
-      = default;
-
-    Parent::size_type size() const
-    {
-      return Size;
-    }
-
-    bool empty() const
-    {
-      return 0 == Size;
-    }
-
-    void push_back(const value_type& val)
-    {
-      Parent::push_back(val);
-      ++Size;
-    }
-
-    void erase(iterator it)
-    {
-      Parent::erase(it);
-      --Size;
-    }
-
-    void erase(iterator first, iterator last)
-    {
-      const std::size_t count = std::distance(first, last);
-      Parent::erase(first, last);
-      Size -= count;
-    }
-
-    void splice(iterator position, ItemsContainer& x, iterator i)
-    {
-      Parent::splice(position, x, i);
-      ++Size;
-      --x.Size;
-    }
-
-    void splice(iterator position, ItemsContainer& x, iterator first, iterator last)
-    {
-      const std::size_t count = std::distance(first, last);
-      Parent::splice(position, x, first, last);
-      Size += count;
-      x.Size -= count;
-    }
-
-    void splice(iterator position, ItemsContainer& x)
-    {
-      Parent::splice(position, x);
-      Size += x.Size;
-      x.Size = 0;
-    }
-    
-    void swap(ItemsContainer& rh)
-    {
-      Parent::swap(rh);
-      std::swap(Size, rh.Size);
-    }
-  private:
-    std::size_t Size;
-  };
+  using ItemsContainer = std::list<IndexedItem>;
 
   template<class IteratorType>
   class IteratorContainerWalker
@@ -119,13 +40,13 @@ namespace
   public:
     explicit PlaylistItemVisitorAdapter(Playlist::Item::Visitor& delegate)
       : Delegate(delegate)
-    {
-    }
+    {}
 
     void OnItem(ItemsContainer::const_iterator it) override
     {
       Delegate.OnItem(it->second, it->first);
     }
+
   private:
     Playlist::Item::Visitor& Delegate;
   };
@@ -137,8 +58,7 @@ namespace
       : Container(container)
       , LastRangeStart(Container.end())
       , LastRangeEnd(Container.end())
-    {
-    }
+    {}
 
     ~RemoveItemsWalker() override
     {
@@ -154,11 +74,13 @@ namespace
       }
       LastRangeEnd = ++it;
     }
+
   private:
     void Erase()
     {
       Container.erase(LastRangeStart, LastRangeEnd);
     }
+
   private:
     ItemsContainer& Container;
     ItemsContainer::iterator LastRangeStart;
@@ -173,8 +95,7 @@ namespace
       , Dst(dst)
       , LastRangeStart(Src.end())
       , LastRangeEnd(Src.end())
-    {
-    }
+    {}
 
     ~MoveItemsWalker() override
     {
@@ -190,11 +111,13 @@ namespace
       }
       LastRangeEnd = ++it;
     }
+
   private:
     void Splice()
     {
       Dst.splice(Dst.end(), Src, LastRangeStart, LastRangeEnd);
     }
+
   private:
     ItemsContainer& Src;
     ItemsContainer& Dst;
@@ -208,10 +131,9 @@ namespace
   {
   public:
     ItemsCollection(ItemsContainer::const_iterator begin, ItemsContainer::const_iterator end)
-      : Current(std::move(begin))
-      , Limit(std::move(end))
-    {
-    }
+      : Current(begin)
+      , Limit(end)
+    {}
 
     bool IsValid() const override
     {
@@ -227,6 +149,7 @@ namespace
     {
       ++Current;
     }
+
   private:
     ItemsContainer::const_iterator Current;
     const ItemsContainer::const_iterator Limit;
@@ -238,33 +161,37 @@ namespace
   {
   public:
     LinearStorage()
-      : Version(0)
     {
-      Dbg("Created at %1%", this);
+      Dbg("Created at {}", Self());
     }
 
     LinearStorage(const LinearStorage& rh)
-      : Version(0)
-      , Items(rh.Items)
+      : Items(rh.Items)
     {
-      Dbg("Created at %1% (cloned from %2% with %3% items)", this, &rh, Items.size());
+      Dbg("Created at {} (cloned from {} with {} items)", Self(), rh.Self(), Items.size());
     }
 
     ~LinearStorage() override
     {
-      Dbg("Destroyed at %1% with %2% items", this, Items.size());
+      Dbg("Destroyed at {} with {} items", Self(), Items.size());
     }
 
     Item::Storage::Ptr Clone() const override
     {
       return MakePtr<LinearStorage>(*this);
     }
-   
+
     Model::OldToNewIndexMap::Ptr ResetIndices() override
     {
-      const Model::OldToNewIndexMap::RWPtr result = MakeRWPtr<Model::OldToNewIndexMap>();
-      std::transform(Items.begin(), Items.end(), boost::counting_iterator<Model::IndexType>(0), std::inserter(*result, result->end()), &MakeIndexPair);
-      std::transform(Items.begin(), Items.end(), boost::counting_iterator<Model::IndexType>(0), Items.begin(), &UpdateItemIndex);
+      // TODO: use array in mapping
+      auto result = MakeRWPtr<Model::OldToNewIndexMap>();
+      Model::IndexType newIdx = 0;
+      for (auto& item : Items)
+      {
+        const auto oldIdx = std::exchange(item.second, newIdx);
+        result->emplace(oldIdx, newIdx);
+        ++newIdx;
+      }
       return result;
     }
 
@@ -282,7 +209,7 @@ namespace
 
     void Add(Item::Collection::Ptr items) override
     {
-      for (Model::IndexType idx = static_cast<Model::IndexType>(Items.size()); items->IsValid(); items->Next(), ++idx)
+      for (auto idx = static_cast<Model::IndexType>(Items.size()); items->IsValid(); items->Next(), ++idx)
       {
         const IndexedItem idxItem(items->Get(), idx);
         Items.push_back(idxItem);
@@ -299,9 +226,9 @@ namespace
     {
       if (idx >= Model::IndexType(Items.size()))
       {
-        return Item::Data::Ptr();
+        return {};
       }
-      const ItemsContainer::const_iterator it = GetIteratorByIndex(idx);
+      const auto it = GetIteratorByIndex(idx);
       return it->first;
     }
 
@@ -312,9 +239,9 @@ namespace
 
     void ForAllItems(Item::Visitor& visitor) const override
     {
-      for (ItemsContainer::const_iterator it = Items.begin(), lim = Items.end(); it != lim; ++it)
+      for (const auto& item : Items)
       {
-        visitor.OnItem(it->second, it->first);
+        visitor.OnItem(item.second, item.first);
       }
     }
 
@@ -332,7 +259,7 @@ namespace
       }
       else
       {
-        //try to move at the first nonselected and place before it
+        // try to move at the first nonselected and place before it
         for (Model::IndexType moveAfter = destination; moveAfter != Items.size(); ++moveAfter)
         {
           if (!indices.count(moveAfter))
@@ -356,21 +283,21 @@ namespace
     {
       std::vector<ItemsContainer::const_iterator> iters;
       iters.reserve(Items.size());
-      for (ItemsContainer::const_iterator it = Items.begin(), lim = Items.end(); it != lim; ++it)
+      for (auto it = Items.begin(), lim = Items.end(); it != lim; ++it)
       {
-        iters.push_back(it);
+        iters.emplace_back(it);
       }
-      std::random_shuffle(iters.begin(), iters.end());
+      std::shuffle(iters.begin(), iters.end(), std::mt19937(std::random_device()()));
       ItemsContainer newOne;
-      for (std::vector<ItemsContainer::const_iterator>::const_iterator it = iters.begin(), lim = iters.end(); it != lim; ++it)
+      for (const auto& it : iters)
       {
-        newOne.push_back(**it);
+        newOne.push_back(*it);
       }
       newOne.swap(Items);
       ClearCache();
       Modify();
     }
-    
+
     void RemoveItems(const Model::IndexSet& indices) override
     {
       if (indices.empty())
@@ -384,34 +311,30 @@ namespace
       ClearCache();
       Modify();
     }
+
   private:
-    static Model::OldToNewIndexMap::value_type MakeIndexPair(const IndexedItem& item, Model::IndexType idx)
+    const void* Self() const
     {
-      return Model::OldToNewIndexMap::value_type(item.second, idx);
+      return this;
     }
 
-    static IndexedItem UpdateItemIndex(const IndexedItem& item, Model::IndexType idx)
-    {
-      return IndexedItem(item.first, idx);
-    }
-
-    class ComparerWrapper : public std::binary_function<ItemsContainer::value_type, ItemsContainer::value_type, bool>
+    class ComparerWrapper
     {
     public:
       explicit ComparerWrapper(const Item::Comparer& cmp)
         : Cmp(cmp)
-      {
-      }
+      {}
 
-      result_type operator()(first_argument_type lh, second_argument_type rh) const
+      bool operator()(const ItemsContainer::value_type& lh, const ItemsContainer::value_type& rh) const
       {
         return Cmp.CompareItems(*lh.first, *rh.first);
       }
+
     private:
       const Item::Comparer& Cmp;
     };
 
-    typedef std::map<Model::IndexType, ItemsContainer::iterator> IndexToIterator;
+    using IndexToIterator = std::map<Model::IndexType, ItemsContainer::iterator>;
 
     ItemsContainer::iterator GetIteratorByIndex(Model::IndexType idx) const
     {
@@ -421,7 +344,7 @@ namespace
         std::advance(entry.second, delta);
         if (Math::Absolute(delta) > std::ptrdiff_t(CACHE_THRESHOLD))
         {
-          Dbg("Cached iterator for idx=%1%. Nearest idx=%2%, delta=%3%", idx, entry.first, delta);
+          Dbg("Cached iterator for idx={}. Nearest idx={}, delta={}", idx, entry.first, delta);
           entry.first += delta;
           IteratorsCache.insert(entry);
         }
@@ -443,42 +366,40 @@ namespace
       {
         return cachedEntry;
       }
-      return predefinedDelta <= cachedDelta
-        ? predefinedEntry
-        : cachedEntry;
+      return predefinedDelta <= cachedDelta ? predefinedEntry : cachedEntry;
     }
 
     IndexToIterator::value_type GetNearestPredefinedIterator(Model::IndexType idx) const
     {
       const Model::IndexType firstIndex = 0;
-      const Model::IndexType lastIndex = Model::IndexType(Items.size() - 1);
+      const auto lastIndex = Model::IndexType(Items.size() - 1);
       const std::size_t toFirst = idx - firstIndex;
       const std::size_t toLast = lastIndex - idx;
       if (toFirst <= toLast)
       {
-        return IndexToIterator::value_type(firstIndex, Items.begin());
+        return {firstIndex, Items.begin()};
       }
       else
       {
-        return IndexToIterator::value_type(lastIndex, --Items.end());
+        return {lastIndex, --Items.end()};
       }
     }
 
     IndexToIterator::value_type GetNearestCachedIterator(Model::IndexType idx) const
     {
       assert(!IteratorsCache.empty());
-      const IndexToIterator::const_iterator upper = IteratorsCache.upper_bound(idx);
+      const auto upper = IteratorsCache.upper_bound(idx);
       if (upper == IteratorsCache.begin())
       {
         return *upper;
       }
-      IndexToIterator::const_iterator lower = upper;
+      auto lower = upper;
       --lower;
       if (upper == IteratorsCache.end())
       {
         return *lower;
       }
-      //upper->first > idx
+      // upper->first > idx
       const std::size_t toLower = idx - lower->first;
       const std::size_t toUpper = upper->first - idx;
       return *(toLower <= toUpper ? lower : upper);
@@ -503,7 +424,7 @@ namespace
       ItemsContainer afterItems;
       afterItems.splice(afterItems.begin(), Items, delimiter, Items.end());
 
-      //gathering back
+      // gathering back
       Items.splice(Items.end(), movedItems);
       Items.splice(Items.end(), afterItems);
       ClearCache();
@@ -520,8 +441,8 @@ namespace
       assert(*indices.rbegin() < Items.size());
       if (indices.size() == Items.size())
       {
-        //all items
-        for (IteratorType it = Items.begin(), lim = Items.end(); it != lim; )
+        // all items
+        for (IteratorType it = Items.begin(), lim = Items.end(); it != lim;)
         {
           const IteratorType op = it;
           ++it;
@@ -557,20 +478,18 @@ namespace
     {
       ++Version;
     }
+
   private:
-    unsigned Version;
+    unsigned Version = 0;
     mutable ItemsContainer Items;
     mutable IndexToIterator IteratorsCache;
   };
-}
+}  // namespace
 
-namespace Playlist
+namespace Playlist::Item
 {
-  namespace Item
+  Storage::Ptr Storage::Create()
   {
-    Storage::Ptr Storage::Create()
-    {
-      return MakePtr<LinearStorage>();
-    }
+    return MakePtr<LinearStorage>();
   }
-}
+}  // namespace Playlist::Item

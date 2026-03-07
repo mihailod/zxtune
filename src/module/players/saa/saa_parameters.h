@@ -1,23 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief  SAA parameters helpers
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SAA parameters helpers
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <devices/saa.h>
-#include <parameters/accessor.h>
+#include "devices/saa.h"
+#include "parameters/accessor.h"
 
-namespace Module
+namespace Module::SAA
 {
-  namespace SAA
-  {
-    Devices::SAA::ChipParameters::Ptr CreateChipParameters(Parameters::Accessor::Ptr params);
-  }
-}
+  Devices::SAA::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params);
+}  // namespace Module::SAA

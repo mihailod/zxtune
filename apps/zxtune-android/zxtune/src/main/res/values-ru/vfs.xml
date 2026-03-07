@@ -44,6 +44,8 @@
     <string name="vfs_zxart_compo_oldschool">Конкурс oldschool музыки</string>
     <string name="vfs_zxart_compo_mainstream">Конкурс mainstream музыки</string>
     <string name="vfs_zxart_compo_progressive">Конкурс progressive музыки</string>
+    <string name="vfs_zxart_compo_ts">Конкурс TurboSound-музыки</string>
+    <string name="vfs_zxart_compo_tsfm">Конкурс TSFM-музыки</string>
     <string name="vfs_zxart_compo_related">Музыка из релизов пати</string>
     <!-- joshw.info -->
     <string name="vfs_joshw_root_description">Различные архивы</string>
@@ -191,7 +193,26 @@
     <string name="vfs_vgmrips_chips_name">Чипы</string>
     <string name="vfs_vgmrips_systems_name">Системы</string>
     <string name="vfs_vgmrips_random_name">Случайные треки</string>
+    <!-- ocremix.org -->
+    <string name="vfs_ocremix_systems_name">Системы</string>
+    <string name="vfs_ocremix_organizations_name">Организации</string>
+    <string name="vfs_ocremix_remixes_name">Ремиксы</string>
+    <string name="vfs_ocremix_albums_name">Альбомы</string>
+    <string name="vfs_ocremix_games_name">Игры</string>
+    <!-- khinsider -->
+    <string name="vfs_khinsider_random_name">Песня из случайного альбома</string>
+    <string name="vfs_khinsider_top_name">Лучшие альбомы</string>
+    <string name="vfs_khinsider_series_name">Популярные серии</string>
+    <string name="vfs_khinsider_platforms_name">Платформы</string>
+    <string name="vfs_khinsider_types_name">Альбомы по типу</string>
+    <string name="vfs_khinsider_albumsletters_name">Альбомы по буквам</string>
+    <string name="vfs_khinsider_albumsyears_name">Альбомы по годам</string>
+    <string name="vfs_khinsider_top_new100_name">100 новых добавленных</string>
+    <string name="vfs_khinsider_top_40_name">40 лучших</string>
+    <string name="vfs_khinsider_top_favorites_name">Самые любимые</string>
     <!-- errors -->
     <string name="network_inaccessible">Сеть недоступна</string>
     <string name="failed_resolve">Не найден путь %s</string>
+    <string name="limited_storage_access">Нажмите, чтобы предоставить разрешение на доступ</string>
+    <string name="no_stored_playlists_access">Нажмите, чтобы настроить постоянное хранилище</string>
 </resources>

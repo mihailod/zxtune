@@ -1,86 +1,52 @@
 /**
-* 
-* @file
-*
-* @brief  FastTracker chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  FastTracker chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/aym/fasttracker.h"
+
+#include "formats/chiptune/aym/fasttracker.h"
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <formats/chiptune/aym/fasttracker.h>
-#include <math/numeric.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
-//text includes
-#include <module/text/platforms.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
 
-namespace Module
+#include "math/numeric.h"
+
+#include "make_ptr.h"
+
+#include <array>
+
+namespace Module::FastTracker
 {
-namespace FastTracker
-{
-  //supported commands and their parameters
+  // supported commands and their parameters
   enum CmdType
   {
-    //no parameters
+    // no parameters
     EMPTY,
-    //r13,tone
+    // r13,tone
     ENVELOPE,
-    //no parameters
+    // no parameters
     ENVELOPE_OFF,
-    //r5
+    // r5
     NOISE,
-    //step
+    // step
     SLIDE,
-    //step,note
+    // step,note
     SLIDE_NOTE
   };
 
   using Formats::Chiptune::FastTracker::Sample;
   using Formats::Chiptune::FastTracker::Ornament;
 
-  typedef SimpleOrderListWithTransposition<Formats::Chiptune::FastTracker::PositionEntry> OrderListWithTransposition;
-
-  class ModuleData : public TrackModel
-  {
-  public:
-    typedef std::shared_ptr<const ModuleData> Ptr;
-    typedef std::shared_ptr<ModuleData> RWPtr;
-
-    ModuleData()
-      : InitialTempo()
-    {
-    }
-
-    uint_t GetInitialTempo() const override
-    {
-      return InitialTempo;
-    }
-
-    const OrderList& GetOrder() const override
-    {
-      return *Order;
-    }
-
-    const PatternsSet& GetPatterns() const override
-    {
-      return *Patterns;
-    }
-
-    uint_t InitialTempo;
-    OrderListWithTransposition::Ptr Order;
-    PatternsSet::Ptr Patterns;
-    SparsedObjectsStorage<Sample> Samples;
-    SparsedObjectsStorage<Ornament> Ornaments;
-  };
+  using OrderListWithTransposition = SimpleOrderListWithTransposition<Formats::Chiptune::FastTracker::PositionEntry>;
+  using ModuleData = AYM::ModuleData<OrderListWithTransposition, Sample, Ornament>;
 
   class DataBuilder : public Formats::Chiptune::FastTracker::Builder
   {
@@ -90,8 +56,7 @@ namespace FastTracker
       , Meta(props)
       , Patterns(PatternsBuilder::Create<AYM::TRACK_CHANNELS>())
       , Data(MakeRWPtr<ModuleData>())
-    {
-    }
+    {}
 
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
@@ -113,7 +78,7 @@ namespace FastTracker
         break;
       }
     }
-    
+
     void SetInitialTempo(uint_t tempo) override
     {
       Data->InitialTempo = tempo;
@@ -209,6 +174,7 @@ namespace FastTracker
       Data->Patterns = Patterns.CaptureResult();
       return std::move(Data);
     }
+
   private:
     AYM::PropertiesHelper& Properties;
     MetaProperties Meta;
@@ -222,13 +188,11 @@ namespace FastTracker
   public:
     ObjectLinesIterator()
       : Obj()
-      , Position()
-    {
-    }
+    {}
 
     void Set(const Object& obj)
     {
-      //do not reset for original position update algo
+      // do not reset for original position update algo
       Obj = &obj;
     }
 
@@ -244,9 +208,7 @@ namespace FastTracker
 
     const typename Object::Line* GetLine() const
     {
-      return Position < Obj->GetSize()
-        ? &Obj->GetLine(Position)
-        : nullptr;
+      return Position < Obj->GetSize() ? &Obj->GetLine(Position) : nullptr;
     }
 
     void Next()
@@ -256,18 +218,16 @@ namespace FastTracker
         Position = Obj->GetLoop();
       }
     }
+
   private:
     const Object* Obj;
-    uint_t Position;
+    uint_t Position = 0;
   };
 
   class Accumulator
   {
   public:
-    Accumulator()
-      : Value()
-    {
-    }
+    Accumulator() = default;
 
     void Reset()
     {
@@ -283,19 +243,15 @@ namespace FastTracker
       }
       return res;
     }
+
   private:
-    int_t Value;
+    int_t Value = 0;
   };
 
   class ToneSlider
   {
   public:
-    ToneSlider()
-      : Sliding()
-      , Glissade()
-      , Direction()
-    {
-    }
+    ToneSlider() = default;
 
     void SetSlide(int_t slide)
     {
@@ -315,8 +271,7 @@ namespace FastTracker
     int_t Update()
     {
       Sliding += Glissade;
-      if ((Direction > 0 && Sliding >= 0)
-       || (Direction < 0 && Sliding < 0))
+      if ((Direction > 0 && Sliding >= 0) || (Direction < 0 && Sliding < 0))
       {
         Sliding = 0;
         Glissade = 0;
@@ -328,37 +283,31 @@ namespace FastTracker
     {
       Sliding = Glissade = Direction = 0;
     }
+
   private:
-    int_t Sliding;
-    int_t Glissade;
-    int_t Direction;
+    int_t Sliding = 0;
+    int_t Glissade = 0;
+    int_t Direction = 0;
   };
 
   struct ChannelState
   {
-    ChannelState()
-      : Note()
-      , Envelope(), EnvelopeEnabled()
-      , Volume(15), VolumeSlide()
-      , Noise()
-      , ToneAddon()
-    {
-    }
+    ChannelState() = default;
 
-    uint_t Note;
-    uint_t Envelope;
-    bool EnvelopeEnabled;
-    uint_t Volume;
-    int_t VolumeSlide;
-    int_t Noise;
+    uint_t Note = 0;
+    uint_t Envelope = 0;
+    bool EnvelopeEnabled = false;
+    uint_t Volume = 15;
+    int_t VolumeSlide = 0;
+    int_t Noise = 0;
     ObjectLinesIterator<Sample> SampleIterator;
-    ObjectLinesIterator<Ornament> OrnamentIterator; 
+    ObjectLinesIterator<Ornament> OrnamentIterator;
     Accumulator NoteAccumulator;
     Accumulator ToneAccumulator;
     Accumulator NoiseAccumulator;
     Accumulator SampleNoiseAccumulator;
     Accumulator EnvelopeAccumulator;
-    int_t ToneAddon;
+    int_t ToneAddon = 0;
     ToneSlider ToneSlide;
   };
 
@@ -367,7 +316,6 @@ namespace FastTracker
   public:
     explicit DataRenderer(ModuleData::Ptr data)
       : Data(std::move(data))
-      , Transposition()
     {
       Reset();
     }
@@ -376,9 +324,8 @@ namespace FastTracker
     {
       const Sample& stubSample = Data->Samples.Get(0);
       const Ornament& stubOrnament = Data->Ornaments.Get(0);
-      for (uint_t chan = 0; chan != PlayerState.size(); ++chan)
+      for (auto& dst : PlayerState)
       {
-        ChannelState& dst = PlayerState[chan];
         dst = ChannelState();
         dst.SampleIterator.Set(stubSample);
         dst.SampleIterator.Disable();
@@ -400,14 +347,15 @@ namespace FastTracker
       }
       SynthesizeChannelsData(track);
     }
+
   private:
     void GetNewLineState(const TrackModelState& state, AYM::TrackBuilder& track)
     {
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
         for (uint_t chan = 0; chan != PlayerState.size(); ++chan)
         {
-          if (const auto src = line->GetChannel(chan))
+          if (const auto* const src = line->GetChannel(chan))
           {
             GetNewChannelState(*src, PlayerState[chan], track);
           }
@@ -474,16 +422,16 @@ namespace FastTracker
           dst.ToneSlide.SetGlissade(it->Param1);
           break;
         case SLIDE_NOTE:
-          {
-            const int_t slide = track.GetSlidingDifference(it->Param2, dst.Note);
-            const int_t gliss = slide >= 0 ? -it->Param1 : it->Param1;
-            const int_t direction = slide >= 0 ? -1 : +1;
-            dst.ToneSlide.SetSlide(slide);
-            dst.ToneSlide.SetGlissade(gliss);
-            dst.ToneSlide.SetSlideDirection(direction);
-            dst.Note = it->Param2 + Transposition;
-          }
-          break;
+        {
+          const int_t slide = track.GetSlidingDifference(it->Param2, dst.Note);
+          const int_t gliss = slide >= 0 ? -it->Param1 : it->Param1;
+          const int_t direction = slide >= 0 ? -1 : +1;
+          dst.ToneSlide.SetSlide(slide);
+          dst.ToneSlide.SetGlissade(gliss);
+          dst.ToneSlide.SetSlideDirection(direction);
+          dst.Note = it->Param2 + Transposition;
+        }
+        break;
         }
       }
     }
@@ -497,7 +445,7 @@ namespace FastTracker
       }
     }
 
-    void SynthesizeChannel(ChannelState& dst, AYM::ChannelBuilder& channel, AYM::TrackBuilder& track)
+    static void SynthesizeChannel(ChannelState& dst, AYM::ChannelBuilder& channel, AYM::TrackBuilder& track)
     {
       const Ornament::Line& curOrnamentLine = *dst.OrnamentIterator.GetLine();
       const int_t noteAddon = dst.NoteAccumulator.Update(curOrnamentLine.NoteAddon, curOrnamentLine.KeepNoteAddon);
@@ -506,8 +454,9 @@ namespace FastTracker
 
       if (const Sample::Line* curSampleLine = dst.SampleIterator.GetLine())
       {
-        //apply noise
-        const int_t sampleNoiseAddon = dst.SampleNoiseAccumulator.Update(curSampleLine->Noise, curSampleLine->AccumulateNoise);
+        // apply noise
+        const int_t sampleNoiseAddon =
+            dst.SampleNoiseAccumulator.Update(curSampleLine->Noise, curSampleLine->AccumulateNoise);
         if (curSampleLine->NoiseMask)
         {
           channel.DisableNoise();
@@ -516,19 +465,20 @@ namespace FastTracker
         {
           track.SetNoise(dst.Noise + noiseAddon + sampleNoiseAddon);
         }
-        //apply tone
+        // apply tone
         dst.ToneAddon = dst.ToneAccumulator.Update(curSampleLine->Tone, curSampleLine->AccumulateTone);
         if (curSampleLine->ToneMask)
         {
           channel.DisableTone();
         }
-        //apply level
+        // apply level
         dst.VolumeSlide += curSampleLine->VolSlide;
-        const int_t volume = Math::Clamp<int_t>(curSampleLine->Level + dst.VolumeSlide, 0, 15);
+        const auto volume = Math::Clamp<int_t>(curSampleLine->Level + dst.VolumeSlide, 0, 15);
         const uint_t level = ((dst.Volume * 17 + (dst.Volume > 7)) * volume + 128) / 256;
         channel.SetLevel(level);
 
-        const uint_t envelope = dst.EnvelopeAccumulator.Update(curSampleLine->EnvelopeAddon, curSampleLine->AccumulateEnvelope);
+        const uint_t envelope =
+            dst.EnvelopeAccumulator.Update(curSampleLine->EnvelopeAddon, curSampleLine->AccumulateEnvelope);
         if (curSampleLine->EnableEnvelope && dst.EnvelopeEnabled)
         {
           channel.EnableEnvelope();
@@ -545,60 +495,30 @@ namespace FastTracker
       }
       channel.SetTone(dst.Note + noteAddon, dst.ToneAddon + dst.ToneSlide.Update());
     }
+
   private:
     const ModuleData::Ptr Data;
     std::array<ChannelState, AYM::TRACK_CHANNELS> PlayerState;
-    int_t Transposition;
-  };
-
-  class Chiptune : public AYM::Chiptune
-  {
-  public:
-    Chiptune(ModuleData::Ptr data, Parameters::Accessor::Ptr properties)
-      : Data(std::move(data))
-      , Properties(std::move(properties))
-      , Info(CreateTrackInfo(Data, AYM::TRACK_CHANNELS))
-    {
-    }
-
-    Information::Ptr GetInformation() const override
-    {
-      return Info;
-    }
-
-    Parameters::Accessor::Ptr GetProperties() const override
-    {
-      return Properties;
-    }
-
-    AYM::DataIterator::Ptr CreateDataIterator(AYM::TrackParameters::Ptr trackParams) const override
-    {
-      auto iterator = CreateTrackStateIterator(Data);
-      auto renderer = MakePtr<DataRenderer>(Data);
-      return AYM::CreateDataIterator(std::move(trackParams), std::move(iterator), std::move(renderer));
-    }
-  private:
-    const ModuleData::Ptr Data;
-    const Parameters::Accessor::Ptr Properties;
-    const Information::Ptr Info;
+    int_t Transposition = 0;
   };
 
   class Factory : public AYM::Factory
   {
   public:
-    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    AYM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       AYM::PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
       if (const auto container = Formats::Chiptune::FastTracker::Parse(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
-        return MakePtr<Chiptune>(dataBuilder.CaptureResult(), std::move(properties));
+        return MakePtr<AYM::TrackingChiptune<ModuleData, DataRenderer>>(dataBuilder.CaptureResult(),
+                                                                        std::move(properties));
       }
       else
       {
-        return AYM::Chiptune::Ptr();
+        return {};
       }
     }
   };
@@ -607,5 +527,4 @@ namespace FastTracker
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::FastTracker

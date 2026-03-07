@@ -12,17 +12,24 @@
     waveform from RAM (32 bytes per waveform, 8 bit signed data).
 
     This sound chip is the same as the sound chip in some Konami
-    megaROM cartridges for the MSX. It is actually well researched
-    and documented:
+    megaROM cartridges for the MSX. This device only emulates the
+    sound portion, not the memory mapper.
 
-        http://bifi.msxnet.org/msxnet/tech/scc.html
-
-    Thanks to Sean Young (sean@mess.org) for some bugfixes.
-
-    K052539 is more or less equivalent to this chip except channel 5
+    052539 is more or less equivalent to this chip except channel 5
     does not share waveram with channel 4.
 
-***************************************************************************/
+    References:
+    - http://bifi.msxnet.org/msxnet/tech/scc.html
+    - http://bifi.msxnet.org/msxnet/tech/soundcartridge
+
+    TODO:
+    - bus conflicts on 051649 (not 052539). When the CPU accesses waveform RAM
+      and the SCC is reading it at the same time, it can cause audible spikes.
+      A similar thing happens internally when the shared ch4/ch5 do a read at
+      the same time.
+    - test register bits 0-4, not used in any software
+
+*******************************************************************************/
 
 #include <stdlib.h>
 #include <string.h>	// for memset
@@ -63,11 +70,13 @@ static DEVDEF_RWFUNC devFunc[] =
 {
 	{RWF_REGISTER | RWF_WRITE, DEVRW_A8D8, 0, k051649_w},
 	{RWF_REGISTER | RWF_READ, DEVRW_A8D8, 0, k051649_r},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, k051649_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef =
 {
 	"K051649", "MAME", FCC_MAME,
+	5,  // Channels
 	
 	device_start_k051649,
 	device_stop_k051649,
@@ -78,6 +87,7 @@ static DEV_DEF devDef =
 	k051649_set_mute_mask,
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	NULL,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs
@@ -91,7 +101,6 @@ const DEV_DEF* devDefList_K051649[] =
 
 
 #define FREQ_BITS   16
-#define DEF_GAIN    8
 
 // Parameters for a channel
 typedef struct
@@ -114,40 +123,11 @@ struct _k051649_state
 	UINT32 mclock;
 	UINT32 rate;
 
-	/* mixer tables and internal buffers */
-	DEV_SMPL *mixer_table;
-	DEV_SMPL *mixer_lookup;
-
 	/* chip registers */
-	UINT8 test;
+	UINT8 test; // test register
 	UINT8 cur_reg;
 	UINT8 mode_plus;
 };
-
-
-//-------------------------------------------------
-// build a table to divide by the number of voices
-//-------------------------------------------------
-
-static void make_mixer_table(k051649_state *info, int voices)
-{
-	int i;
-
-	// allocate memory
-	info->mixer_table = (DEV_SMPL*)malloc(sizeof(DEV_SMPL) * 512 * voices);
-
-	// find the middle of the table
-	info->mixer_lookup = info->mixer_table + (256 * voices);
-
-	// fill in the table - 16 bit case
-	for (i = 0; i < (voices * 256); i++)
-	{
-		int val = i * DEF_GAIN * 16 / voices;
-		//if (val > 32767) val = 32767;
-		info->mixer_lookup[ i] = val;
-		info->mixer_lookup[-i] = -val;
-	}
-}
 
 
 /* generate sound to the mix buffer */
@@ -161,37 +141,35 @@ static void k051649_update(void *param, UINT32 samples, DEV_SMPL **outputs)
 
 	// zap the contents of the mixer buffer
 	memset(buffer, 0, samples * sizeof(DEV_SMPL));
+	memset(buffer2, 0, samples * sizeof(DEV_SMPL));
 
 	for (j = 0; j < 5; j++)
 	{
 		// channel is halted for freq < 9
 		if (voice[j].frequency > 8 && ! voice[j].Muted)
 		{
-			const INT8 *w = voice[j].waveram;
-			INT16 v=voice[j].volume * voice[j].key;
-			UINT32 c=voice[j].counter;
-			//UINT32 step = (UINT32)(((INT64)info->mclock * (1 << FREQ_BITS)) / (float)((voice[j].frequency + 1) * 16 * (info->rate / 32)) + 0.5);
 			UINT32 step = (UINT32)(((INT64)info->mclock * (1 << FREQ_BITS)) / (float)((voice[j].frequency + 1) * info->rate / 2.0f) + 0.5f);
 
-			// add our contribution
 			for (i = 0; i < samples; i++)
 			{
-				UINT32 offs;
-
-				c += step;
-				offs = (c >> FREQ_BITS) & 0x1f;
-				buffer[i] += (w[offs] * v)>>3;
+				voice[j].counter += step;
+				if (voice[j].key)
+				{
+					UINT32 offs = (voice[j].counter >> FREQ_BITS) & 0x1f;
+					// 0x80 [wave] * 0x0F [volume] -> range +-0x780 per channel, 0x2580 total
+					DEV_SMPL smpl = voice[j].waveram[offs] * voice[j].volume;
+					// scale to 11 bit digital output on chip
+					smpl >>= 4;	// results in [-600 .. +600]
+					buffer[i] += smpl;
+				}
 			}
-
-			// update the counter for this voice
-			voice[j].counter = c;
 		}
 	}
-
-	// mix it down
 	for (i = 0; i < samples; i++)
 	{
-		buffer[i] = buffer2[i] = info->mixer_lookup[buffer[i]];
+		// scale to +-0x7800 (fallback solution to keep volume intact)
+		buffer[i] = buffer[i] * 256 / 8;
+		buffer2[i] = buffer[i];
 	}
 }
 
@@ -208,9 +186,6 @@ static UINT8 device_start_k051649(const DEV_GEN_CFG* cfg, DEV_INFO* retDevInf)
 	info->mclock = cfg->clock;
 	info->rate = info->mclock / 16;
 
-	// build the mixer table
-	make_mixer_table(info, 5);
-	
 	k051649_set_mute_mask(info, 0x00);
 	
 	info->_devData.chipInf = info;
@@ -222,7 +197,6 @@ static void device_stop_k051649(void *chip)
 {
 	k051649_state *info = (k051649_state *)chip;
 	
-	free(info->mixer_table);
 	free(info);
 	
 	return;
@@ -250,7 +224,7 @@ static void device_reset_k051649(void *chip)
 	return;
 }
 
-/********************************************************************************/
+/******************************************************************************/
 
 static void k051649_waveform_w(void *chip, UINT8 offset, UINT8 data)
 {
@@ -274,16 +248,17 @@ static void k051649_waveform_w(void *chip, UINT8 offset, UINT8 data)
 static UINT8 k051649_waveform_r(void *chip, UINT8 offset)
 {
 	k051649_state *info = (k051649_state *)chip;
+	UINT8 counter = 0;
 	
-	// test-register bits 6/7 expose the internal counter
+	// test register bits 6/7 expose the internal counter
 	if (info->test & 0xc0)
 	{
-		if (offset >= 0x60)
-			offset += (info->channel_list[3 + (info->test >> 6 & 1)].counter >> FREQ_BITS);
+		if (offset >= 0x60 && (info->test & 0xc0) != 0xc0)
+			counter = (info->channel_list[3 + (info->test >> 6 & 1)].counter >> FREQ_BITS);
 		else if (info->test & 0x40)
-			offset += (info->channel_list[offset>>5].counter >> FREQ_BITS);
+			counter = (info->channel_list[offset >> 5].counter >> FREQ_BITS);
 	}
-	return info->channel_list[offset>>5].waveram[offset&0x1f];
+	return info->channel_list[offset >> 5].waveram[(offset + counter) & 0x1f];
 }
 
 
@@ -302,13 +277,14 @@ static void k052539_waveform_w(void *chip, UINT8 offset, UINT8 data)
 static UINT8 k052539_waveform_r(void *chip, UINT8 offset)
 {
 	k051649_state *info = (k051649_state *)chip;
+	UINT8 counter = 0;
 	
-	// test-register bit 6 exposes the internal counter
+	// test register bits 6/7 expose the internal counter
 	if (info->test & 0x40)
 	{
-		offset += (info->channel_list[offset>>5].counter >> FREQ_BITS);
+		counter = (info->channel_list[offset >> 5].counter >> FREQ_BITS);
 	}
-	return info->channel_list[offset>>5].waveram[offset&0x1f];
+	return info->channel_list[offset >> 5].waveram[(offset + counter) & 0x1f];
 }
 
 
@@ -324,12 +300,6 @@ static void k051649_frequency_w(void *chip, UINT8 offset, UINT8 data)
 	k051649_state *info = (k051649_state *)chip;
 	UINT8 freq_hi = offset & 1;
 	k051649_sound_channel* chn = &info->channel_list[offset >> 1];
-	
-	// test-register bit 5 resets the internal counter
-	if (info->test & 0x20)
-		chn->counter = ~0;
-	else if (chn->frequency < 9)
-		chn->counter |= ((1 << FREQ_BITS) - 1);
 
 	// update frequency
 	if (freq_hi)
@@ -337,6 +307,12 @@ static void k051649_frequency_w(void *chip, UINT8 offset, UINT8 data)
 	else
 		chn->frequency = (chn->frequency & 0xf00) | data;
 	chn->counter &= 0xFFFF0000;	// Valley Bell: Behaviour according to openMSX
+
+	// test register bit 5 resets the internal counter
+	if (info->test & 0x20)
+		chn->counter = ~0;
+	else if (chn->frequency < 9)
+		chn->counter |= ((1 << FREQ_BITS) - 1);
 }
 
 

@@ -1,30 +1,27 @@
 /**
-*
-* @file
-*
-* @brief  Volume control delegate implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Volume control delegate implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "sound/backends/l10n.h"
 #include "sound/backends/volume_control.h"
-//common includes
-#include <make_ptr.h>
 
-#define FILE_TAG B368C82C
+#include "sound/backends/l10n.h"
+
+#include "make_ptr.h"
 
 namespace Sound
 {
   class VolumeControlDelegate : public VolumeControl
   {
   public:
-    explicit VolumeControlDelegate(VolumeControl::Ptr delegate)
+    explicit VolumeControlDelegate(const VolumeControl::Ptr& delegate)
       : Delegate(delegate)
-    {
-    }
+    {}
 
     Gain GetVolume() const override
     {
@@ -43,17 +40,16 @@ namespace Sound
       }
       throw Error(THIS_LINE, translate("Failed to set volume in invalid state."));
     }
+
   private:
     const std::weak_ptr<VolumeControl> Delegate;
   };
-}
+}  // namespace Sound
 
 namespace Sound
 {
-  VolumeControl::Ptr CreateVolumeControlDelegate(VolumeControl::Ptr delegate)
+  VolumeControl::Ptr CreateVolumeControlDelegate(const VolumeControl::Ptr& delegate)
   {
     return MakePtr<VolumeControlDelegate>(delegate);
   }
-}
-
-#undef FILE_TAG
+}  // namespace Sound

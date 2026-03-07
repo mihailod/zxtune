@@ -12,10 +12,16 @@ import android.text.TextUtils;
 
 import androidx.annotation.Nullable;
 
+import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileDescriptor;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.Iterator;
 
+import app.zxtune.Features;
 import app.zxtune.MainApplication;
 import app.zxtune.fs.cache.CacheDir;
 import app.zxtune.fs.cache.CacheFactory;
@@ -26,6 +32,7 @@ import app.zxtune.fs.http.HttpProvider;
 import app.zxtune.fs.http.HttpProviderFactory;
 import app.zxtune.fs.http.MultisourceHttpProvider;
 import app.zxtune.io.Io;
+import app.zxtune.utils.ProgressCallback;
 
 public final class Vfs {
 
@@ -54,18 +61,49 @@ public final class Vfs {
     }
   }
 
+  @SuppressWarnings("unchecked")
+  public static InputStream openStream(VfsFile file) throws IOException {
+    final InputStream asStream = VfsExtensionsKt.getInputStream(file);
+    if (asStream != null) {
+      return asStream;
+    }
+    final File asFile = VfsExtensionsKt.getFile(file);
+    if (asFile != null) {
+      return new FileInputStream(asFile);
+    }
+    final FileDescriptor asDescriptor = VfsExtensionsKt.getFileDescriptor(file);
+    if (asDescriptor != null) {
+      return new FileInputStream(asDescriptor);
+    }
+    if (file.getExtension(VfsExtensions.CACHE_PATH) == null) {
+      final Object uris = file.getExtension(VfsExtensions.DOWNLOAD_URIS);
+      if (uris instanceof Uri[]) {
+        return new BufferedInputStream(Holder.INSTANCE.network.getInputStream((Uri[]) uris));
+      } else if (uris instanceof Iterator) {
+        return new BufferedInputStream(Holder.INSTANCE.network.getInputStream((Iterator<Uri>) uris));
+      }
+    }
+    return Io.createByteBufferInputStream(download(file, null));
+  }
+
   public static ByteBuffer read(final VfsFile file) throws IOException {
     return read(file, null);
   }
 
   public static ByteBuffer read(final VfsFile file, @Nullable ProgressCallback progress) throws IOException {
-    final Uri uri = file.getUri();
-    {
-      final Object asFile = file.getExtension(VfsExtensions.FILE);
-      if (asFile instanceof File) {
-        return Io.readFrom((File) asFile);
-      }
+    final File asFile = VfsExtensionsKt.getFile(file);
+    if (asFile != null) {
+      return Io.readFrom(asFile);
     }
+    final FileDescriptor asDescriptor = VfsExtensionsKt.getFileDescriptor(file);
+    if (asDescriptor != null) {
+      return Io.readFrom(new FileInputStream(asDescriptor));
+    }
+    return download(file, progress);
+  }
+
+  private static ByteBuffer download(final VfsFile file, @Nullable ProgressCallback progress) throws IOException {
+    final Uri uri = file.getUri();
     return new CommandExecutor(uri.getScheme()).executeDownloadCommand(new DownloadCommand() {
       @Override
       public File getCache() throws IOException {
@@ -77,23 +115,17 @@ public final class Vfs {
       }
 
       @Override
+      @SuppressWarnings("unchecked")
       public HttpObject getRemote() throws IOException {
         final Object uris = file.getExtension(VfsExtensions.DOWNLOAD_URIS);
         if (uris instanceof Uri[]) {
           return Holder.INSTANCE.network.getObject((Uri[]) uris);
+        } else if (uris instanceof Iterator) {
+          return Holder.INSTANCE.network.getObject((Iterator<Uri>) uris);
         }
         throw new IOException("Failed to get download uris for " + uri);
       }
     }, progress);
-  }
-
-  @Nullable
-  public static File getCacheOrFile(VfsFile obj) {
-    final Object asFile = obj.getExtension(VfsExtensions.FILE);
-    if (asFile instanceof File) {
-      return (File) asFile;
-    }
-    return getCache(obj);
   }
 
   @Nullable
@@ -107,8 +139,7 @@ public final class Vfs {
       return null;
     }
     final String compatId = getCacheCompatId(id);
-    return Holder.INSTANCE.cache.find(id + "/" + path,
-        compatId + "/" + path);
+    return Holder.INSTANCE.cache.find(id + "/" + path, compatId + "/" + path);
   }
 
   private static String getCacheCompatId(String id) {
@@ -135,7 +166,11 @@ public final class Vfs {
 
   private VfsRoot createRoot(Context appContext) {
     final VfsRootComposite composite = new VfsRootComposite(null);
-    composite.addSubroot(new VfsRootLocal(appContext));
+    if (Features.StorageAccessFramework.isEnabled()) {
+      composite.addSubroot(new VfsRootLocalStorageAccessFramework(appContext));
+    } else {
+      composite.addSubroot(new VfsRootLocal(appContext));
+    }
     composite.addSubroot(new VfsRootNetwork(appContext, network));
     composite.addSubroot(new VfsRootPlaylists(appContext));
     composite.addSubroot(new VfsRootRadio(appContext));

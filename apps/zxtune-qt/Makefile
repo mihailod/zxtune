@@ -3,7 +3,6 @@ dirs.root := ../..
 include $(dirs.root)/make/default.mak
 
 source_dirs = . supp
-includes.dirs += .
 
 source_files.windows = res/zxtune-qt.rc
 source_files.mingw = $(source_files.windows)
@@ -16,8 +15,6 @@ have_gui = 1
 #other
 moc_files += supp/playback_supp singlemode
 
-text_files := text/text
-
 #base
 libraries.common = analysis async \
                   binary binary_compression binary_format \
@@ -25,26 +22,23 @@ libraries.common = analysis async \
                   devices_aym devices_aym_dumper devices_beeper devices_dac devices_fm devices_saa devices_z80 \
                   formats_archived formats_archived_multitrack formats_chiptune formats_packed formats_multitrack \
                   io \
-                  module module_conversion module_players module_properties \
+                  module_conversion module_players module_properties \
                   parameters platform platform_application platform_version \
                   resource \
                   sound sound_backends strings \
                   tools
-libraries.3rdparty = asap ffmpeg FLAC gme he ht hvl lazyusf2 lhasa lzma mgba sidplayfp snesspc unrar v2m vgm vio2sf xmp z80ex zlib
+libraries.3rdparty = asap atrac9 ffmpeg FLAC gme he ht hvl lazyusf2 lhasa lzma mgba mpg123 ogg openmpt opus sidplayfp snesspc sseqplayer unrar v2m vgm vgmstream vio2sf vorbis xmp z80ex zlib
 
 #ui
 libraries += playlist_ui playlist_supp playlist_io ui_common
 depends += $(addprefix apps/zxtune-qt/,playlist/supp playlist/ui playlist/io ui)
 
-libraries.boost = filesystem system
-
-libraries.qt = Gui Core Network
+libraries.qt = Gui Core Network Widgets
 
 libraries.common += l10n debug
 libraries += ui_desktop playlist_ui_desktop ui_conversion ui_preferences check_update
 depends += $(addprefix apps/zxtune-qt/,ui/desktop playlist/ui/desktop ui/conversion ui/preferences update)
 libraries.boost += locale
-libraries.mingw += iconv
 libraries.darwin += iconv
 embedded_files = $(qm_translation_data) $(mo_translation_data)
 

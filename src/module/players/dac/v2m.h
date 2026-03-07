@@ -1,22 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief  V2M chiptune factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  V2M chiptune factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <module/players/factory.h>
+#include "module/players/factory.h"
 
-namespace Module
+namespace Module::V2M
 {
-  namespace V2M
-  {
-    Factory::Ptr CreateFactory();
-  }
-}
+  Factory::Ptr CreateFactory();
+}  // namespace Module::V2M

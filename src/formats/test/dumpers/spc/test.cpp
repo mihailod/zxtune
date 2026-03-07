@@ -1,92 +1,110 @@
 /**
-*
-* @file
-*
-* @brief  SPC dumper
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SPC dumper
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-#include "../../utils.h"
-#include <formats/chiptune/emulation/spc.h>
-#include <strings/format.h>
-#include <time/serialize.h>
+#include "formats/chiptune/emulation/spc.h"
+#include "formats/test/utils.h"
+
+#include "strings/format.h"
+#include "time/serialize.h"
+
+#include "string_view.h"
 
 namespace
 {
   using namespace Formats::Chiptune;
 
-   class SpcBuilder : public SPC::Builder
-   {
-   public:
-     void SetRegisters(uint16_t pc, uint8_t a, uint8_t x, uint8_t y, uint8_t psw, uint8_t sp) override
-     {
-       std::cout << Strings::Format("Registers: PC=0x%1$04x A=0x%2$02x X=0x%3$02x Y=0x%3$02x PSW=0x%3$02x SP=0x%3$02x\n",
-         uint_t(pc), uint_t(a), uint_t(x), uint_t(y), uint_t(psw), uint_t(sp));
-     }
+  class SpcBuilder
+    : public SPC::Builder
+    , public MetaBuilder
+  {
+  public:
+    void SetProgram(StringView program) override
+    {
+      std::cout << "Program: " << program << std::endl;
+    }
 
-     void SetTitle(String title) override
-     {
-       std::cout << "Title: " << title << std::endl;
-     }
+    void SetTitle(StringView title) override
+    {
+      std::cout << "Title: " << title << std::endl;
+    }
 
-     void SetGame(String game) override
-     {
-       std::cout << "Game: " << game << std::endl;
-     }
+    void SetAuthor(StringView author) override
+    {
+      std::cout << "Author: " << author << std::endl;
+    }
 
-     void SetDumper(String dumper) override
-     {
-       std::cout << "Dumper: " << dumper << std::endl;
-     }
+    void SetStrings(const Strings::Array& strings) override
+    {
+      for (const auto& str : strings)
+      {
+        std::cout << "Strings: " << str << std::endl;
+      }
+    }
 
-     void SetComment(String comment) override
-     {
-       std::cout << "Comment: " << comment << std::endl;
-     }
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
+    }
 
-     void SetDumpDate(String date) override
-     {
-       std::cout << "Dump date: " << date << std::endl;
-     }
+    MetaBuilder& GetMetaBuilder() override
+    {
+      return *this;
+    }
 
-     void SetIntro(Time::Milliseconds duration) override
-     {
-       std::cout << "Intro: " << Time::ToString(duration) << std::endl;
-     }
+    void SetRegisters(uint16_t pc, uint8_t a, uint8_t x, uint8_t y, uint8_t psw, uint8_t sp) override
+    {
+      std::cout << Strings::Format("Registers: PC=0x{:04x} A=0x{:02x} X=0x{:02x} Y=0x{:02x} PSW=0x{:02x} SP=0x{:02x}\n",
+                                   uint_t(pc), uint_t(a), uint_t(x), uint_t(y), uint_t(psw), uint_t(sp));
+    }
 
-     void SetLoop(Time::Milliseconds duration) override
-     {
-       std::cout << "Duration: " << Time::ToString(duration) << std::endl;
-     }
+    void SetDumper(StringView dumper) override
+    {
+      std::cout << "Dumper: " << dumper << std::endl;
+    }
 
-     void SetFade(Time::Milliseconds duration) override
-     {
-       std::cout << "Fade: " << Time::ToString(duration) << std::endl;
-     }
+    void SetDumpDate(StringView date) override
+    {
+      std::cout << "Dump date: " << date << std::endl;
+    }
 
-     void SetArtist(String artist) override
-     {
-       std::cout << "Artist: " << artist << std::endl;
-     }
+    void SetIntro(Time::Milliseconds duration) override
+    {
+      std::cout << "Intro: " << Time::ToString(duration) << std::endl;
+    }
 
-     void SetRAM(Binary::View data) override
-     {
-       std::cout << "RAM,bytes: " << data.Size() << std::endl;
-     }
+    void SetLoop(Time::Milliseconds duration) override
+    {
+      std::cout << "Loop: " << Time::ToString(duration) << std::endl;
+    }
 
-     void SetDSPRegisters(Binary::View data) override
-     {
-       std::cout << "DSP registers,bytes: " << data.Size() << std::endl;
-     }
+    void SetFade(Time::Milliseconds duration) override
+    {
+      std::cout << "Fade: " << Time::ToString(duration) << std::endl;
+    }
 
-     void SetExtraRAM(Binary::View data) override
-     {
-       std::cout << "ExtraRAM,bytes: " << data.Size() << std::endl;
-     }
-   };
-}
+    void SetRAM(Binary::View data) override
+    {
+      std::cout << "RAM,bytes: " << data.Size() << std::endl;
+    }
+
+    void SetDSPRegisters(Binary::View data) override
+    {
+      std::cout << "DSP registers,bytes: " << data.Size() << std::endl;
+    }
+
+    void SetExtraRAM(Binary::View data) override
+    {
+      std::cout << "ExtraRAM,bytes: " << data.Size() << std::endl;
+    }
+  };
+}  // namespace
 
 int main(int argc, char* argv[])
 {
@@ -96,9 +114,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Dump> rawData(new Dump());
-    Test::OpenFile(argv[1], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[1]);
     SpcBuilder builder;
     if (const auto result = Formats::Chiptune::SPC::Parse(*data, builder))
     {

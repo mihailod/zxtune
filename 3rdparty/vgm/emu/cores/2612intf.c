@@ -31,21 +31,24 @@ static DEVDEF_RWFUNC devFunc_MAME[] =
 {
 	{RWF_REGISTER | RWF_WRITE, DEVRW_A8D8, 0, ym2612_write},
 	{RWF_REGISTER | RWF_READ, DEVRW_A8D8, 0, ym2612_read},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, ym2612_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef_MAME =
 {
 	"YM2612", "GPGX", FCC_GPGX,
+	7,  // Channels
 	
 	device_start_ym2612_mame,
 	ym2612_shutdown,
 	ym2612_reset_chip,
 	ym2612_update_one,
 	
-	ym2612_setoptions,	// SetOptionBits
-	ym2612_set_mutemask,
+	ym2612_set_options,	// SetOptionBits
+	ym2612_set_mute_mask,	// SetMuteMask
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	ym2612_set_log_cb,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc_MAME,	// rwFuncs
@@ -61,6 +64,7 @@ static DEVDEF_RWFUNC devFunc_Gens[] =
 static DEV_DEF devDef_Gens =
 {
 	"YM2612", "Gens", FCC_GENS,
+	7,  // Channels
 	
 	device_start_ym2612_gens,
 	(DEVFUNC_CTRL)YM2612_End,
@@ -68,9 +72,10 @@ static DEV_DEF devDef_Gens =
 	ym2612_gens_update,
 	
 	(DEVFUNC_OPTMASK)YM2612_SetOptions,	// SetOptionBits
-	(DEVFUNC_OPTMASK)YM2612_SetMute,
+	(DEVFUNC_OPTMASK)YM2612_SetMute,	// SetMuteMask
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	NULL,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc_Gens,	// rwFuncs
@@ -86,6 +91,7 @@ static DEVDEF_RWFUNC devFunc_Nuked[] =
 static DEV_DEF devDef_Nuked =
 {
 	"YM3438", "Nuked OPN2", FCC_NUKE,
+	7,  // Channels
 	
 	device_start_ym2612_nuked,
 	nukedopn2_shutdown,
@@ -93,9 +99,10 @@ static DEV_DEF devDef_Nuked =
 	nukedopn2_update,
 	
 	nukedopn2_set_options,	// SetOptionBits
-	nukedopn2_set_mutemask,
+	nukedopn2_set_mute_mask,	// SetMuteMask
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	NULL,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc_Nuked,	// rwFuncs
@@ -185,7 +192,7 @@ static UINT8 device_start_ym2612_nuked(const DEV_GEN_CFG* cfg, DEV_INFO* retDevI
 	if (chip == NULL)
 		return 0xFF;
 	
-	nukedopn2_set_mutemask(chip, 0x00);
+	nukedopn2_set_mute_mask(chip, 0x00);
 	
 	devData = (DEV_DATA*)chip;
 	devData->chipInf = chip;

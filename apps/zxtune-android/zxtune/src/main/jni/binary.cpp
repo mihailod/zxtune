@@ -1,21 +1,21 @@
 /**
-*
-* @file
-*
-* @brief Binary data functions implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Binary data functions implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "binary.h"
-#include "exception.h"
-//common includes
-#include <contract.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/container_factories.h>
+#include "apps/zxtune-android/zxtune/src/main/jni/binary.h"
+
+#include "apps/zxtune-android/zxtune/src/main/jni/exception.h"
+
+#include "binary/container_factories.h"
+
+#include "contract.h"
+#include "make_ptr.h"
 
 namespace Binary
 {
@@ -27,8 +27,7 @@ namespace Binary
       , Length(GetSize(env, object))
       , Vm(GetVm(env))
       , Object(env->NewGlobalRef(object))
-    {
-    }
+    {}
 
     ~ByteBufferData() override
     {
@@ -45,14 +44,15 @@ namespace Binary
     {
       return Length;
     }
+
   private:
     static const uint8_t* GetData(JNIEnv* env, jobject byteBuffer)
     {
-      if (const auto addr = env->GetDirectBufferAddress(byteBuffer))
+      if (const auto* const addr = env->GetDirectBufferAddress(byteBuffer))
       {
         return static_cast<const uint8_t*>(addr);
       }
-      throw Jni::NullPointerException();
+      throw Jni::NullPointerException("Not a direct buffer!");
     }
 
     static std::size_t GetSize(JNIEnv* env, jobject byteBuffer)
@@ -75,6 +75,7 @@ namespace Binary
       Require(vm->GetEnv(reinterpret_cast<void**>(&result), JNI_VERSION_1_6) == JNI_OK);
       return result;
     }
+
   private:
     const uint8_t* const Data;
     const std::size_t Length;
@@ -87,4 +88,4 @@ namespace Binary
     auto data = MakePtr<ByteBufferData>(env, byteBuffer);
     return CreateContainer(std::move(data));
   }
-}
+}  // namespace Binary

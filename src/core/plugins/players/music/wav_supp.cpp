@@ -1,129 +1,89 @@
 /**
-* 
-* @file
-*
-* @brief  WAV support plugin
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  WAV support plugin
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "core/plugins/players/music/wav_supp.h"
+
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-//common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-//library includes
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/decoders.h>
-#include <formats/chiptune/music/wav.h>
-#include <module/players/analyzer.h>
-#include <module/players/properties_helper.h>
-#include <module/players/properties_meta.h>
-#include <module/players/streaming.h>
-#include <parameters/tracking_helper.h>
-#include <sound/render_params.h>
-#include <sound/resampler.h>
+#include "formats/chiptune/music/wav.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
 
-#define FILE_TAG 72CE1906
+#include "binary/dump.h"
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "sound/resampler.h"
 
-namespace Module
-{
-namespace Wav
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
+namespace Module::Wav
 {
   const Debug::Stream Dbg("Core::WavSupp");
 
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(Model::Ptr data, StateIterator::Ptr iterator, Sound::Receiver::Ptr target, Parameters::Accessor::Ptr params)
+    Renderer(Model::Ptr data, Sound::Converter::Ptr target)
       : Tune(std::move(data))
-      , Iterator(std::move(iterator))
-      , State(Iterator->GetStateObserver())
-      , Analyzer(Module::CreateSoundAnalyzer())
-      , SoundParams(Sound::RenderParameters::Create(std::move(params)))
+      , State(MakePtr<SampledState>(Tune->GetTotalSamples(), Tune->GetSamplerate()))
       , Target(std::move(target))
-      , Looped()
-    {
-      ApplyParameters();
-    }
+    {}
 
     Module::State::Ptr GetState() const override
     {
       return State;
     }
 
-    Module::Analyzer::Ptr GetAnalyzer() const override
+    Sound::Chunk Render() override
     {
-      return Analyzer;
-    }
-
-    bool RenderFrame() override
-    {
-      try
+      auto frame = Tune->RenderNextFrame();
+      if (0 != State->Consume(frame.size()))
       {
-        ApplyParameters();
-
-        auto frame = Tune->RenderFrame(State->Frame());
-        Analyzer->AddSoundData(frame);
-        Resampler->ApplyData(std::move(frame));
-        Iterator->NextFrame(Looped);
-        return Iterator->IsValid();
+        Tune->Seek(0);
       }
-      catch (const std::exception&)
-      {
-        return false;
-      }
+      return Target->Apply(std::move(frame));
     }
 
     void Reset() override
     {
-      SoundParams.Reset();
-      Iterator->Reset();
-      Looped = {};
+      State->Reset();
+      Tune->Seek(0);
     }
 
-    void SetPosition(uint_t frame) override
+    void SetPosition(Time::AtMillisecond request) override
     {
-      Module::SeekIterator(*Iterator, frame);
+      State->Seek(request);
+      const auto aligned = Tune->Seek(State->AtSample());
+      State->SeekAtSample(aligned);
     }
-  private:
-    void ApplyParameters()
-    {
-      if (SoundParams.IsChanged())
-      {
-        Looped = SoundParams->Looped();
-        Resampler = Sound::CreateResampler(Tune->GetFrequency(), SoundParams->SoundFreq(), Target);
-      }
-    }
+
   private:
     const Model::Ptr Tune;
-    const StateIterator::Ptr Iterator;
-    const Module::State::Ptr State;
-    const Module::SoundAnalyzer::Ptr Analyzer;
-    Parameters::TrackingHelper<Sound::RenderParameters> SoundParams;
-    const Sound::Receiver::Ptr Target;
-    Sound::Receiver::Ptr Resampler;
-    Sound::LoopParameters Looped;
+    const SampledState::Ptr State;
+    const Sound::Converter::Ptr Target;
   };
-  
+
   class Holder : public Module::Holder
   {
   public:
     Holder(Model::Ptr data, Parameters::Accessor::Ptr props)
       : Data(std::move(data))
-      , Info(CreateStreamInfo(Data->GetFramesCount()))
       , Properties(std::move(props))
-    {
-    }
+    {}
 
     Module::Information::Ptr GetModuleInformation() const override
     {
-      return Info;
+      return CreateSampledInfo(Data->GetSamplerate(), Data->GetTotalSamples());
     }
 
     Parameters::Accessor::Ptr GetModuleProperties() const override
@@ -131,24 +91,23 @@ namespace Wav
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(Parameters::Accessor::Ptr params, Sound::Receiver::Ptr target) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
     {
-      return MakePtr<Renderer>(Data, Module::CreateStreamStateIterator(Info), target, params);
+      return MakePtr<Renderer>(Data, Sound::CreateResampler(Data->GetSamplerate(), samplerate));
     }
+
   private:
     const Model::Ptr Data;
-    const Information::Ptr Info;
     const Parameters::Accessor::Ptr Properties;
   };
-  
+
   class DataBuilder : public Formats::Chiptune::Wav::Builder
   {
   public:
     explicit DataBuilder(PropertiesHelper& props)
       : Properties(props)
       , Meta(props)
-    {
-    }
+    {}
 
     Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
@@ -165,7 +124,7 @@ namespace Wav
     }
 
     void SetExtendedProperties(uint_t validBitsOrBlockSize, uint_t /*channelsMask*/,
-      const Formats::Chiptune::Wav::Guid& formatId, Binary::View restData) override
+                               const Formats::Chiptune::Wav::Guid& formatId, Binary::View restData) override
     {
       FormatId = formatId;
       WavProperties.BlockSizeSamples = validBitsOrBlockSize;
@@ -178,22 +137,17 @@ namespace Wav
       ExtraData.resize(data.Size());
       std::memcpy(ExtraData.data(), data.Start(), data.Size());
     }
-    
+
     void SetSamplesData(Binary::Container::Ptr data) override
     {
       WavProperties.Data = std::move(data);
     }
-    
+
     void SetSamplesCountHint(uint_t count) override
     {
       WavProperties.SamplesCountHint = count;
     }
 
-    void SetFrameDuration(Time::Microseconds frameDuration)
-    {
-      WavProperties.FrameDuration = frameDuration;
-    }
-    
     Model::Ptr GetResult()
     {
       if (!WavProperties.Data)
@@ -236,19 +190,21 @@ namespace Wav
         return {};
       }
     }
+
   private:
     PropertiesHelper& Properties;
     MetaProperties Meta;
     uint_t FormatCode = ~0;
     Formats::Chiptune::Wav::Guid FormatId;
     Wav::Properties WavProperties;
-    Dump ExtraData;
+    Binary::Dump ExtraData;
   };
-  
+
   class Factory : public Module::Factory
   {
   public:
-    Module::Holder::Ptr CreateModule(const Parameters::Accessor& params, const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    Module::Holder::Ptr CreateModule(const Parameters::Accessor& /*params*/, const Binary::Container& rawData,
+                                     Parameters::Container::Ptr properties) const override
     {
       try
       {
@@ -256,37 +212,32 @@ namespace Wav
         DataBuilder dataBuilder(props);
         if (const auto container = Formats::Chiptune::Wav::Parse(rawData, dataBuilder))
         {
-          dataBuilder.SetFrameDuration(Sound::GetFrameDuration(params));
-          if (const auto data = dataBuilder.GetResult())
+          if (auto data = dataBuilder.GetResult())
           {
             props.SetSource(*container);
-            props.SetFramesParameters(data->GetSamplesPerFrame(), data->GetFrequency());
-            return MakePtr<Holder>(data, properties);
+            return MakePtr<Holder>(std::move(data), std::move(properties));
           }
         }
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create WAV: %s", e.what());
+        Dbg("Failed to create WAV: {}", e.what());
       }
-      return Module::Holder::Ptr();
+      return {};
     }
   };
-}
-}
+}  // namespace Module::Wav
 
 namespace ZXTune
 {
   void RegisterWAVPlugin(PlayerPluginsRegistrator& registrator)
   {
-    const Char ID[] = {'W', 'A', 'V', 0};
+    const auto ID = "WAV"_id;
     const uint_t CAPS = Capabilities::Module::Type::STREAM | Capabilities::Module::Device::DAC;
 
-    const auto decoder = Formats::Chiptune::CreateWAVDecoder();
-    const auto factory = MakePtr<Module::Wav::Factory>();
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, CAPS, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::CreateWAVDecoder();
+    auto factory = MakePtr<Module::Wav::Factory>();
+    auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
-}
-
-#undef FILE_TAG
+}  // namespace ZXTune

@@ -1,18 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief Console interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Console interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//std includes
+#include "string_view.h"
+#include "types.h"
+
 #include <utility>
 
 class Console
@@ -20,7 +20,7 @@ class Console
 public:
   virtual ~Console() = default;
 
-  typedef std::pair<int_t, int_t> SizeType;
+  using SizeType = std::pair<int_t, int_t>;
   virtual SizeType GetSize() const = 0;
   virtual void MoveCursorUp(uint_t lines) = 0;
 
@@ -37,8 +37,8 @@ public:
   virtual uint_t GetPressedKey() const = 0;
 
   virtual void WaitForKeyRelease() const = 0;
-  
-  virtual void Write(const String& str) const = 0;
+
+  virtual void Write(StringView str) const = 0;
 
   static Console& Self();
 };

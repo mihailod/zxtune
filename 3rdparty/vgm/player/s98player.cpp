@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>	// for snprintf()
 #include <ctype.h>
 #include <vector>
 #include <string>
@@ -18,7 +19,12 @@
 #include "../emu/cores/ayintf.h"		// for AY8910_CFG
 #include "../utils/StrUtils.h"
 #include "helper.h"
-#include "logging.h"
+#include "../emu/logging.h"
+
+#ifdef _MSC_VER
+#define snprintf	_snprintf
+#endif
+
 
 enum S98_DEVTYPES
 {
@@ -86,6 +92,7 @@ INLINE void SaveDeviceConfig(std::vector<UINT8>& dst, const void* srcData, size_
 }
 
 S98Player::S98Player() :
+	_fileHdr(),
 	_filePos(0),
 	_fileTick(0),
 	_playTick(0),
@@ -97,6 +104,13 @@ S98Player::S98Player() :
 	UINT8 retVal;
 	UINT16 optChip;
 	UINT8 chipID;
+
+	_playOpts.genOpts.pbSpeed = 0x10000;
+
+	_lastTsMult = 0;
+	_lastTsDiv = 0;
+	
+	dev_logger_set(&_logger, this, S98Player::PlayerLogCB, NULL);
 	
 	for (optChip = 0x00; optChip < 0x100; optChip ++)
 	{
@@ -142,7 +156,7 @@ const char* S98Player::GetPlayerName(void) const
 	return "S98";
 }
 
-/*static*/ UINT8 S98Player::IsMyFile(DATA_LOADER *dataLoader)
+/*static*/ UINT8 S98Player::PlayerCanLoadFile(DATA_LOADER *dataLoader)
 {
 	DataLoader_ReadUntil(dataLoader,0x20);
 	if (DataLoader_GetSize(dataLoader) < 0x20)
@@ -150,6 +164,11 @@ const char* S98Player::GetPlayerName(void) const
 	if (memcmp(&DataLoader_GetData(dataLoader)[0x00], "S98", 3))
 		return 0xF0;	// invalid signature
 	return 0x00;
+}
+
+UINT8 S98Player::CanLoadFile(DATA_LOADER *dataLoader) const
+{
+	return this->PlayerCanLoadFile(dataLoader);
 }
 
 UINT8 S98Player::LoadFile(DATA_LOADER *dataLoader)
@@ -234,8 +253,28 @@ UINT8 S98Player::LoadFile(DATA_LOADER *dataLoader)
 	if (! _fileHdr.tickDiv)
 		_fileHdr.tickDiv = 1000;
 	
+	GenerateDeviceConfig();
 	CalcSongLength();
+	
+	if (_fileHdr.loopOfs)
+	{
+		if (_fileHdr.loopOfs < _fileHdr.dataOfs || _fileHdr.loopOfs >= DataLoader_GetSize(_dLoad))
+		{
+			emu_logf(&_logger, PLRLOG_WARN, "Invalid loop offset 0x%06X - ignoring!\n", _fileHdr.loopOfs);
+			_fileHdr.loopOfs = 0x00;
+		}
+		if (_fileHdr.loopOfs && _loopTick == _totalTicks)
+		{
+			// 0-Sample-Loops causes the program to hang in the playback routine
+			emu_logf(&_logger, PLRLOG_WARN, "Warning! Ignored Zero-Sample-Loop!\n");
+			_fileHdr.loopOfs = 0x00;
+		}
+	}
+	
+	// parse tags
 	LoadTags();
+	
+	RefreshTSRates();	// make Tick2Sample etc. work
 	
 	return 0x00;
 }
@@ -285,6 +324,8 @@ UINT8 S98Player::LoadTags(void)
 	_tagList.push_back(NULL);
 	if (! _fileHdr.tagOfs)
 		return 0x00;
+	if (_fileHdr.tagOfs >= DataLoader_GetSize(_dLoad))
+		return 0xF3;	// tag error (offset out-of-range)
 	
 	const char* startPtr;
 	const char* endPtr;
@@ -308,25 +349,25 @@ UINT8 S98Player::LoadTags(void)
 		// tag offset = PSF tag
 		if (endPtr - startPtr < 5 || memcmp(startPtr, "[S98]", 5))
 		{
-			debug("Invalid S98 tag data!\n");
-			debug("tagData size: %zu, Signature: %.5s\n", endPtr - startPtr, startPtr);
+			emu_logf(&_logger, PLRLOG_ERROR, "Invalid S98 tag data!\n");
+			emu_logf(&_logger, PLRLOG_DEBUG, "tagData size: %zu, Signature: %.5s\n", endPtr - startPtr, startPtr);
 			return 0xF0;
 		}
 		startPtr += 5;
 		if (endPtr - startPtr >= 3)
 		{
-			if (startPtr[0] == 0xEF && startPtr[1] == 0xBB && startPtr[2] == 0xBF)	// check for UTF-8 BOM
+			if (! memcmp(&startPtr[0], "\xEF\xBB\xBF", 3))	// check for UTF-8 BOM
 			{
 				tagIsUTF8 = true;
 				startPtr += 3;
-				debug("Info: Tags are UTF-8 encoded.");
+				emu_logf(&_logger, PLRLOG_DEBUG, "Note: Tags are UTF-8 encoded.\n");
 			}
 		}
 		
-		if (! tagIsUTF8)
-			tagData = GetUTF8String(startPtr, endPtr);
-		else
+		if (tagIsUTF8)
 			tagData.assign(startPtr, endPtr);
+		else
+			tagData = GetUTF8String(startPtr, endPtr);
 		ParsePSFTags(tagData);
 	}
 	
@@ -483,7 +524,7 @@ const S98_HEADER* S98Player::GetFileHeader(void) const
 
 const char* const* S98Player::GetTags(void)
 {
-	return _tagList.data();
+	return &_tagList[0];
 }
 
 UINT8 S98Player::GetSongInfo(PLR_SONG_INFO& songInf)
@@ -498,7 +539,8 @@ UINT8 S98Player::GetSongInfo(PLR_SONG_INFO& songInf)
 	songInf.tickRateDiv = _fileHdr.tickDiv;
 	songInf.songLen = GetTotalTicks();
 	songInf.loopTick = _fileHdr.loopOfs ? GetLoopTicks() : (UINT32)-1;
-	songInf.deviceCnt = _devHdrs.size();
+	songInf.volGain = 0x10000;
+	songInf.deviceCnt = (UINT32)_devHdrs.size();
 	
 	return 0x00;
 }
@@ -518,20 +560,10 @@ UINT8 S98Player::GetSongDeviceInfo(std::vector<PLR_DEV_INFO>& devInfList) const
 		PLR_DEV_INFO devInf;
 		memset(&devInf, 0x00, sizeof(PLR_DEV_INFO));
 		
-		devInf.id = curDev;
+		devInf.id = (UINT32)curDev;
 		devInf.type = S98_DEV_LIST[devHdr->devType];
 		devInf.instance = GetDeviceInstance(curDev);
-		devInf.clock = devHdr->clock;
-		devInf.cParams = 0x00;
-		if (devHdr->devType == S98DEV_PSGYM)
-		{
-			devInf.cParams = (AYTYPE_YM2149 << 0) | (YM2149_PIN26_LOW << 8);
-		}
-		else if (devHdr->devType == S98DEV_PSGAY)
-		{
-			devInf.cParams = (AYTYPE_AY8910 << 0) | (0x00 << 8);
-			devInf.clock /= 2;
-		}
+		devInf.devCfg = (const DEV_GEN_CFG*)&_devCfgs[curDev].data[0];
 		if (! _devices.empty())
 		{
 			const VGM_BASEDEV& cDev = _devices[curDev].base;
@@ -615,24 +647,46 @@ void S98Player::RefreshMuting(S98_CHIPDEV& chipDev, const PLR_MUTE_OPTS& muteOpt
 	return;
 }
 
+void S98Player::RefreshPanning(S98_CHIPDEV& chipDev, const PLR_PAN_OPTS& panOpts)
+{
+	VGM_BASEDEV* clDev;
+	UINT8 linkCntr = 0;
+	
+	for (clDev = &chipDev.base; clDev != NULL && linkCntr < 2; clDev = clDev->linkDev, linkCntr ++)
+	{
+		DEV_INFO* devInf = &clDev->defInf;
+		if (devInf->dataPtr == NULL)
+			continue;
+		DEVFUNC_PANALL funcPan = NULL;
+		UINT8 retVal = SndEmu_GetDeviceFunc(devInf->devDef, RWF_CHN_PAN | RWF_WRITE, DEVRW_ALL, 0, (void**)&funcPan);
+		if (retVal != EERR_NOT_FOUND && funcPan != NULL)
+			funcPan(devInf->dataPtr, &panOpts.chnPan[linkCntr][0]);
+	}
+	
+	return;
+}
+
 UINT8 S98Player::SetDeviceOptions(UINT32 id, const PLR_DEV_OPTS& devOpts)
 {
 	size_t optID = DeviceID2OptionID(id);
-	if (optID == (UINT32)-1)
+	if (optID == (size_t)-1)
 		return 0x80;	// bad device ID
 	
 	_devOpts[optID] = devOpts;
 	
 	size_t devID = _optDevMap[optID];
 	if (devID < _devices.size())
+	{
 		RefreshMuting(_devices[devID], _devOpts[optID].muteOpts);
+		RefreshPanning(_devices[devID], _devOpts[optID].panOpts);
+	}
 	return 0x00;
 }
 
 UINT8 S98Player::GetDeviceOptions(UINT32 id, PLR_DEV_OPTS& devOpts) const
 {
 	size_t optID = DeviceID2OptionID(id);
-	if (optID == (UINT32)-1)
+	if (optID == (size_t)-1)
 		return 0x80;	// bad device ID
 	
 	devOpts = _devOpts[optID];
@@ -642,7 +696,7 @@ UINT8 S98Player::GetDeviceOptions(UINT32 id, PLR_DEV_OPTS& devOpts) const
 UINT8 S98Player::SetDeviceMuting(UINT32 id, const PLR_MUTE_OPTS& muteOpts)
 {
 	size_t optID = DeviceID2OptionID(id);
-	if (optID == (UINT32)-1)
+	if (optID == (size_t)-1)
 		return 0x80;	// bad device ID
 	
 	_devOpts[optID].muteOpts = muteOpts;
@@ -656,10 +710,23 @@ UINT8 S98Player::SetDeviceMuting(UINT32 id, const PLR_MUTE_OPTS& muteOpts)
 UINT8 S98Player::GetDeviceMuting(UINT32 id, PLR_MUTE_OPTS& muteOpts) const
 {
 	size_t optID = DeviceID2OptionID(id);
-	if (optID == (UINT32)-1)
+	if (optID == (size_t)-1)
 		return 0x80;	// bad device ID
 	
 	muteOpts = _devOpts[optID].muteOpts;
+	return 0x00;
+}
+
+UINT8 S98Player::SetPlayerOptions(const S98_PLAY_OPTIONS& playOpts)
+{
+	_playOpts = playOpts;
+	RefreshTSRates();
+	return 0x00;
+}
+
+UINT8 S98Player::GetPlayerOptions(S98_PLAY_OPTIONS& playOpts) const
+{
+	playOpts = _playOpts;
 	return 0x00;
 }
 
@@ -672,33 +739,59 @@ UINT8 S98Player::SetSampleRate(UINT32 sampleRate)
 	return 0x00;
 }
 
-/*UINT8 S98Player::SetPlaybackSpeed(double speed)
+double S98Player::GetPlaybackSpeed(void) const
 {
-	return 0xFF;	// not yet supported
-}*/
+	return _playOpts.genOpts.pbSpeed / (double)0x10000;
+}
+
+UINT8 S98Player::SetPlaybackSpeed(double speed)
+{
+	_playOpts.genOpts.pbSpeed = (UINT32)(0x10000 * speed);
+	RefreshTSRates();
+	return 0x00;
+}
 
 
 void S98Player::RefreshTSRates(void)
 {
-	_tsMult = _outSmplRate * _fileHdr.tickMult;
+	_ttMult = _fileHdr.tickMult;
 	_tsDiv = _fileHdr.tickDiv;
-	
+	if (_playOpts.genOpts.pbSpeed != 0 && _playOpts.genOpts.pbSpeed != 0x10000)
+	{
+		_ttMult *= 0x10000;
+		_tsDiv *= _playOpts.genOpts.pbSpeed;
+	}
+	_tsMult = _ttMult * _outSmplRate;
+	if (_tsMult != _lastTsMult ||
+	    _tsDiv != _lastTsDiv)
+	{
+		if (_lastTsMult && _lastTsDiv)	// the order * / * / is required to avoid overflow
+			_playSmpl = (UINT32)(_playSmpl * _lastTsDiv / _lastTsMult * _tsMult / _tsDiv);
+		_lastTsMult = _tsMult;
+		_lastTsDiv = _tsDiv;
+	}
 	return;
 }
 
 UINT32 S98Player::Tick2Sample(UINT32 ticks) const
 {
+	if (ticks == (UINT32)-1)
+		return -1;
 	return (UINT32)(ticks * _tsMult / _tsDiv);
 }
 
 UINT32 S98Player::Sample2Tick(UINT32 samples) const
 {
+	if (samples == (UINT32)-1)
+		return -1;
 	return (UINT32)(samples * _tsDiv / _tsMult);
 }
 
 double S98Player::Tick2Second(UINT32 ticks) const
 {
-	return ticks * _fileHdr.tickMult / (double)_fileHdr.tickDiv;
+	if (ticks == (UINT32)-1)
+		return -1.0;
+	return (INT64)(ticks * _ttMult) / (double)(INT64)_tsDiv;
 }
 
 UINT8 S98Player::GetState(void) const
@@ -740,12 +833,118 @@ UINT32 S98Player::GetLoopTicks(void) const
 		return _totalTicks - _loopTick;
 }
 
-
-static void SetSSGCore(void* userParam, VGM_BASEDEV* cDev, DEVLINK_INFO* dLink)
+/*static*/ void S98Player::PlayerLogCB(void* userParam, void* source, UINT8 level, const char* message)
 {
-	if (dLink->devID == DEVID_AY8910)
+	S98Player* player = (S98Player*)source;
+	if (player->_logCbFunc == NULL)
+		return;
+	player->_logCbFunc(player->_logCbParam, player, level, PLRLOGSRC_PLR, NULL, message);
+	return;
+}
+
+/*static*/ void S98Player::SndEmuLogCB(void* userParam, void* source, UINT8 level, const char* message)
+{
+	DEVLOG_CB_DATA* cbData = (DEVLOG_CB_DATA*)userParam;
+	S98Player* player = cbData->player;
+	if (player->_logCbFunc == NULL)
+		return;
+	if ((player->_playState & PLAYSTATE_SEEK) && level > PLRLOG_ERROR)
+		return;	// prevent message spam while seeking
+	player->_logCbFunc(player->_logCbParam, player, level, PLRLOGSRC_EMU,
+		player->_devNames[cbData->chipDevID].c_str(), message);
+	return;
+}
+
+
+void S98Player::GenerateDeviceConfig(void)
+{
+	size_t curDev;
+	
+	_devCfgs.clear();
+	_devNames.clear();
+	_devCfgs.resize(_devHdrs.size());
+	for (curDev = 0; curDev < _devCfgs.size(); curDev ++)
 	{
-		// possible AY8910 sound core selection here
+		const S98_DEVICE* devHdr = &_devHdrs[curDev];
+		DEV_GEN_CFG devCfg;
+		UINT8 deviceID;
+		
+		memset(&devCfg, 0x00, sizeof(DEV_GEN_CFG));
+		devCfg.clock = devHdr->clock;
+		devCfg.flags = 0x00;
+		
+		deviceID = (devHdr->devType < S98DEV_END) ? S98_DEV_LIST[devHdr->devType] : 0xFF;
+		const char* devName = SndEmu_GetDevName(deviceID, 0x00, &devCfg);	// use short name for now
+		switch(deviceID)
+		{
+		case DEVID_AY8910:
+			{
+				AY8910_CFG ayCfg;
+				
+				ayCfg._genCfg = devCfg;
+				if (devHdr->devType == S98DEV_PSGYM)
+				{
+					ayCfg.chipType = AYTYPE_YM2149;
+					ayCfg.chipFlags = YM2149_PIN26_LOW;
+					devName = "YM2149";
+				}
+				else
+				{
+					ayCfg.chipType = AYTYPE_AY8910;
+					ayCfg.chipFlags = 0x00;
+					ayCfg._genCfg.clock /= 2;
+					devName = "AY8910";
+				}
+				
+				SaveDeviceConfig(_devCfgs[curDev].data, &ayCfg, sizeof(AY8910_CFG));
+			}
+			break;
+		case DEVID_SN76496:
+			{
+				SN76496_CFG snCfg;
+				
+				snCfg._genCfg = devCfg;
+				snCfg.shiftRegWidth = 0x10;
+				snCfg.noiseTaps = 0x09;
+				snCfg.segaPSG = 1;
+				snCfg.negate = 0;
+				snCfg.stereo = 1;
+				snCfg.clkDiv = 8;
+				snCfg.t6w28_tone = NULL;
+				
+				SaveDeviceConfig(_devCfgs[curDev].data, &snCfg, sizeof(SN76496_CFG));
+			}
+			break;
+		default:
+			SaveDeviceConfig(_devCfgs[curDev].data, &devCfg, sizeof(DEV_GEN_CFG));
+			break;
+		}
+		if (_devCfgs.size() <= 1)
+		{
+			_devNames.push_back(devName);
+		}
+		else
+		{
+			char fullName[0x10];
+			snprintf(fullName, 0x10, "%u-%s", 1 + (unsigned int)curDev, devName);
+			_devNames.push_back(fullName);
+		}
+	}
+	
+	return;
+}
+
+/*static*/ void S98Player::DeviceLinkCallback(void* userParam, VGM_BASEDEV* cDev, DEVLINK_INFO* dLink)
+{
+	DEVLINK_CB_DATA* cbData = (DEVLINK_CB_DATA*)userParam;
+	S98Player* oThis = cbData->player;
+	const S98_CHIPDEV& chipDev = *cbData->chipDev;
+	const PLR_DEV_OPTS* devOpts = (chipDev.optID != (size_t)-1) ? &oThis->_devOpts[chipDev.optID] : NULL;
+	
+	if (devOpts != NULL && devOpts->emuCore[1])
+	{
+		// set emulation core of linked device (OPN(A) SSG)
+		dLink->cfg->emuCore = devOpts->emuCore[1];
 	}
 	
 	return;
@@ -765,7 +964,7 @@ UINT8 S98Player::Start(void)
 	{
 		const S98_DEVICE* devHdr = &_devHdrs[curDev];
 		S98_CHIPDEV* cDev = &_devices[curDev];
-		DEV_GEN_CFG devCfg;
+		DEV_GEN_CFG* devCfg = (DEV_GEN_CFG*)&_devCfgs[curDev].data[0];
 		VGM_BASEDEV* clDev;
 		PLR_DEV_OPTS* devOpts;
 		UINT8 deviceID;
@@ -789,60 +988,14 @@ UINT8 S98Player::Start(void)
 			cDev->optID = (size_t)-1;
 			devOpts = NULL;
 		}
-		devCfg.emuCore = (devOpts != NULL) ? devOpts->emuCore : 0x00;
-		devCfg.srMode = (devOpts != NULL) ? devOpts->srMode : DEVRI_SRMODE_NATIVE;
-		devCfg.flags = 0x00;
-		devCfg.clock = devHdr->clock;
+		devCfg->emuCore = (devOpts != NULL) ? devOpts->emuCore[0] : 0x00;
+		devCfg->srMode = (devOpts != NULL) ? devOpts->srMode : DEVRI_SRMODE_NATIVE;
 		if (devOpts != NULL && devOpts->smplRate)
-			devCfg.smplRate = devOpts->smplRate;
+			devCfg->smplRate = devOpts->smplRate;
 		else
-			devCfg.smplRate = _outSmplRate;
+			devCfg->smplRate = _outSmplRate;
 		
-		switch(deviceID)
-		{
-		case DEVID_AY8910:
-			{
-				AY8910_CFG ayCfg;
-				
-				ayCfg._genCfg = devCfg;
-				if (devHdr->devType == S98DEV_PSGYM)
-				{
-					ayCfg.chipType = AYTYPE_YM2149;
-					ayCfg.chipFlags = YM2149_PIN26_LOW;
-				}
-				else
-				{
-					ayCfg.chipType = AYTYPE_AY8910;
-					ayCfg.chipFlags = 0x00;
-					devCfg.clock /= 2;
-				}
-				
-				SaveDeviceConfig(cDev->cfg, &ayCfg, sizeof(AY8910_CFG));
-				retVal = SndEmu_Start(deviceID, (DEV_GEN_CFG*)&ayCfg, &cDev->base.defInf);
-			}
-			break;
-		case DEVID_SN76496:
-			{
-				SN76496_CFG snCfg;
-				
-				snCfg._genCfg = devCfg;
-				snCfg.shiftRegWidth = 0x10;
-				snCfg.noiseTaps = 0x09;
-				snCfg.segaPSG = 1;
-				snCfg.negate = 0;
-				snCfg.stereo = 1;
-				snCfg.clkDiv = 8;
-				snCfg.t6w28_tone = NULL;
-				
-				SaveDeviceConfig(cDev->cfg, &snCfg, sizeof(SN76496_CFG));
-				retVal = SndEmu_Start(deviceID, (DEV_GEN_CFG*)&snCfg, &cDev->base.defInf);
-			}
-			break;
-		default:
-			SaveDeviceConfig(cDev->cfg, &devCfg, sizeof(DEV_GEN_CFG));
-			retVal = SndEmu_Start(deviceID, &devCfg, &cDev->base.defInf);
-			break;
-		}
+		retVal = SndEmu_Start(deviceID, devCfg, &cDev->base.defInf);
 		if (retVal)
 		{
 			cDev->base.defInf.dataPtr = NULL;
@@ -851,20 +1004,38 @@ UINT8 S98Player::Start(void)
 		}
 		SndEmu_GetDeviceFunc(cDev->base.defInf.devDef, RWF_REGISTER | RWF_WRITE, DEVRW_A8D8, 0, (void**)&cDev->write);
 		
-		SetupLinkedDevices(&cDev->base, &SetSSGCore, this);
+		cDev->logCbData.player = this;
+		cDev->logCbData.chipDevID = curDev;
+		if (cDev->base.defInf.devDef->SetLogCB != NULL)
+			cDev->base.defInf.devDef->SetLogCB(cDev->base.defInf.dataPtr, S98Player::SndEmuLogCB, &cDev->logCbData);
+		{
+			DEVLINK_CB_DATA dlCbData;
+			dlCbData.player = this;
+			dlCbData.chipDev = cDev;
+			SetupLinkedDevices(&cDev->base, &DeviceLinkCallback, &dlCbData);
+		}
 		
 		if (devOpts != NULL)
 		{
 			if (cDev->base.defInf.devDef->SetOptionBits != NULL)
 				cDev->base.defInf.devDef->SetOptionBits(cDev->base.defInf.dataPtr, devOpts->coreOpts);
 			RefreshMuting(*cDev, devOpts->muteOpts);
+			RefreshPanning(*cDev, devOpts->panOpts);
 			
 			_optDevMap[cDev->optID] = curDev;
+		}
+		if (cDev->base.defInf.linkDevCount > 0 && cDev->base.defInf.linkDevs[0].devID == DEVID_AY8910)
+		{
+			VGM_BASEDEV* clDev = cDev->base.linkDev;
+			size_t optID = DeviceID2OptionID(PLR_DEV_ID(DEVID_AY8910, instance));
+			if (optID != (size_t)-1 && clDev != NULL && clDev->defInf.devDef->SetOptionBits != NULL)
+				clDev->defInf.devDef->SetOptionBits(cDev->base.defInf.dataPtr, _devOpts[optID].coreOpts);
 		}
 		
 		for (clDev = &cDev->base; clDev != NULL; clDev = clDev->linkDev)
 		{
-			Resmpl_SetVals(&clDev->resmpl, 0xFF, 0x100, _outSmplRate);
+			UINT8 resmplMode = (devOpts != NULL) ? devOpts->resmplMode : RSMODE_LINEAR;
+			Resmpl_SetVals(&clDev->resmpl, resmplMode, 0x100, _outSmplRate);
 			if (deviceID == DEVID_YM2203 || deviceID == DEVID_YM2608)
 			{
 				// set SSG volume
@@ -905,6 +1076,7 @@ UINT8 S98Player::Stop(void)
 UINT8 S98Player::Reset(void)
 {
 	size_t curDev;
+	std::vector<UINT8> tmp(0x40000, 0x00);
 	
 	_filePos = _fileHdr.dataOfs;
 	_fileTick = 0;
@@ -913,15 +1085,19 @@ UINT8 S98Player::Reset(void)
 	_playState &= ~PLAYSTATE_END;
 	_psTrigger = 0x00;
 	_curLoop = 0;
+	_lastLoopTick = 0;
 	
 	RefreshTSRates();
 	
 	for (curDev = 0; curDev < _devices.size(); curDev ++)
 	{
 		S98_CHIPDEV* cDev = &_devices[curDev];
+		DEV_INFO* defInf = &cDev->base.defInf;
 		VGM_BASEDEV* clDev;
+		if (defInf->dataPtr == NULL)
+			continue;
 		
-		cDev->base.defInf.devDef->Reset(cDev->base.defInf.dataPtr);
+		defInf->devDef->Reset(defInf->dataPtr);
 		for (clDev = &cDev->base; clDev != NULL; clDev = clDev->linkDev)
 		{
 			// TODO: Resmpl_Reset(&clDev->resmpl);
@@ -929,13 +1105,17 @@ UINT8 S98Player::Reset(void)
 		
 		if (_devHdrs[curDev].devType == S98DEV_OPNA)
 		{
-			DEV_INFO* defInf = &cDev->base.defInf;
 			DEVFUNC_WRITE_MEMSIZE SetRamSize = NULL;
+			DEVFUNC_WRITE_BLOCK SetRamData = NULL;
 			
 			// setup DeltaT RAM size
 			SndEmu_GetDeviceFunc(defInf->devDef, RWF_MEMORY | RWF_WRITE, DEVRW_MEMSIZE, 0, (void**)&SetRamSize);
+			SndEmu_GetDeviceFunc(defInf->devDef, RWF_MEMORY | RWF_WRITE, DEVRW_BLOCK, 0, (void**)&SetRamData);
 			if (SetRamSize != NULL)
 				SetRamSize(defInf->dataPtr, 0x40000);	// 256 KB
+			// initialize DeltaT RAM with 00, because come S98 files seem to expect that (e.g. King Breeder/11.s98)
+			if (SetRamData != NULL)
+				SetRamData(defInf->dataPtr, 0x00, (UINT32)tmp.size(), &tmp[0]);
 			
 			// The YM2608 defaults to OPN mode. (YM2203 fallback),
 			// so put it into OPNA mode (6 channels).
@@ -1000,8 +1180,9 @@ UINT32 S98Player::Render(UINT32 smplCnt, WAVE_32BS* data)
 	INT32 smplStep;	// might be negative due to rounding errors in Tick2Sample
 	size_t curDev;
 	
+	// Note: use do {} while(), so that "smplCnt == 0" can be used to process until reaching the next sample.
 	curSmpl = 0;
-	while(curSmpl < smplCnt)
+	do
 	{
 		smplFileTick = Sample2Tick(_playSmpl);
 		ParseFile(smplFileTick - _playTick);
@@ -1010,8 +1191,8 @@ UINT32 S98Player::Render(UINT32 smplCnt, WAVE_32BS* data)
 		maxSmpl = Tick2Sample(_fileTick);
 		smplStep = maxSmpl - _playSmpl;
 		if (smplStep < 1)
-			smplStep = 1;
-		else if ((UINT32)smplStep > smplCnt - curSmpl)
+			smplStep = 1;	// must render at least 1 sample in order to advance
+		if ((UINT32)smplStep > smplCnt - curSmpl)
 			smplStep = smplCnt - curSmpl;
 		
 		for (curDev = 0; curDev < _devices.size(); curDev ++)
@@ -1033,7 +1214,7 @@ UINT32 S98Player::Render(UINT32 smplCnt, WAVE_32BS* data)
 			_psTrigger &= ~PLAYSTATE_END;
 			break;
 		}
-	}
+	} while(curSmpl < smplCnt);
 	
 	return curSmpl;
 }
@@ -1050,15 +1231,64 @@ void S98Player::ParseFile(UINT32 ticks)
 	return;
 }
 
+void S98Player::HandleEOF(void)
+{
+	UINT8 doLoop = (_fileHdr.loopOfs != 0);
+	
+	if (_playState & PLAYSTATE_SEEK)	// recalculate playSmpl to fix state when triggering callbacks
+		_playSmpl = Tick2Sample(_fileTick);	// Note: fileTick results in more accurate position
+	if (doLoop)
+	{
+		if (_lastLoopTick == _fileTick)
+		{
+			doLoop = 0;	// prevent freezing due to infinite loop
+			emu_logf(&_logger, PLRLOG_WARN, "Ignored Zero-Sample-Loop!\n");
+		}
+		else
+		{
+			_lastLoopTick = _fileTick;
+		}
+	}
+	if (doLoop)
+	{
+		_curLoop ++;
+		if (_eventCbFunc != NULL)
+		{
+			UINT8 retVal;
+			
+			retVal = _eventCbFunc(this, _eventCbParam, PLREVT_LOOP, &_curLoop);
+			if (retVal == 0x01)	// "stop" signal?
+			{
+				_playState |= PLAYSTATE_END;
+				_psTrigger |= PLAYSTATE_END;
+				if (_eventCbFunc != NULL)
+					_eventCbFunc(this, _eventCbParam, PLREVT_END, NULL);
+				return;
+			}
+		}
+		_filePos = _fileHdr.loopOfs;
+		return;
+	}
+	
+	_playState |= PLAYSTATE_END;
+	_psTrigger |= PLAYSTATE_END;
+	if (_eventCbFunc != NULL)
+		_eventCbFunc(this, _eventCbParam, PLREVT_END, NULL);
+	
+	return;
+}
+
 void S98Player::DoCommand(void)
 {
 	if (_filePos >= DataLoader_GetSize(_dLoad))
 	{
+		if (_playState & PLAYSTATE_SEEK)	// recalculate playSmpl to fix state when triggering callbacks
+			_playSmpl = Tick2Sample(_fileTick);	// Note: fileTick results in more accurate position
 		_playState |= PLAYSTATE_END;
 		_psTrigger |= PLAYSTATE_END;
 		if (_eventCbFunc != NULL)
 			_eventCbFunc(this, _eventCbParam, PLREVT_END, NULL);
-		debug("S98 file ends early! (filePos 0x%06X, fileSize 0x%06X)\n", _filePos, DataLoader_GetSize(_dLoad));
+		emu_logf(&_logger, PLRLOG_WARN, "S98 file ends early! (filePos 0x%06X, fileSize 0x%06X)\n", _filePos, DataLoader_GetSize(_dLoad));
 		return;
 	}
 	
@@ -1070,64 +1300,45 @@ void S98Player::DoCommand(void)
 	{
 	case 0xFF:	// advance 1 tick
 		_fileTick ++;
-		return;
+		break;
 	case 0xFE:	// advance multiple ticks
 		_fileTick += 2 + ReadVarInt(_filePos);
-		return;
+		break;
 	case 0xFD:
-		if (! _fileHdr.loopOfs)
-		{
-			_playState |= PLAYSTATE_END;
-			_psTrigger |= PLAYSTATE_END;
-			if (_eventCbFunc != NULL)
-				_eventCbFunc(this, _eventCbParam, PLREVT_END, NULL);
-		}
-		else
-		{
-			_curLoop ++;
-			if (_eventCbFunc != NULL)
-			{
-				UINT8 retVal;
-				
-				retVal = _eventCbFunc(this, _eventCbParam, PLREVT_LOOP, &_curLoop);
-				if (retVal == 0x01)
-				{
-					_playState |= PLAYSTATE_END;
-					_psTrigger |= PLAYSTATE_END;
-					return;
-				}
-			}
-			_filePos = _fileHdr.loopOfs;
-		}
-		return;
+		HandleEOF();
+		break;
+	default:
+		DoRegWrite(curCmd >> 1, curCmd & 0x01, _fileData[_filePos + 0x00], _fileData[_filePos + 0x01]);
+		_filePos += 0x02;
+		break;
 	}
 	
+	return;
+}
+
+void S98Player::DoRegWrite(UINT8 deviceID, UINT8 port, UINT8 reg, UINT8 data)
+{
+	if (deviceID >= _devices.size())
+		return;
+	
+	S98_CHIPDEV* cDev = &_devices[deviceID];
+	DEV_DATA* dataPtr = cDev->base.defInf.dataPtr;
+	if (dataPtr == NULL || cDev->write == NULL)
+		return;
+	
+	if (_devHdrs[deviceID].devType == S98DEV_DCSG)
 	{
-		UINT8 deviceID = curCmd >> 1;
-		if (deviceID < _devices.size())
-		{
-			S98_CHIPDEV* cDev = &_devices[deviceID];
-			DEV_DATA* dataPtr = cDev->base.defInf.dataPtr;
-			
-			UINT8 port = curCmd & 0x01;
-			UINT8 reg = _fileData[_filePos + 0x00];
-			UINT8 data = _fileData[_filePos + 0x01];
-			
-			if (_devHdrs[deviceID].devType == S98DEV_DCSG)
-			{
-				if (reg == 1)	// GG stereo
-					cDev->write(dataPtr, SN76496_W_GGST, data);
-				else
-					cDev->write(dataPtr, SN76496_W_REG, data);
-			}
-			else
-			{
-				cDev->write(dataPtr, (port << 1) | 0, reg);
-				cDev->write(dataPtr, (port << 1) | 1, data);
-			}
-		}
+		if (reg == 1)	// GG stereo
+			cDev->write(dataPtr, SN76496_W_GGST, data);
+		else
+			cDev->write(dataPtr, SN76496_W_REG, data);
 	}
-	_filePos += 0x02;
+	else
+	{
+		cDev->write(dataPtr, (port << 1) | 0, reg);
+		cDev->write(dataPtr, (port << 1) | 1, data);
+	}
+	
 	return;
 }
 

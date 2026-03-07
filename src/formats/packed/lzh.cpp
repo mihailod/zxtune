@@ -1,32 +1,28 @@
 /**
-* 
-* @file
-*
-* @brief  LZH packer support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  LZH packer support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-//library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-//std includes
+
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+#include "string_view.h"
+
 #include <algorithm>
 #include <iterator>
-//text includes
-#include <formats/text/packed.h>
 
-namespace Formats
-{
-namespace Packed
+namespace Formats::Packed
 {
   namespace LZH
   {
@@ -34,38 +30,35 @@ namespace Packed
 
     struct Version1
     {
-      static const String DESCRIPTION;
-      static const std::string DEPACKER_PATTERN;
+      static const StringView DESCRIPTION;
+      static const StringView DEPACKER_PATTERN;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-      PACK_PRE struct RawHeader
+      struct RawHeader
       {
         //+0
         char Padding1[2];
         //+2
-        uint16_t DepackerBodySrc;
+        le_uint16_t DepackerBodySrc;
         //+4
         char Padding2;
         //+5
-        uint16_t DepackerBodyDst;
+        le_uint16_t DepackerBodyDst;
         //+7
         char Padding3;
         //+8
-        uint16_t DepackerBodySize;
+        le_uint16_t DepackerBodySize;
         //+0xa
         char Padding4[4];
         //+0xe
-        uint16_t PackedDataSrc;
+        le_uint16_t PackedDataSrc;
         //+0x10
         char Padding5;
         //+0x11
-        uint16_t PackedDataDst;
+        le_uint16_t PackedDataDst;
         //+0x13
         char Padding6;
         //+0x14
-        uint16_t PackedDataSize;
+        le_uint16_t PackedDataSize;
         //+0x16
         char Padding7;
         //+0x17
@@ -75,16 +68,13 @@ namespace Packed
         //+0x19
         char Padding8[2];
         //+0x1b
-        uint16_t DepackingDst;
+        le_uint16_t DepackingDst;
         //+0x1d
         char Padding9[0x3a];
         //+0x57
         uint8_t LastDepackedByte;
         //+0x58
-      } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+      };
 
       static const std::size_t MIN_SIZE = sizeof(RawHeader);
 
@@ -101,38 +91,35 @@ namespace Packed
 
     struct Version2
     {
-      static const String DESCRIPTION;
-      static const std::string DEPACKER_PATTERN;
+      static const StringView DESCRIPTION;
+      static const StringView DEPACKER_PATTERN;
 
-#ifdef USE_PRAGMA_PACK
-#pragma pack(push,1)
-#endif
-      PACK_PRE struct RawHeader
+      struct RawHeader
       {
         //+0
         char Padding1[2];
         //+2
-        uint16_t DepackerBodySrc;
+        le_uint16_t DepackerBodySrc;
         //+4
         char Padding2;
         //+5
-        uint16_t DepackerBodyDst;
+        le_uint16_t DepackerBodyDst;
         //+7
         char Padding3;
         //+8
-        uint16_t DepackerBodySize;
+        le_uint16_t DepackerBodySize;
         //+0xa
         char Padding4[4];
         //+0xe
-        uint16_t PackedDataSrc;
+        le_uint16_t PackedDataSrc;
         //+0x10
         char Padding5;
         //+0x11
-        uint16_t PackedDataDst;
+        le_uint16_t PackedDataDst;
         //+0x13
         char Padding6;
         //+0x14
-        uint16_t PackedDataSize;
+        le_uint16_t PackedDataSize;
         //+0x16
         char Padding7;
         //+0x17
@@ -142,16 +129,13 @@ namespace Packed
         //+0x19
         char Padding8[2];
         //+0x1b
-        uint16_t DepackingDst;
+        le_uint16_t DepackingDst;
         //+0x1d
         char Padding9[0x38];
         //+0x55
         uint8_t LastDepackedByte;
         //+0x56
-      } PACK_POST;
-#ifdef USE_PRAGMA_PACK
-#pragma pack(pop)
-#endif
+      };
 
       static const std::size_t MIN_SIZE = sizeof(RawHeader);
 
@@ -166,74 +150,74 @@ namespace Packed
       }
     };
 
-    const String Version1::DESCRIPTION = Text::LZH1_DECODER_DESCRIPTION;
-    const std::string Version1::DEPACKER_PATTERN(
-      "?"             // di/ei
-      "21??"          // ld hl,xxxx depacker body src
-      "11??"          // ld de,xxxx depacker body dst
-      "01??"          // ld bc,xxxx depacker body size
-      "d5"            // push de
-      "edb0"          // ldir
-      "21??"          // ld hl,xxxx packed src
-      "11??"          // ld de,xxxx packed dst
-      "01??"          // ld bc,xxxx packed size
-      "c9"            // ret
-      //+0x17
-      "ed?"           // ldir/lddr
-      "eb"            // ex de,hl
-      "11??"          // ld de,depack dst
-      "23"            // inc hl
-      "7e"            // ld a,(hl)
-      "cb7f"          // bit 7,a
-      "28?"           // jr z,xx
-      "e60f"          // and 0xf
-      "c603"          // add a,3
-      "4f"            // ld c,a
-      "ed6f"          // rld
-      "e607"          // and 7
-      "47"            // ld b,a
-      "23"            // inc hl
-      "e5"            // push hl
-      "7b"            // ld a,e
-      "96"            // sub (hl)
-      "6f"            // ld l,a
-    );
+    const StringView Version1::DESCRIPTION = "LZH Compressor v1.4"sv;
+    const StringView Version1::DEPACKER_PATTERN =
+        "?"     // di/ei
+        "21??"  // ld hl,xxxx depacker body src
+        "11??"  // ld de,xxxx depacker body dst
+        "01??"  // ld bc,xxxx depacker body size
+        "d5"    // push de
+        "edb0"  // ldir
+        "21??"  // ld hl,xxxx packed src
+        "11??"  // ld de,xxxx packed dst
+        "01??"  // ld bc,xxxx packed size
+        "c9"    // ret
+        //+0x17
+        "ed?"   // ldir/lddr
+        "eb"    // ex de,hl
+        "11??"  // ld de,depack dst
+        "23"    // inc hl
+        "7e"    // ld a,(hl)
+        "cb7f"  // bit 7,a
+        "28?"   // jr z,xx
+        "e60f"  // and 0xf
+        "c603"  // add a,3
+        "4f"    // ld c,a
+        "ed6f"  // rld
+        "e607"  // and 7
+        "47"    // ld b,a
+        "23"    // inc hl
+        "e5"    // push hl
+        "7b"    // ld a,e
+        "96"    // sub (hl)
+        "6f"    // ld l,a
+        ""sv;
 
-    const String Version2::DESCRIPTION = Text::LZH2_DECODER_DESCRIPTION;
-    const std::string Version2::DEPACKER_PATTERN(
-      "?"             // di/ei
-      "21??"          // ld hl,xxxx depacker body src
-      "11??"          // ld de,xxxx depacker body dst
-      "01??"          // ld bc,xxxx depacker body size
-      "d5"            // push de
-      "edb0"          // ldir
-      "21??"          // ld hl,xxxx packed src
-      "11??"          // ld de,xxxx packed dst
-      "01??"          // ld bc,xxxx packed size
-      "c9"            // ret
-      //+0x17
-      "ed?"           // ldir/lddr
-      "eb"            // ex de,hl
-      "11??"          // ld de,depack dst
-      "23"            // inc hl
-      "7e"            // ld a,(hl)
-      "cb7f"          // bit 7,a
-      "28?"           // jr z,xx
-      "e60f"          // and 0xf
-      "47"            // ld b,a
-      "ed6f"          // rld
-      "d605"          // sub 5
-      "4f"            // ld c,a
-      "23"            // inc hl
-      "e5"            // push hl
-      "7b"            // ld a,e
-      "96"            // sub (hl)
-      "6f"            // ld l,a
-    );
+    const StringView Version2::DESCRIPTION = "LZH Compressor v2.4"sv;
+    const StringView Version2::DEPACKER_PATTERN =
+        "?"     // di/ei
+        "21??"  // ld hl,xxxx depacker body src
+        "11??"  // ld de,xxxx depacker body dst
+        "01??"  // ld bc,xxxx depacker body size
+        "d5"    // push de
+        "edb0"  // ldir
+        "21??"  // ld hl,xxxx packed src
+        "11??"  // ld de,xxxx packed dst
+        "01??"  // ld bc,xxxx packed size
+        "c9"    // ret
+        //+0x17
+        "ed?"   // ldir/lddr
+        "eb"    // ex de,hl
+        "11??"  // ld de,depack dst
+        "23"    // inc hl
+        "7e"    // ld a,(hl)
+        "cb7f"  // bit 7,a
+        "28?"   // jr z,xx
+        "e60f"  // and 0xf
+        "47"    // ld b,a
+        "ed6f"  // rld
+        "d605"  // sub 5
+        "4f"    // ld c,a
+        "23"    // inc hl
+        "e5"    // push hl
+        "7b"    // ld a,e
+        "96"    // sub (hl)
+        "6f"    // ld l,a
+        ""sv;
 
-    static_assert(sizeof(Version1::RawHeader) == 0x58, "Invalid layout");
+    static_assert(sizeof(Version1::RawHeader) * alignof(Version1::RawHeader) == 0x58, "Invalid layout");
     static_assert(offsetof(Version1::RawHeader, DepackerBody) == 0x17, "Invalid layout");
-    static_assert(sizeof(Version2::RawHeader) == 0x56, "Invalid layout");
+    static_assert(sizeof(Version2::RawHeader) * alignof(Version2::RawHeader) == 0x56, "Invalid layout");
     static_assert(offsetof(Version2::RawHeader, DepackerBody) == 0x17, "Invalid layout");
 
     template<class Version>
@@ -243,8 +227,7 @@ namespace Packed
       Container(const void* data, std::size_t size)
         : Data(static_cast<const uint8_t*>(data))
         , Size(size)
-      {
-      }
+      {}
 
       bool FastCheck() const
       {
@@ -253,37 +236,33 @@ namespace Packed
           return false;
         }
         const typename Version::RawHeader& header = GetHeader();
-        const DataMovementChecker checker(fromLE(header.PackedDataSrc), 
-          fromLE(header.PackedDataDst), fromLE(header.PackedDataSize), header.PackedDataCopyDirection);
+        const DataMovementChecker checker(header.PackedDataSrc, header.PackedDataDst, header.PackedDataSize,
+                                          header.PackedDataCopyDirection);
         if (!checker.IsValid())
         {
           return false;
         }
         const uint_t usedSize = GetUsedSize();
-        if (usedSize > Size)
-        {
-          return false;
-        }
-        return true;
+        return usedSize <= Size;
       }
 
       uint_t GetUsedSize() const
       {
         const typename Version::RawHeader& header = GetHeader();
-        return offsetof(typename Version::RawHeader, DepackerBody) + fromLE(header.DepackerBodySize) + fromLE(header.PackedDataSize);
+        return offsetof(typename Version::RawHeader, DepackerBody) + header.DepackerBodySize + header.PackedDataSize;
       }
 
       const uint8_t* GetPackedData() const
       {
         const typename Version::RawHeader& header = GetHeader();
-        const std::size_t fixedSize = offsetof(typename Version::RawHeader, DepackerBody) + fromLE(header.DepackerBodySize);
+        const std::size_t fixedSize = offsetof(typename Version::RawHeader, DepackerBody) + header.DepackerBodySize;
         return Data + fixedSize;
       }
 
       std::size_t GetPackedSize() const
       {
         const typename Version::RawHeader& header = GetHeader();
-        return fromLE(header.PackedDataSize);
+        return header.PackedDataSize;
       }
 
       const typename Version::RawHeader& GetHeader() const
@@ -291,6 +270,7 @@ namespace Packed
         assert(Size >= sizeof(typename Version::RawHeader));
         return *safe_ptr_cast<const typename Version::RawHeader*>(Data);
       }
+
     private:
       const uint8_t* const Data;
       const std::size_t Size;
@@ -304,8 +284,7 @@ namespace Packed
         : IsValid(container.FastCheck())
         , Header(container.GetHeader())
         , Stream(container.GetPackedData(), container.GetPackedSize())
-        , Result(new Dump())
-        , Decoded(*Result)
+        , Decoded(MAX_DECODED_SIZE)
       {
         if (IsValid && !Stream.Eof())
         {
@@ -313,17 +292,16 @@ namespace Packed
         }
       }
 
-      std::unique_ptr<Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid
-          ? std::move(Result)
-          : std::unique_ptr<Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
+
     private:
       bool DecodeData()
       {
-        //assume that first byte always exists due to header format
-        while (!Stream.Eof() && Decoded.size() < MAX_DECODED_SIZE)
+        // assume that first byte always exists due to header format
+        while (!Stream.Eof() && Decoded.Size() < MAX_DECODED_SIZE)
         {
           const uint_t data = Stream.GetByte();
           if (!data)
@@ -342,14 +320,14 @@ namespace Packed
           else if (0 != (data & 64))
           {
             const std::size_t len = data - 0x3e + 1;
-            std::fill_n(std::back_inserter(Decoded), len, Stream.GetByte());
+            Fill(Decoded, len, Stream.GetByte());
           }
           else
           {
             std::size_t len = data;
             for (; len && !Stream.Eof(); --len)
             {
-              Decoded.push_back(Stream.GetByte());
+              Decoded.AddByte(Stream.GetByte());
             }
             if (len)
             {
@@ -357,17 +335,17 @@ namespace Packed
             }
           }
         }
-        Decoded.push_back(Header.LastDepackedByte);
+        Decoded.AddByte(Header.LastDepackedByte);
         return true;
       }
+
     private:
       bool IsValid;
       const typename Version::RawHeader& Header;
       ByteStream Stream;
-      std::unique_ptr<Dump> Result;
-      Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
-  }//namespace LZH
+  }  // namespace LZH
 
   template<class Version>
   class LZHDecoder : public Decoder
@@ -375,10 +353,9 @@ namespace Packed
   public:
     LZHDecoder()
       : Depacker(Binary::CreateFormat(Version::DEPACKER_PATTERN, Version::MIN_SIZE))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Version::DESCRIPTION;
     }
@@ -392,16 +369,17 @@ namespace Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const typename LZH::Container<Version> container(rawData.Start(), rawData.Size());
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       typename LZH::DataDecoder<Version> decoder(container);
       return CreateContainer(decoder.GetResult(), container.GetUsedSize());
     }
+
   private:
     const Binary::Format::Ptr Depacker;
   };
@@ -415,5 +393,4 @@ namespace Packed
   {
     return MakePtr<LZHDecoder<LZH::Version2> >();
   }
-}//namespace Packed
-}//namespace Formats
+}  // namespace Formats::Packed

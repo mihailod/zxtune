@@ -1,18 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief UI state helper interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief UI state helper interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
-//std includes
+#include "string_view.h"
+#include "types.h"
+
 #include <memory>
 
 class QWidget;
@@ -21,16 +21,16 @@ namespace UI
   class State
   {
   public:
-    typedef std::unique_ptr<State> Ptr;
+    using Ptr = std::unique_ptr<State>;
     virtual ~State() = default;
 
     virtual void AddWidget(QWidget& w) = 0;
 
-    //main interface
+    // main interface
     virtual void Load() const = 0;
     virtual void Save() const = 0;
 
-    static Ptr Create(const String& category);
+    static Ptr Create(StringView category);
     static Ptr Create(QWidget& root);
   };
-}
+}  // namespace UI

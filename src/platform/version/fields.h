@@ -1,23 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief Version fields factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
-
+ *
+ * @file
+ *
+ * @brief Version fields factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <strings/fields.h>
+#include "strings/fields.h"
 
-namespace Platform
+namespace Platform::Version
 {
-  namespace Version
-  {
-    std::unique_ptr<Strings::FieldsSource> CreateVersionFieldsSource();
-  }
-}
+  std::unique_ptr<Strings::FieldsSource> CreateVersionFieldsSource();
+}  // namespace Platform::Version

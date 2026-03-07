@@ -1,19 +1,18 @@
 /**
-*
-* @file
-*
-* @brief  Platform-specific tool functions
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Platform-specific tool functions
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <types.h>
+#include "string_type.h"
 
 namespace Platform
 {
-  std::string GetCurrentImageFilename();
+  String GetCurrentImageFilename();
 }

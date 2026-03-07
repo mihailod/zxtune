@@ -1,25 +1,24 @@
 /**
-*
-* @file
-*
-* @brief  Bits operating and related functions
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Bits operating and related functions
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include <types.h>
-//std includes
+#include "types.h"
+
 #include <type_traits>
 
 namespace Math
 {
   //! @brief Counting set bits in integer value
   template<class T>
-  inline std::size_t CountBits(T val)
+  inline constexpr std::size_t CountBits(T val)
   {
     static_assert(std::is_integral<T>::value, "Should be integral type");
     std::size_t res = 0;
@@ -35,7 +34,7 @@ namespace Math
   }
 
   //! @brief Counting significant bits count
-  inline std::size_t Log2(uint32_t val)
+  inline constexpr std::size_t Log2(uint32_t val)
   {
     const std::size_t shift4 = (val > 0xffff) << 4;
     val >>= shift4;
@@ -49,7 +48,7 @@ namespace Math
     return 1 + (shift4 | shift3 | shift2 | shift1 | shift0);
   }
 
-  inline std::size_t Log2(uint64_t val)
+  inline constexpr std::size_t Log2(uint64_t val)
   {
     const std::size_t shift5 = (val > 0xffffffff) << 5;
     val >>= shift5;
@@ -61,12 +60,12 @@ namespace Math
     val >>= shift2;
     const std::size_t shift1 = (val > 0x3) << 1;
     val >>= shift1;
-    const std::size_t shift0 = static_cast<std::size_t>(val >> 1);
+    const auto shift0 = static_cast<std::size_t>(val >> 1);
     return 1 + (shift5 | shift4 | shift3 | shift2 | shift1 | shift0);
   }
 
   template<class T>
-  inline std::size_t Log2(T val)
+  inline constexpr std::size_t Log2(T val)
   {
     static_assert(std::is_integral<T>::value, "Should be integral type");
     std::size_t res = 0;
@@ -78,8 +77,8 @@ namespace Math
   }
 
   template<class T>
-  inline T HiBitsMask(std::size_t hiBits)
+  inline constexpr T HiBitsMask(std::size_t hiBits)
   {
     return ~((T(1) << (8 * sizeof(T) - hiBits)) - 1);
   }
-}
+}  // namespace Math

@@ -1,22 +1,21 @@
 /**
-*
-* @file
-*
-* @brief  Sound backend interface definition
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Sound backend interface definition
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//common includes
-#include <error.h>
-#include <iterator.h>
-//library includes
-#include <module/analyzer.h>
-#include <module/state.h>
-#include <sound/gain.h>
+#include "module/state.h"
+#include "sound/analyzer.h"
+#include "sound/backend_attrs.h"
+#include "sound/gain.h"
+
+#include "error.h"
 
 namespace Sound
 {
@@ -25,14 +24,12 @@ namespace Sound
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<const BackendInformation> Ptr;
-    //! Iterator type
-    typedef ObjectIterator<Ptr> Iterator;
+    using Ptr = std::shared_ptr<const BackendInformation>;
 
     virtual ~BackendInformation() = default;
 
     //! Short spaceless identifier
-    virtual String Id() const = 0;
+    virtual BackendId Id() const = 0;
     //! Textual description
     virtual String Description() const = 0;
     //! Backend capabilities @see backend_attrs.h
@@ -46,7 +43,7 @@ namespace Sound
   {
   public:
     //! @brief Pointer types
-    typedef std::shared_ptr<VolumeControl> Ptr;
+    using Ptr = std::shared_ptr<VolumeControl>;
 
     virtual ~VolumeControl() = default;
 
@@ -66,7 +63,7 @@ namespace Sound
   {
   public:
     //! @brief Pointer type
-    typedef std::shared_ptr<PlaybackControl> Ptr;
+    using Ptr = std::shared_ptr<PlaybackControl>;
 
     virtual ~PlaybackControl() = default;
 
@@ -89,7 +86,7 @@ namespace Sound
     //! @param frame Number of specified frame
     //! @throw Error in case of error
     //! @note If parameter is out of range, playback will be stopped
-    virtual void SetPosition(uint_t frame) = 0;
+    virtual void SetPosition(Time::AtMillisecond request) = 0;
 
     //! @brief Current playback state
     enum State
@@ -111,7 +108,7 @@ namespace Sound
   {
   public:
     //! @brief Pointer type
-    typedef std::shared_ptr<const Backend> Ptr;
+    using Ptr = std::shared_ptr<const Backend>;
 
     virtual ~Backend() = default;
 
@@ -119,7 +116,7 @@ namespace Sound
     virtual Module::State::Ptr GetState() const = 0;
 
     //! @brief Getting analyzer interface
-    virtual Module::Analyzer::Ptr GetAnalyzer() const = 0;
+    virtual Analyzer::Ptr GetAnalyzer() const = 0;
 
     //! @brief Gettint playback controller
     virtual PlaybackControl::Ptr GetPlaybackControl() const = 0;
@@ -132,7 +129,7 @@ namespace Sound
   class BackendCallback
   {
   public:
-    typedef std::shared_ptr<BackendCallback> Ptr;
+    using Ptr = std::shared_ptr<BackendCallback>;
     virtual ~BackendCallback() = default;
 
     virtual void OnStart() = 0;
@@ -142,4 +139,4 @@ namespace Sound
     virtual void OnResume() = 0;
     virtual void OnFinish() = 0;
   };
-}
+}  // namespace Sound

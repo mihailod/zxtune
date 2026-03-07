@@ -1,80 +1,65 @@
 /**
-* 
-* @file
-*
-* @brief  Portable Sound Format family support implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Portable Sound Format family support implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/chiptune/emulation/portablesoundformat.h"
-//common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/crc.h>
-#include <binary/data_builder.h>
-#include <binary/input_stream.h>
-#include <debug/log.h>
-#include <formats/chiptune/container.h>
-#include <strings/encoding.h>
-#include <strings/prefixed_index.h>
-#include <strings/trim.h>
-#include <time/duration.h>
-//std includes
-#include <cctype>
+
+#include "formats/chiptune/container.h"
+
+#include "binary/crc.h"
+#include "binary/data_builder.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+#include "strings/casing.h"
+#include "strings/prefixed_index.h"
+#include "strings/sanitize.h"
+#include "strings/trim.h"
+#include "time/duration.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <set>
 
-namespace Formats
-{
-namespace Chiptune
-{
-namespace PortableSoundFormat
+namespace Formats::Chiptune::PortableSoundFormat
 {
   const Debug::Stream Dbg("Formats::Chiptune::PortableSoundFormat");
 
   const uint8_t SIGNATURE[] = {'P', 'S', 'F'};
-  
+
   namespace Tags
   {
     const uint8_t SIGNATURE[] = {'[', 'T', 'A', 'G', ']'};
-    const String LIB_PREFIX = "_lib";
-    
-    const char UTF8[] = "utf8";
-    const char TITLE[] = "title";
-    const char ARTIST[] = "artist";
-    const char GAME[] = "game";
-    const char YEAR[] = "year";
-    const char GENRE[] = "genre";
-    const char COMMENT[] = "comment";
-    const char COPYRIGHT[] = "copyright";
-    const char XSFBY_SUFFIX[] = "sfby";
-    const char LENGTH[] = "length";
-    const char FADE[] = "fade";
-    const char VOLUME[] = "volume";
-    
-    static String MakeName(StringView str)
-    {
-      String res;
-      res.reserve(str.size());
-      for (const auto sym : str)
-      {
-        res += std::tolower(sym);
-      }
-      return res;
-    }
-  }
-  
+    const auto LIB_PREFIX = "_lib"sv;
+
+    const auto UTF8 = "utf8"sv;
+    const auto TITLE = "title"sv;
+    const auto ARTIST = "artist"sv;
+    const auto GAME = "game"sv;
+    const auto YEAR = "year"sv;
+    const auto GENRE = "genre"sv;
+    const auto COMMENT = "comment"sv;
+    const auto COPYRIGHT = "copyright"sv;
+    const auto XSFBY_SUFFIX = "sfby"sv;
+    const auto LENGTH = "length"sv;
+    const auto FADE = "fade"sv;
+    const auto VOLUME = "volume"sv;
+  }  // namespace Tags
+
   class Format
   {
   public:
     explicit Format(const Binary::Container& data)
       : Stream(data)
-    {
-    }
-    
+    {}
+
     Container::Ptr Parse(Builder& target)
     {
       ParseSignature(target);
@@ -84,6 +69,7 @@ namespace PortableSoundFormat
       ParseTags(target);
       return CreateCalculatingCrcContainer(Stream.GetReadContainer(), dataStart, dataEnd - dataStart);
     }
+
   private:
     void ParseSignature(Builder& target)
     {
@@ -91,98 +77,105 @@ namespace PortableSoundFormat
       Require(0 == std::memcmp(sign.Start(), SIGNATURE, sizeof(SIGNATURE)));
       const uint_t version = Stream.ReadByte();
       target.SetVersion(version);
-      Dbg("Version %1%", version);
+      Dbg("Version {}", version);
     }
-    
+
     void ParseData(Builder& target)
     {
-      const auto reservedSize = Stream.ReadLE<uint32_t>();
-      const auto compressedSize = Stream.ReadLE<uint32_t>();
-      const auto compressedCrc = Stream.ReadLE<uint32_t>();
+      const std::size_t reservedSize = Stream.Read<le_uint32_t>();
+      const std::size_t compressedSize = Stream.Read<le_uint32_t>();
+      const uint32_t compressedCrc = Stream.Read<le_uint32_t>();
       if (auto reserved = Stream.ReadContainer(reservedSize))
       {
-        Dbg("Reserved section %1% bytes", reservedSize);
+        Dbg("Reserved section {} bytes", reservedSize);
         target.SetReservedSection(std::move(reserved));
       }
       if (compressedSize)
       {
         auto programPacked = Stream.ReadContainer(compressedSize);
         Require(compressedCrc == Binary::Crc32(*programPacked));
-        Dbg("Program section %1% bytes", compressedSize);
+        Dbg("Program section {} bytes", compressedSize);
         target.SetPackedProgramSection(std::move(programPacked));
       }
     }
-    
+
+    bool ParseTag(StringView line, String& name, String& value)
+    {
+      const auto eqPos = line.find('=');
+      if (eqPos != line.npos)
+      {
+        name = Strings::ToLowerAscii(Strings::TrimSpaces(line.substr(0, eqPos)));
+        value = Strings::Sanitize(line.substr(eqPos + 1));
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    }
+
     void ParseTags(Builder& target)
     {
       if (!ReadTagSignature())
       {
         return;
       };
-      bool utf8 = false;
       String comment;
+      auto& meta = target.GetMetaBuilder();
       while (Stream.GetRestSize())
       {
         String name;
-        StringView valueView;
-        if (!ReadTagVariable(name, valueView))
+        String value;
+        if (!ParseTag(Stream.ReadString(), name, value))
         {
-          //Blank lines, or lines not of the form "variable=value", are ignored.
+          // Blank lines, or lines not of the form "variable=value", are ignored.
           continue;
         }
-        Dbg("tags[%1%]=%2%", name, valueView);
+        Dbg("tags[{}]={}", name, value);
         if (const auto num = FindLibraryNumber(name))
         {
-          target.SetLibrary(num, valueView.to_string());
+          target.SetLibrary(num, std::move(value));
           continue;
         }
         else if (name == Tags::UTF8)
         {
-          utf8 = true;
           continue;
         }
-        const auto value = utf8
-          ? valueView.to_string()
-          : Strings::ToAutoUtf8(valueView);
         if (name == Tags::TITLE)
         {
-          target.SetTitle(value);
+          meta.SetTitle(std::move(value));
         }
         else if (name == Tags::ARTIST)
         {
-          target.SetArtist(value);
+          meta.SetAuthor(std::move(value));
         }
         else if (name == Tags::GAME)
         {
-          target.SetGame(value);
+          meta.SetProgram(std::move(value));
         }
         else if (name == Tags::YEAR)
         {
-          target.SetYear(value);
+          target.SetYear(std::move(value));
         }
         else if (name == Tags::GENRE)
         {
-          target.SetGenre(value);
+          target.SetGenre(std::move(value));
         }
         else if (name == Tags::COMMENT)
         {
-          if (comment.empty())
-          {
-            comment = value;
-          }
-          else
+          if (!comment.empty())
           {
             comment += '\n';
-            comment += value;
           }
+          comment.append(value);
         }
         else if (name == Tags::COPYRIGHT)
         {
-          target.SetCopyright(value);
+          target.SetCopyright(std::move(value));
         }
         else if (name.npos != name.find(Tags::XSFBY_SUFFIX))
         {
-          target.SetDumper(value);
+          target.SetDumper(std::move(value));
         }
         else if (name == Tags::LENGTH)
         {
@@ -198,15 +191,15 @@ namespace PortableSoundFormat
         }
         else
         {
-          target.SetTag(name, value);
+          target.SetTag(std::move(name), std::move(value));
         }
       }
       if (!comment.empty())
       {
-        target.SetComment(std::move(comment));
+        meta.SetComment(std::move(comment));
       }
     }
-    
+
     bool ReadTagSignature()
     {
       if (Stream.GetRestSize() < sizeof(Tags::SIGNATURE))
@@ -222,23 +215,7 @@ namespace PortableSoundFormat
       Stream.Seek(currentPosition);
       return false;
     }
-    
-    bool ReadTagVariable(String& name, StringView& value)
-    {
-      const auto line = Stream.ReadString();
-      const auto eqPos = line.find('=');
-      if (eqPos != line.npos)
-      {
-        name = Tags::MakeName(Strings::TrimSpaces(line.substr(0, eqPos)));
-        value = Strings::TrimSpaces(line.substr(eqPos + 1));
-        return true;
-      }
-      else
-      {
-        return false;
-      }
-    }
-    
+
     static uint_t FindLibraryNumber(StringView tagName)
     {
       if (tagName == Tags::LIB_PREFIX)
@@ -247,7 +224,7 @@ namespace PortableSoundFormat
       }
       else
       {
-        const Strings::PrefixedIndex lib(Tags::LIB_PREFIX, tagName);
+        const auto lib = Strings::PrefixedIndex::ParseNoCase(Tags::LIB_PREFIX, tagName);
         const auto num = lib.IsValid() ? lib.GetIndex() : 0;
         Require(num != 1);
         return num;
@@ -263,20 +240,21 @@ namespace PortableSoundFormat
       while (end != String::npos)
       {
         val[end] = 0;
-        result = result * 60 + 1000 * std::atoi(val.c_str()  + start);
+        result = result * 60 + 1000 * std::atoi(val.c_str() + start);
         end = val.find_first_of(':', start = end + 1);
       }
-      return Time::Milliseconds(result * 60 + 1000 * std::atof(val.c_str() + start));
+      return Time::Milliseconds{result * 60 + static_cast<uint_t>(1000 * std::atof(val.c_str() + start))};
     }
-    
-    static float ParseVolume(String val)
+
+    static float ParseVolume(const String& val)
     {
-      return std::atof(val.c_str());
+      return static_cast<float>(std::atof(val.c_str()));
     }
+
   private:
     Binary::InputStream Stream;
   };
-  
+
   Container::Ptr Parse(const Binary::Container& data, Builder& target)
   {
     try
@@ -285,10 +263,7 @@ namespace PortableSoundFormat
     }
     catch (const std::exception&)
     {
-      return Container::Ptr();
+      return {};
     }
   }
-
-}
-}
-}
+}  // namespace Formats::Chiptune::PortableSoundFormat

@@ -1,22 +1,23 @@
 /**
-*
-* @file
-*
-* @brief  OpenAL subsystem access functions
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  OpenAL subsystem access functions
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <strings/array.h>
+#include "l10n/markup.h"
+#include "sound/backend_attrs.h"
+#include "strings/array.h"
 
-namespace Sound
+namespace Sound::OpenAl
 {
-  namespace OpenAl
-  {
-    Strings::Array EnumerateDevices();
-  }
-}
+  constexpr const auto BACKEND_ID = "openal"_id;
+  constexpr auto BACKEND_DESCRIPTION = L10n::translate("OpenAL backend");
+
+  Strings::Array EnumerateDevices();
+}  // namespace Sound::OpenAl

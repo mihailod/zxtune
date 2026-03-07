@@ -1,38 +1,38 @@
 /**
-* 
-* @file
-*
-* @brief  TurboFM Compiled chiptune factory implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TurboFM Compiled chiptune factory implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/tfm/tfc.h"
-#include "module/players/tfm/tfm_base_stream.h"
-//common includes
-#include <iterator.h>
-#include <make_ptr.h>
-//library includes
-#include <formats/chiptune/fm/tfc.h>
-#include <module/players/properties_helper.h>
-#include <module/players/streaming.h>
-//text includes
-#include <core/text/plugins.h>
-#include <module/text/platforms.h>
 
-namespace Module
+#include "formats/chiptune/fm/tfc.h"
+#include "module/players/platforms.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
+#include "module/players/tfm/tfm_base_stream.h"
+
+#include "tools/iterators.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <algorithm>
+#include <array>
+
+namespace Module::TFC
 {
-namespace TFC
-{
+  const auto PROGRAM_PREFIX = "TurboFM Compiler v"sv;
+
   class ChannelData
   {
   public:
-    ChannelData()
-      : Loop()
-    {
-    }
+    ChannelData() = default;
 
     void AddFrame()
     {
@@ -63,31 +63,32 @@ namespace TFC
       }
       const std::size_t start = Offsets[row];
       const std::size_t end = row != Offsets.size() - 1 ? Offsets[row + 1] : Data.size();
-      return RangeIterator<Devices::FM::Registers::const_iterator>(Data.begin() + start, Data.begin() + end);
+      return {Data.begin() + start, Data.begin() + end};
     }
 
     std::size_t GetSize() const
     {
       return Offsets.size();
     }
+
   private:
     std::vector<std::size_t> Offsets;
     Devices::FM::Registers Data;
-    std::size_t Loop;
+    std::size_t Loop = 0;
   };
-  
+
   class ModuleData : public TFM::StreamModel
   {
   public:
-    typedef std::shared_ptr<ModuleData> RWPtr;
-    
-    uint_t Size() const override
+    using RWPtr = std::shared_ptr<ModuleData>;
+
+    uint_t GetTotalFrames() const override
     {
-      return static_cast<uint_t>(std::max({Data[0].GetSize(), Data[1].GetSize(), Data[2].GetSize(),
-        Data[3].GetSize(), Data[4].GetSize(), Data[5].GetSize()}));
+      return static_cast<uint_t>(std::max({Data[0].GetSize(), Data[1].GetSize(), Data[2].GetSize(), Data[3].GetSize(),
+                                           Data[4].GetSize(), Data[5].GetSize()}));
     }
 
-    uint_t Loop() const override
+    uint_t GetLoopFrame() const override
     {
       return 0;
     }
@@ -100,18 +101,19 @@ namespace TFC
         const uint_t chip = idx < 3 ? 0 : 1;
         for (RangeIterator<Devices::FM::Registers::const_iterator> regs = Data[idx].Get(frameNum); regs; ++regs)
         {
-          result.push_back(Devices::TFM::Register(chip, *regs));
+          result.emplace_back(chip, *regs);
         }
       }
       res.swap(result);
     }
-    
+
     ChannelData& GetChannel(uint_t channel)
     {
       return Data[channel];
     }
+
   private:
-    std::array<ChannelData, 6> Data;  
+    std::array<ChannelData, 6> Data;
   };
 
   class DataBuilder : public Formats::Chiptune::TFC::Builder
@@ -119,35 +121,27 @@ namespace TFC
   public:
     explicit DataBuilder(PropertiesHelper& props)
       : Properties(props)
+      , Meta(props)
       , Data(MakeRWPtr<ModuleData>())
-      , Channel(0)
       , Frequency()
+    {}
+
+    Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
+      return Meta;
     }
 
-    void SetVersion(const String& version) override
+    void SetVersion(StringView version) override
     {
-      Properties.SetProgram(Text::TFC_COMPILER_VERSION + version);
+      Properties.SetProgram(String(PROGRAM_PREFIX).append(version));
     }
 
     void SetIntFreq(uint_t freq) override
     {
-      Properties.SetFramesFrequency(freq);
-    }
-
-    void SetTitle(const String& title) override
-    {
-      Properties.SetTitle(title);
-    }
-
-    void SetAuthor(const String& author) override
-    {
-      Properties.SetAuthor(author);
-    }
-
-    void SetComment(const String& comment) override
-    {
-      Properties.SetComment(comment);
+      if (freq)
+      {
+        FrameDuration = Time::Microseconds::FromFrequency(freq);
+      }
     }
 
     void StartChannel(uint_t idx) override
@@ -202,40 +196,50 @@ namespace TFC
       SetRegister(0x28, 0xf0 | key);
     }
 
-    TFM::StreamModel::Ptr GetResult() const
+    TFM::StreamModel::Ptr CaptureResult() const
     {
       return Data;
     }
+
+    Time::Microseconds GetFrameDuration() const
+    {
+      return FrameDuration;
+    }
+
   private:
     ChannelData& GetChannel()
     {
       return Data->GetChannel(Channel);
     }
+
   private:
     PropertiesHelper& Properties;
+    MetaProperties Meta;
     const ModuleData::RWPtr Data;
-    uint_t Channel;
+    uint_t Channel = 0;
     std::array<uint_t, 6> Frequency;
+    Time::Microseconds FrameDuration = TFM::BASE_FRAME_DURATION;
   };
 
   class Factory : public TFM::Factory
   {
   public:
-    TFM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData, Parameters::Container::Ptr properties) const override
+    TFM::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
+                                      Parameters::Container::Ptr properties) const override
     {
       PropertiesHelper props(*properties);
       DataBuilder dataBuilder(props);
       if (const auto container = Formats::Chiptune::TFC::Parse(rawData, dataBuilder))
       {
-        auto data = dataBuilder.GetResult();
-        if (data->Size())
+        auto data = dataBuilder.CaptureResult();
+        if (data->GetTotalFrames())
         {
           props.SetSource(*container);
           props.SetPlatform(Platforms::ZX_SPECTRUM);
-          return TFM::CreateStreamedChiptune(std::move(data), std::move(properties));
+          return TFM::CreateStreamedChiptune(dataBuilder.GetFrameDuration(), std::move(data), std::move(properties));
         }
       }
-      return TFM::Chiptune::Ptr();
+      return {};
     }
   };
 
@@ -243,5 +247,4 @@ namespace TFC
   {
     return MakePtr<Factory>();
   }
-}
-}
+}  // namespace Module::TFC

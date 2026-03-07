@@ -1,33 +1,29 @@
 /**
-*
-* @file
-*
-* @brief  Image utilities implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Image utilities implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "formats/packed/image_utils.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <binary/container_factories.h>
-//std includes
+
+#include "binary/data_builder.h"
+
+#include "make_ptr.h"
+
 #include <map>
 
 namespace Formats
 {
   bool CompareCHS(const CHS& lh, const CHS& rh)
   {
-    return lh.Cylinder == rh.Cylinder
-      ? (lh.Head == rh.Head
-         ? lh.Sector < rh.Sector
-         : lh.Head < rh.Head)
-      : lh.Cylinder < rh.Cylinder;
+    return lh.Cylinder == rh.Cylinder ? (lh.Head == rh.Head ? lh.Sector < rh.Sector : lh.Head < rh.Head)
+                                      : lh.Cylinder < rh.Cylinder;
   }
-}
+}  // namespace Formats
 
 namespace Formats
 {
@@ -36,41 +32,37 @@ namespace Formats
   public:
     SparsedImageBuilder()
       : Sectors(&CompareCHS)
-      , TotalSize()
-    {
-    }
+    {}
 
-    void SetGeometry(const CHS& /*geometry*/) override
-    {
-    }
+    void SetGeometry(const CHS& /*geometry*/) override {}
 
-    void SetSector(const CHS& location, Dump data) override
+    void SetSector(const CHS& location, Binary::View data) override
     {
-      const auto res = Sectors.insert(SectorsMap::value_type(location, std::move(data)));
+      const auto res = Sectors.insert(SectorsMap::value_type(location, data));
       if (res.second)
       {
-        TotalSize += res.first->second.size();
+        TotalSize += res.first->second.Size();
       }
     }
 
     Binary::Container::Ptr GetResult() const override
     {
-      std::unique_ptr<Dump> result(new Dump(TotalSize));
-      auto dst = result->begin();
+      Binary::DataBuilder result(TotalSize);
       for (const auto& sec : Sectors)
       {
-        dst = std::copy(sec.second.begin(), sec.second.end(), dst);
+        result.Add(sec.second);
       }
-      return Binary::CreateContainer(std::move(result));
+      return result.CaptureResult();
     }
+
   private:
-    typedef std::map<CHS, Dump, bool(*)(const CHS&, const CHS&)> SectorsMap;
+    using SectorsMap = std::map<CHS, Binary::View, bool (*)(const CHS&, const CHS&)>;
     SectorsMap Sectors;
-    std::size_t TotalSize;
+    std::size_t TotalSize = 0;
   };
 
   ImageBuilder::Ptr CreateSparsedImageBuilder()
   {
     return MakePtr<SparsedImageBuilder>();
   }
-}
+}  // namespace Formats

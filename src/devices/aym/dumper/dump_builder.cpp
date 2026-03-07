@@ -1,28 +1,25 @@
 /**
-* 
-* @file
-*
-* @brief  AY/YM dump builder implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  AY/YM dump builder implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "devices/aym/dumper/dump_builder.h"
-//common includes
-#include <make_ptr.h>
-//std includes
+
+#include "make_ptr.h"
+
 #include <utility>
 
-namespace Devices
-{
-namespace AYM
+namespace Devices::AYM
 {
   class RenderState
   {
   public:
-    typedef std::shared_ptr<RenderState> Ptr;
+    using Ptr = std::unique_ptr<RenderState>;
     virtual ~RenderState() = default;
 
     virtual void Reset() = 0;
@@ -35,10 +32,10 @@ namespace AYM
 
   uint8_t GetValueMask(Registers::Index idx)
   {
-    const uint_t REGS_4BIT_SET = (1 << Registers::TONEA_H) | (1 << Registers::TONEB_H) |
-      (1 << Registers::TONEC_H) | (1 << Registers::ENV);
-    const uint_t REGS_5BIT_SET = (1 << Registers::TONEN) | (1 << Registers::VOLA) |
-      (1 << Registers::VOLB) | (1 << Registers::VOLC);
+    const uint_t REGS_4BIT_SET = (1 << Registers::TONEA_H) | (1 << Registers::TONEB_H) | (1 << Registers::TONEC_H)
+                                 | (1 << Registers::ENV);
+    const uint_t REGS_5BIT_SET = (1 << Registers::TONEN) | (1 << Registers::VOLA) | (1 << Registers::VOLB)
+                                 | (1 << Registers::VOLC);
 
     const uint_t mask = 1 << idx;
     if (mask & REGS_4BIT_SET)
@@ -93,6 +90,7 @@ namespace AYM
       ApplyMerge(Base, Delta);
       Delta = Registers();
     }
+
   protected:
     Registers Base;
     Registers Delta;
@@ -109,8 +107,7 @@ namespace AYM
         const uint8_t newVal = delta[reg] & GetValueMask(reg);
         if (Registers::ENV != reg && Base.Has(reg))
         {
-          uint8_t& base = Base[reg];
-          if (newVal == base)
+          if (newVal == Base[reg])
           {
             Delta.Reset(reg);
             continue;
@@ -128,8 +125,6 @@ namespace AYM
       : FrameDuration(frameDuration)
       , Builder(std::move(builder))
       , State(std::move(state))
-      , FramesToSkip(0)
-      , NextFrame()
     {
       Reset();
     }
@@ -160,7 +155,7 @@ namespace AYM
       NextFrame += FrameDuration;
     }
 
-    void GetDump(Dump& result) const override
+    Binary::Data::Ptr GetDump() override
     {
       if (FramesToSkip)
       {
@@ -169,8 +164,9 @@ namespace AYM
         Builder->WriteFrame(FramesToSkip, State->GetBase(), delta);
         FramesToSkip = 0;
       }
-      Builder->GetResult(result);
+      return Builder->GetResult();
     }
+
   private:
     void FinishFrame()
     {
@@ -185,18 +181,19 @@ namespace AYM
       }
       NextFrame += FrameDuration;
     }
+
   private:
     const Time::Duration<TimeUnit> FrameDuration;
     const FramedDumpBuilder::Ptr Builder;
     const RenderState::Ptr State;
-    mutable uint_t FramesToSkip;
+    uint_t FramesToSkip = 0;
     Stamp NextFrame;
   };
 
-  Dumper::Ptr CreateDumper(DumperParameters::Ptr params, FramedDumpBuilder::Ptr builder)
+  Dumper::Ptr CreateDumper(const DumperParameters& params, FramedDumpBuilder::Ptr builder)
   {
     RenderState::Ptr state;
-    switch (params->OptimizationLevel())
+    switch (params.OptimizationLevel())
     {
     case DumperParameters::NONE:
       state = MakePtr<NotOptimizedRenderState>();
@@ -204,7 +201,6 @@ namespace AYM
     default:
       state = MakePtr<OptimizedRenderState>();
     }
-    return MakePtr<FrameDumper>(params->FrameDuration(), builder, state);
+    return MakePtr<FrameDumper>(params.FrameDuration(), std::move(builder), std::move(state));
   }
-}
-}
+}  // namespace Devices::AYM

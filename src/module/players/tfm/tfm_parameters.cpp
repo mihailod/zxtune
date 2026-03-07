@@ -1,35 +1,30 @@
 /**
-* 
-* @file
-*
-* @brief  TFM parameters helpers implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  TFM parameters helpers implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "module/players/tfm/tfm_parameters.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <core/core_parameters.h>
-#include <sound/render_params.h>
-//std includes
+
+#include "core/core_parameters.h"
+
+#include "make_ptr.h"
+
 #include <utility>
 
-namespace Module
-{
-namespace TFM
+namespace Module::TFM
 {
   class ChipParameters : public Devices::TFM::ChipParameters
   {
   public:
-    explicit ChipParameters(Parameters::Accessor::Ptr params)
-      : Params(params)
-      , SoundParams(Sound::RenderParameters::Create(std::move(params)))
-    {
-    }
+    ChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params)
+      : Samplerate(samplerate)
+      , Params(std::move(params))
+    {}
 
     uint_t Version() const override
     {
@@ -38,23 +33,22 @@ namespace TFM
 
     uint64_t ClockFreq() const override
     {
-      Parameters::IntType val = Parameters::ZXTune::Core::FM::CLOCKRATE_DEFAULT;
-      Params->FindValue(Parameters::ZXTune::Core::FM::CLOCKRATE, val);
-      return val;
+      using namespace Parameters::ZXTune::Core::FM;
+      return Parameters::GetInteger<uint64_t>(*Params, CLOCKRATE, CLOCKRATE_DEFAULT);
     }
 
     uint_t SoundFreq() const override
     {
-      return SoundParams->SoundFreq();
+      return Samplerate;
     }
+
   private:
+    const uint_t Samplerate;
     const Parameters::Accessor::Ptr Params;
-    const Sound::RenderParameters::Ptr SoundParams;
   };
 
-  Devices::TFM::ChipParameters::Ptr CreateChipParameters(Parameters::Accessor::Ptr params)
+  Devices::TFM::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params)
   {
-    return MakePtr<ChipParameters>(std::move(params));
+    return MakePtr<ChipParameters>(samplerate, std::move(params));
   }
-}
-}
+}  // namespace Module::TFM

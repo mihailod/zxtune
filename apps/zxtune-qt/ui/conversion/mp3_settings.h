@@ -1,19 +1,18 @@
 /**
-* 
-* @file
-*
-* @brief MP3 settings widget factory
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief MP3 settings widget factory
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "backend_settings.h"
+class QWidget;
 
 namespace UI
 {
-  BackendSettingsWidget* CreateMP3SettingsWidget(QWidget& parent);
+  class BackendSettingsWidget* CreateMP3SettingsWidget(QWidget& parent);
 }

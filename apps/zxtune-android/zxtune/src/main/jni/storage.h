@@ -1,20 +1,19 @@
 /**
-* 
-* @file
-*
-* @brief Objects storage
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Objects storage
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//local includes
-#include "exception.h"
-//common includes
-#include <pointers.h>
-//std includes
+#include "apps/zxtune-android/zxtune/src/main/jni/exception.h"
+
+#include "pointers.h"
+
 #include <map>
 #include <mutex>
 
@@ -22,12 +21,9 @@ template<class PtrType>
 class ObjectsStorage
 {
 public:
-  typedef int32_t HandleType;
-  
-  ObjectsStorage()
-    : NextHandle()
-  {
-  }
+  using HandleType = int32_t;
+
+  ObjectsStorage() = default;
 
   HandleType Add(PtrType obj)
   {
@@ -50,9 +46,7 @@ public:
   {
     const std::lock_guard<std::mutex> guard(Lock);
     const auto it = Storage.find(handle);
-    return it != Storage.end()
-        ? it->second
-        : PtrType();
+    return it != Storage.end() ? it->second : PtrType();
   }
 
   PtrType Fetch(HandleType handle)
@@ -73,14 +67,16 @@ public:
     static ObjectsStorage<PtrType> Self;
     return Self;
   }
+
 private:
   HandleType GetNextHandle()
   {
     return ++NextHandle;
   }
+
 private:
-  typedef std::map<HandleType, PtrType> StorageType;
+  using StorageType = std::map<HandleType, PtrType>;
   StorageType Storage;
-  HandleType NextHandle;
+  HandleType NextHandle = 0;
   mutable std::mutex Lock;
 };

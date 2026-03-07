@@ -1,27 +1,23 @@
 /**
-* 
-* @file
-*
-* @brief  SSF parser interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  SSF parser interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <formats/chiptune.h>
+#include "formats/chiptune.h"
 
-namespace Formats
+namespace Formats::Chiptune
 {
-  namespace Chiptune
+  namespace SegaSaturnSoundFormat
   {
-    namespace SegaSaturnSoundFormat
-    {
-      const uint_t VERSION_ID = 0x11;
-    }
-
-    Decoder::Ptr CreateSSFDecoder();
+    const uint_t VERSION_ID = 0x11;
   }
-}
+
+  Decoder::Ptr CreateSSFDecoder();
+}  // namespace Formats::Chiptune

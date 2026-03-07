@@ -1,107 +1,96 @@
 /**
-*
-* @file
-*
-* @brief  Plugins parameters names
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  Plugins parameters names
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//library includes
-#include <parameters/types.h>
+#include "core/core_parameters.h"
 
-namespace Parameters
+namespace Parameters::ZXTune::Core::Plugins
 {
-  namespace ZXTune
+  //! @brief Parameters#ZXTune#Core#Plugins namespace prefix
+  const auto PREFIX = Core::PREFIX + "plugins"_id;
+
+  //@{
+  //! @name Default song duration in seconds (if not specified exactly) for all types (can be overriden)
+
+  //! Default value (3min)
+  const IntType DEFAULT_DURATION_DEFAULT = 3 * 60;
+  //! Parameter name for type
+  const auto DEFAULT_DURATION = PREFIX + "default_duration"_id;
+  //@}
+
+  //! @brief RAW scaner parameters namespace
+  namespace Raw
   {
-    namespace Core
-    {
-      //! @brief Plugins-related parameters namespace
-      namespace Plugins
-      {
-        //! @brief Parameters#ZXTune#Core#Plugins namespace prefix
-        extern const NameType PREFIX;
-        
-        //@{
-        //! @name Default song duration in seconds (if not specified exactly) for all types (can be overriden)
+    //! @brief Parameters#ZXTune#Core#Plugins#Raw namespace prefix
+    const auto PREFIX = Plugins::PREFIX + "raw"_id;
 
-        //! Default value (3min)
-        const IntType DEFAULT_DURATION_DEFAULT = 3 * 60;
-        //! Parameter name for type
-        extern const NameType DEFAULT_DURATION;
-        //@}
+    //@{
+    //! @name Perform double analysis of plain data containers
 
-        //! @brief RAW scaner parameters namespace
-        namespace Raw
-        {
-          //! @brief Parameters#ZXTune#Core#Plugins#Raw namespace prefix
-          extern const NameType PREFIX;
+    //! Parameter name
+    const auto PLAIN_DOUBLE_ANALYSIS = PREFIX + "plain_double_analysis"_id;
+    //@}
 
-          //@{
-          //! @name Perform double analysis of plain data containers
+    //@{
+    //! @name Minimal scan size parameter
 
-          //! Parameter name
-          extern const NameType PLAIN_DOUBLE_ANALYSIS;
-          //@}
+    //! Default value
+    const IntType MIN_SIZE_DEFAULT = 128;
+    //! Parameter name
+    const auto MIN_SIZE = PREFIX + "min_size"_id;
+    //@}
+  }  // namespace Raw
 
-          //@{
-          //! @name Minimal scan size parameter
+  //! @brief HRIP container parameters namespace
+  namespace Hrip
+  {
+    //! @brief Parameters#ZXTune#Core#Plugins#Hrip namespace prefix
+    const auto PREFIX = Plugins::PREFIX + "hrip"_id;
 
-          //! Default value
-          const IntType MIN_SIZE_DEFAULT = 128;
-          //! Parameter name
-          extern const NameType MIN_SIZE;
-          //@}
-        }
+    //! @brief Ignore corrupted blocks
+    //! @details 1 if do so
+    const auto IGNORE_CORRUPTED = PREFIX + "ignore_corrupted"_id;
+  }  // namespace Hrip
 
-        //! @brief HRIP container parameters namespace
-        namespace Hrip
-        {
-          //! @brief Parameters#ZXTune#Core#Plugins#Hrip namespace prefix
-          extern const NameType PREFIX;
+  //! @brief SID container/player parameters namespace
+  namespace SID
+  {
+    //! @brief Parameters#ZXTune#Core#Plugins#SID namespace prefix
+    const auto PREFIX = Plugins::PREFIX + "sid"_id;
 
-          //! @brief Ignore corrupted blocks
-          //! @details 1 if do so
-          extern const NameType IGNORE_CORRUPTED;
-        }
+    //@{
+    //! @name ROMs content
 
-        //! @brief SID container/player parameters namespace
-        namespace SID
-        {
-          //! @brief Parameters#ZXTune#Core#Plugins#SID namespace prefix
-          extern const NameType PREFIX;
+    //! 8192 bytes
+    const auto KERNAL = PREFIX + "kernal"_id;
+    //! 8192 bytes
+    const auto BASIC = PREFIX + "basic"_id;
+    //! 4096 bytes
+    const auto CHARGEN = PREFIX + "chargen"_id;
+    //@}
+  }  // namespace SID
 
-          //@{
-          //! @name ROMs content
-          
-          //! 8192 bytes
-          extern const NameType KERNAL;
-          //! 8192 bytes
-          extern const NameType BASIC;
-          //! 4096 bytes
-          extern const NameType CHARGEN;
-          //@}
-        }
-        
-        //! @brief ZIP container parameters namespace
-        namespace Zip
-        {
-          //! @brief Parameters#ZXTune#Core#Plugins#Zip namespace prefix
-          extern const NameType PREFIX;
+  //! @brief ZIP container parameters namespace
+  namespace Zip
+  {
+    //! @brief Parameters#ZXTune#Core#Plugins#Zip namespace prefix
+    const auto PREFIX = Plugins::PREFIX + "zip"_id;
 
-          //@{
-          //! @name Maximal file size to be depacked in Mb
+    //@{
+    //! @name Maximal file size to be depacked in Mb
 
-          //! Default value
-          const IntType MAX_DEPACKED_FILE_SIZE_MB_DEFAULT = 32;
-          //! Parameter name
-          extern const NameType MAX_DEPACKED_FILE_SIZE_MB;
-          //@}
-        }
-      }
-    }
-  }
-}
+    //! Default value
+    const IntType MAX_DEPACKED_FILE_SIZE_MB_DEFAULT = 32;
+    //! Parameter name
+    const auto MAX_DEPACKED_FILE_SIZE_MB = PREFIX + "max_depacked_size_mb"_id;
+    //@}
+  }  // namespace Zip
+}  // namespace Parameters::ZXTune::Core::Plugins

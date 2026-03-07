@@ -32,11 +32,16 @@
     \tASAP por <b>Piotr Fusik</b>\n
     \tjsoup por <b>Jonathan Hedley</b>\n
     \tminimp3 por <b>lieff</b>\n
-    \tstb-vorbis por <b>Sean Barrett</b>\n
     \tlibFLAC\n
     \tv2m-player por <b>Farbrausch</b> más <b>Joakim L.Gilje</b>\n
     \tFFmpeg\n
     \tlibvgm por <b>Valley Bell</b>\n
+    \tlibopenmpt\n
+    \tsseqplayer por <b>Christopher Snowhill</b>\n
+    \tLibAtrac9 por <b>Alex Barney</b>\n
+    \tmpg123 por <b>Thomas Orgis</b>\n
+    \tOGG Vorbis\n
+    \tvgmstream\n
     \n
     Dedicado a <b>Lizzi</b>
   </string>
@@ -46,5 +51,6 @@
   <!-- containers -->
   <string name="plugin_multitrack">Múltiples módulos</string>
   <string name="plugin_archive">Archivadores</string>
+  <string name="plugin_compressor">Empaquetadores de datos</string>
   <string name="plugin_decompiler">Decompiladores</string>
 </resources>

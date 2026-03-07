@@ -1,53 +1,51 @@
 /**
-* 
-* @file
-*
-* @brief  LHA archives support
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  LHA archives support
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//common includes
-#include <contract.h>
-#include <make_ptr.h>
-//library includes
-#include <binary/container_base.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <debug/log.h>
-#include <formats/archived.h>
-#include <formats/packed/lha_supp.h>
-#include <formats/packed/pack_utils.h>
-#include <strings/encoding.h>
-//3rdparty includes
-#include <3rdparty/lhasa/lib/public/lhasa.h>
-//std includes
+#include "formats/packed/lha_supp.h"
+#include "formats/packed/pack_utils.h"
+
+#include "binary/container_base.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+#include "formats/archived.h"
+#include "strings/encoding.h"
+#include "strings/map.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include "3rdparty/lhasa/lib/public/lhasa.h"
+
 #include <cstring>
 #include <list>
-#include <map>
 #include <numeric>
-//text include
-#include <formats/text/archived.h>
 
-namespace Formats
-{
-namespace Archived
+namespace Formats::Archived
 {
   namespace Lha
   {
     const Debug::Stream Dbg("Formats::Archived::Lha");
 
-    const std::string FORMAT(
-      "??"        //size+sum/size/size len
-      "'-('l|'p)('z|'h|'m)('s|'d|'0-'7)'-" //method, see lha_decoder.c for all available
-      "????"      //packed size
-      "????"      //original size
-      "????"      //time
-      "%00xxxxxx" //attr/0x20
-      "00-03"     //level
-    );
- 
+    const auto DESCRIPTION = "LHA (LHArc)"sv;
+    const auto FORMAT =
+        "??"                                  // size+sum/size/size len
+        "'-('l|'p)('z|'h|'m)('s|'d|'0-'7)'-"  // method, see lha_decoder.c for all available
+        "????"                                // packed size
+        "????"                                // original size
+        "????"                                // time
+        "%00xxxxxx"                           // attr/0x20
+        "00-03"                               // level
+        ""sv;
+
     class InputStreamWrapper
     {
     public:
@@ -69,6 +67,7 @@ namespace Archived
       {
         return State.GetPosition();
       }
+
     private:
       static int Read(void* handle, void* buf, size_t len)
       {
@@ -77,7 +76,7 @@ namespace Archived
 
       static int Skip(void* handle, size_t bytes)
       {
-        Binary::InputStream* const stream = static_cast<Binary::InputStream*>(handle);
+        auto* const stream = static_cast<Binary::InputStream*>(handle);
         const std::size_t rest = stream->GetRestSize();
         if (rest >= bytes)
         {
@@ -86,6 +85,7 @@ namespace Archived
         }
         return 0;
       }
+
     private:
       Binary::InputStream State;
       LHAInputStreamType Vtable;
@@ -94,7 +94,7 @@ namespace Archived
 
     String GetFullPath(const LHAFileHeader& header)
     {
-      std::string fullPath;
+      String fullPath;
       if (header.path)
       {
         fullPath = header.path;
@@ -112,7 +112,7 @@ namespace Archived
         , Size(header.length)
         , Method(header.compress_method)
       {
-        Dbg("Created file '%1%', size=%2%, packed size=%3%, compression=%4%", Name, Size, Data->Size(), Method);
+        Dbg("Created file '{}', size={}, packed size={}, compression={}", Name, Size, Data->Size(), Method);
       }
 
       String GetName() const override
@@ -127,14 +127,15 @@ namespace Archived
 
       Binary::Container::Ptr GetData() const override
       {
-        Dbg("Decompressing '%1%'", Name);
+        Dbg("Decompressing '{}'", Name);
         return Packed::Lha::DecodeRawData(*Data, Method, Size);
       }
+
     private:
       const Binary::Container::Ptr Data;
       const String Name;
       const std::size_t Size;
-      const std::string Method;
+      const String Method;
     };
 
     class FilesIterator
@@ -144,8 +145,6 @@ namespace Archived
         : Data(data)
         , Input(data)
         , Reader(::lha_reader_new(Input.GetStream()), &::lha_reader_free)
-        , Current()
-        , Position()
       {
         Next();
       }
@@ -184,25 +183,26 @@ namespace Archived
         Current = ::lha_reader_next_file(Reader.get());
         Position = Input.GetPosition();
       }
+
     private:
       const Binary::Container& Data;
       const InputStreamWrapper Input;
       const std::shared_ptr<LHAReader> Reader;
-      LHAFileHeader* Current;
-      std::size_t Position;
+      LHAFileHeader* Current = nullptr;
+      std::size_t Position = 0;
     };
 
     class Container : public Binary::BaseContainer<Archived::Container>
     {
     public:
       template<class It>
-      Container(Binary::Container::Ptr data, It begin, It end)
+      Container(Binary::Container::Ptr&& data, It begin, It end)
         : BaseContainer(std::move(data))
       {
         for (It it = begin; it != end; ++it)
         {
-          const File::Ptr file = *it;
-          Files.insert(FilesMap::value_type(file->GetName(), file));
+          const auto file = *it;
+          Files.emplace(file->GetName(), file);
         }
       }
 
@@ -214,35 +214,31 @@ namespace Archived
         }
       }
 
-      File::Ptr FindFile(const String& name) const override
+      File::Ptr FindFile(StringView name) const override
       {
-        const FilesMap::const_iterator it = Files.find(name);
-        return it != Files.end()
-          ? it->second
-          : File::Ptr();
+        return Files.Get(name);
       }
 
       uint_t CountFiles() const override
       {
         return static_cast<uint_t>(Files.size());
       }
+
     private:
-      typedef std::map<String, File::Ptr> FilesMap;
-      FilesMap Files;
+      Strings::ValueMap<File::Ptr> Files;
     };
-  }//namespace Lha
+  }  // namespace Lha
 
   class LhaDecoder : public Decoder
   {
   public:
     LhaDecoder()
       : Format(Binary::CreateFormat(Lha::FORMAT))
-    {
-    }
+    {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Text::LHA_DECODER_DESCRIPTION;
+      return Lha::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -254,7 +250,7 @@ namespace Archived
     {
       if (!Format->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       Lha::FilesIterator iter(data);
       std::list<File::Ptr> files;
@@ -268,14 +264,15 @@ namespace Archived
       }
       if (const std::size_t totalSize = iter.GetOffset())
       {
-        const Binary::Container::Ptr archive = data.GetSubcontainer(0, totalSize);
-        return MakePtr<Lha::Container>(archive, files.begin(), files.end());
+        auto archive = data.GetSubcontainer(0, totalSize);
+        return MakePtr<Lha::Container>(std::move(archive), files.begin(), files.end());
       }
       else
       {
-        return Container::Ptr();
+        return {};
       }
     }
+
   private:
     const Binary::Format::Ptr Format;
   };
@@ -284,6 +281,4 @@ namespace Archived
   {
     return MakePtr<LhaDecoder>();
   }
-}//namespace Archived
-}//namespace Formats
-
+}  // namespace Formats::Archived

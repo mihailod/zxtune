@@ -51,11 +51,13 @@ static void pwm_set_mute_mask(void *info, UINT32 MuteMask);
 static DEVDEF_RWFUNC devFunc[] =
 {
 	{RWF_REGISTER | RWF_WRITE, DEVRW_A8D16, 0, pwm_chn_w},
+	{RWF_CHN_MUTE | RWF_WRITE, DEVRW_ALL, 0, pwm_set_mute_mask},
 	{0x00, 0x00, 0, NULL}
 };
 static DEV_DEF devDef =
 {
 	"PWM", "Gens/GS", FCC_GENS,
+	1,  // Channels
 	
 	device_start_pwm,
 	device_stop_pwm,
@@ -66,6 +68,7 @@ static DEV_DEF devDef =
 	pwm_set_mute_mask,
 	NULL,	// SetPanning
 	NULL,	// SetSampleRateChangeCallback
+	NULL,	// SetLoggingCallback
 	NULL,	// LinkDevice
 	
 	devFunc,	// rwFuncs

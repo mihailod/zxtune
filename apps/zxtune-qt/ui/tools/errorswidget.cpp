@@ -1,26 +1,25 @@
 /**
-* 
-* @file
-*
-* @brief Errors widget implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief Errors widget implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
-#include "errorswidget.h"
+#include "apps/zxtune-qt/ui/tools/errorswidget.h"
+
+#include "apps/zxtune-qt/ui/utils.h"
 #include "errorswidget.ui.h"
-#include "ui/utils.h"
-//common includes
-#include <contract.h>
-//std includes
+
+#include "contract.h"
+
+#include <QtGui/QPainter>
+#include <QtWidgets/QLabel>
+
 #include <cassert>
 #include <list>
-//qt includes
-#include <QtWidgets/QLabel>
-#include <QtGui/QPainter>
-//std includes
 #include <utility>
 
 namespace
@@ -30,8 +29,7 @@ namespace
   public:
     ErrorsContainer()
       : Current(Container.end())
-    {
-    }
+    {}
 
     void Add(const Error& err)
     {
@@ -52,7 +50,7 @@ namespace
 
     bool IsLast() const
     {
-      ContainerType::const_iterator cur = Current;
+      auto cur = Current;
       return cur != Container.end() && ++cur == Container.end();
     }
 
@@ -84,6 +82,7 @@ namespace
       assert(!IsLast());
       ++Current;
     }
+
   private:
     void FixLast()
     {
@@ -92,8 +91,9 @@ namespace
         --Current;
       }
     }
+
   private:
-    typedef std::list<Error> ContainerType;
+    using ContainerType = std::list<Error>;
     ContainerType Container;
     ContainerType::iterator Current;
   };
@@ -116,14 +116,15 @@ namespace
     void paintEvent(QPaintEvent*) override
     {
       QPainter p(this);
-      QFontMetrics fm(font());
+      const QFontMetrics fm(font());
       const QString& fullText = text();
       const QSize& fullSize = fm.size(Qt::TextShowMnemonic, fullText);
       const QRect& availRect = contentsRect();
       const QRect& drawRect = availRect.translated(0, (availRect.height() - fullSize.height()) / 2);
       if (fullSize.width() > availRect.width())
       {
-        const QString& elidedText = fontMetrics().elidedText(fullText, Qt::ElideRight, availRect.width(), Qt::TextShowMnemonic);
+        const QString& elidedText =
+            fontMetrics().elidedText(fullText, Qt::ElideRight, availRect.width(), Qt::TextShowMnemonic);
         p.drawText(drawRect, elidedText);
       }
       else
@@ -131,26 +132,28 @@ namespace
         p.drawText(drawRect, fullText);
       }
     }
+
   private:
     QString FullText;
   };
 
-  class SimpleErrorsWidget : public UI::ErrorsWidget
-                           , public Ui::ErrorsWidget
+  class SimpleErrorsWidget
+    : public UI::ErrorsWidget
+    , public Ui::ErrorsWidget
   {
   public:
     explicit SimpleErrorsWidget(QWidget& parent)
       : UI::ErrorsWidget(parent)
       , Current(new ErrorText(*this))
     {
-      //setup self
+      // setup self
       setupUi(this);
       horizontalLayout->insertWidget(1, Current);
 
-      Require(connect(prevError, SIGNAL(clicked(bool)), SLOT(Previous())));
-      Require(connect(nextError, SIGNAL(clicked(bool)), SLOT(Next())));
-      Require(connect(dismissCurrent, SIGNAL(clicked(bool)), SLOT(Dismiss())));
-      Require(connect(dismissAll, SIGNAL(clicked(bool)), SLOT(DismissAll())));
+      Require(connect(prevError, &QToolButton::clicked, this, [this](bool) { Previous(); }));
+      Require(connect(nextError, &QToolButton::clicked, this, [this](bool) { Next(); }));
+      Require(connect(dismissCurrent, &QToolButton::clicked, this, [this](bool) { Dismiss(); }));
+      Require(connect(dismissAll, &QToolButton::clicked, this, [this](bool) { DismissAll(); }));
 
       UpdateUI();
     }
@@ -161,29 +164,6 @@ namespace
       UpdateUI();
     }
 
-    void Previous() override
-    {
-      Errors.Backward();
-      UpdateUI();
-    }
-
-    void Next() override
-    {
-      Errors.Forward();
-      UpdateUI();
-    }
-
-    void Dismiss() override
-    {
-      Errors.Remove();
-      UpdateUI();
-    }
-
-    void DismissAll() override
-    {
-      Errors.Clear();
-      UpdateUI();
-    }
   private:
     void UpdateUI()
     {
@@ -201,20 +181,45 @@ namespace
         hide();
       }
     }
+
+    void Previous()
+    {
+      Errors.Backward();
+      UpdateUI();
+    }
+
+    void Next()
+    {
+      Errors.Forward();
+      UpdateUI();
+    }
+
+    void Dismiss()
+    {
+      Errors.Remove();
+      UpdateUI();
+    }
+
+    void DismissAll()
+    {
+      Errors.Clear();
+      UpdateUI();
+    }
+
   private:
     ErrorsContainer Errors;
     ErrorText* const Current;
   };
-}
+}  // namespace
 
 namespace UI
 {
-  ErrorsWidget::ErrorsWidget(QWidget& parent) : QWidget(&parent)
-  {
-  }
+  ErrorsWidget::ErrorsWidget(QWidget& parent)
+    : QWidget(&parent)
+  {}
 
   ErrorsWidget* ErrorsWidget::Create(QWidget& parent)
   {
     return new SimpleErrorsWidget(parent);
   }
-}
+}  // namespace UI
