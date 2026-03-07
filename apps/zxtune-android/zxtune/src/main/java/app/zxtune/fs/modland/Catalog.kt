@@ -7,26 +7,13 @@
 package app.zxtune.fs.modland
 
 import android.content.Context
+import androidx.core.util.Consumer
 import app.zxtune.fs.http.MultisourceHttpProvider
 import app.zxtune.utils.ProgressCallback
 import java.io.IOException
 
 interface Catalog {
-
-    interface WithCountHint {
-        fun setCountHint(count: Int) {}
-    }
-
-    fun interface GroupsVisitor : WithCountHint {
-        override fun setCountHint(count: Int) {} // TODO: remove after KT-41670 fix
-        fun accept(obj: Group)
-    }
-
-    fun interface TracksVisitor : WithCountHint {
-        override fun setCountHint(count: Int) {} // TODO: remove after KT-41670 fix
-        //too many tracks possible, so enable breaking
-        fun accept(obj: Track): Boolean
-    }
+    fun interface Visitor<T> : Consumer<T>
 
     interface Grouping {
 
@@ -36,7 +23,7 @@ interface Catalog {
          * @param visitor result receiver
          */
         @Throws(IOException::class)
-        fun queryGroups(filter: String, visitor: GroupsVisitor, progress: ProgressCallback)
+        fun queryGroups(filter: String, visitor: Visitor<Group>, progress: ProgressCallback)
 
         /**
          * Query single group object
@@ -51,7 +38,7 @@ interface Catalog {
          * @param visitor result receiver
          */
         @Throws(IOException::class)
-        fun queryTracks(id: Int, visitor: TracksVisitor, progress: ProgressCallback)
+        fun queryTracks(id: Int, visitor: Visitor<Track>, progress: ProgressCallback)
 
         /**
          * Query track by name

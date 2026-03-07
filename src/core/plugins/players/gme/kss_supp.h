@@ -10,10 +10,11 @@
 
 #pragma once
 
-// library includes
-#include <binary/view.h>
+#include "binary/view.h"
+
+#include "string_view.h"
 
 namespace Module::KSS
 {
-  StringView DetectPlatform(Binary::View blob);
+  StringView DetectPlatform(Binary::View data);
 }

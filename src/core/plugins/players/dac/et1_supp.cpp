@@ -8,24 +8,20 @@
  *
  **/
 
-// local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/dac/dac_plugin.h"
-// library includes
-#include <core/plugin_attrs.h>
-#include <formats/chiptune/digital/extremetracker1.h>
-#include <module/players/dac/extremetracker1.h>
+#include "formats/chiptune/digital/extremetracker1.h"
+#include "module/players/dac/extremetracker1.h"
+
+#include "core/plugin_attrs.h"
 
 namespace ZXTune
 {
   void RegisterET1Support(PlayerPluginsRegistrator& registrator)
   {
-    // plugin attributes
-    const Char ID[] = {'E', 'T', '1', 0};
-
-    const Formats::Chiptune::Decoder::Ptr decoder = Formats::Chiptune::CreateExtremeTracker1Decoder();
-    const Module::DAC::Factory::Ptr factory = Module::ExtremeTracker1::CreateFactory();
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::CreateExtremeTracker1Decoder();
+    auto factory = Module::ExtremeTracker1::CreateFactory();
+    auto plugin = CreatePlayerPlugin("ET1"_id, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
 }  // namespace ZXTune

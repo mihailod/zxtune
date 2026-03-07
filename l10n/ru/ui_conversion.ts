@@ -82,17 +82,17 @@
         <translation>Моно</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/conversion/mp3_settings.cpp" line="134"/>
+        <location filename="../../apps/zxtune-qt/ui/conversion/mp3_settings.cpp" line="132"/>
         <source>%1 kbps</source>
         <translation>%1 кбит/с</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/conversion/mp3_settings.cpp" line="135"/>
+        <location filename="../../apps/zxtune-qt/ui/conversion/mp3_settings.cpp" line="133"/>
         <source>~ %1 kbps</source>
         <translation>В среднем %1 кбит/с</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/conversion/mp3_settings.cpp" line="139"/>
+        <location filename="../../apps/zxtune-qt/ui/conversion/mp3_settings.cpp" line="137"/>
         <source>Quality %1</source>
         <translation>Качество %1</translation>
     </message>
@@ -367,12 +367,12 @@
         <translation>Создавать промежуточные директории для файлов результата</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/conversion/filename_template.cpp" line="175"/>
+        <location filename="../../apps/zxtune-qt/ui/conversion/filename_template.cpp" line="185"/>
         <source>Invalid parameter</source>
         <translation>Неправильный параметр</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/conversion/filename_template.cpp" line="176"/>
+        <location filename="../../apps/zxtune-qt/ui/conversion/filename_template.cpp" line="186"/>
         <source>Filename template is empty</source>
         <translation>Шаблон имени пустой</translation>
     </message>
@@ -395,7 +395,7 @@
         <translation>Многопоточная конверсия</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/conversion/setup_conversion.cpp" line="163"/>
+        <location filename="../../apps/zxtune-qt/ui/conversion/setup_conversion.cpp" line="168"/>
         <source>No options</source>
         <translation>Нет настроек</translation>
     </message>

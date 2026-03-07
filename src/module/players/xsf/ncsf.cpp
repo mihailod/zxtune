@@ -8,28 +8,28 @@
  *
  **/
 
-// local includes
 #include "module/players/xsf/ncsf.h"
+
+#include "formats/chiptune/emulation/nitrocomposersoundformat.h"
+#include "module/players/platforms.h"
+#include "module/players/streaming.h"
 #include "module/players/xsf/memory_region.h"
 #include "module/players/xsf/xsf.h"
-#include "module/players/xsf/xsf_factory.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/compression/zlib_container.h>
-#include <debug/log.h>
-#include <formats/chiptune/emulation/nitrocomposersoundformat.h>
-#include <math/bitops.h>
-#include <module/attributes.h>
-#include <module/players/platforms.h>
-#include <module/players/streaming.h>
-#include <sound/resampler.h>
-// std includes
+
+#include "binary/compression/zlib_container.h"
+#include "debug/log.h"
+#include "math/bitops.h"
+#include "module/attributes.h"
+#include "sound/resampler.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
+#include "3rdparty/sseqplayer/Player.h"
+#include "3rdparty/sseqplayer/SDAT.h"
+
 #include <list>
-// 3rdparty includes
-#include <3rdparty/sseqplayer/Player.h>
-#include <3rdparty/sseqplayer/SDAT.h>
+#include <memory>
 
 namespace Module::NCSF
 {
@@ -68,7 +68,7 @@ namespace Module::NCSF
 
       PseudoFile file;
       file.data = &Rom.Data;
-      SDat.reset(new SDAT(file, SSeq));
+      SDat = std::make_unique<SDAT>(file, SSeq);
       NCSFPlayer.sampleRate = SoundFrequency;
       NCSFPlayer.interpolation = INTERPOLATION_SINC;
       NCSFPlayer.Setup(SDat->sseq.get());
@@ -102,7 +102,7 @@ namespace Module::NCSF
       return res;
     }
 
-    uint32_t GetSampleFrequency()
+    uint32_t GetSampleFrequency() const
     {
       return SoundFrequency;
     }
@@ -134,7 +134,6 @@ namespace Module::NCSF
 
     void SetupState(const std::list<Binary::Container::Ptr>& blocks)
     {
-      ChunkBuilder builder;
       for (const auto& block : blocks)
       {
         SSeq = Formats::Chiptune::NitroComposerSoundFormat::ParseState(*block);
@@ -184,13 +183,9 @@ namespace Module::NCSF
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto avail = State->Consume(FRAME_DURATION, looped);
+      const auto avail = State->ConsumeUpTo(FRAME_DURATION);
       return Engine->Render(GetSamples(avail));
     }
 
@@ -253,7 +248,7 @@ namespace Module::NCSF
       {
         tune->Meta->Dump(*properties);
       }
-      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_DS.to_string());
+      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_DS);
       return MakePtr<Holder>(std::move(tune), std::move(properties));
     }
 
@@ -324,7 +319,7 @@ namespace Module::NCSF
       return Holder::Create(builder.CaptureResult(), std::move(properties));
     }
 
-    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles,
+    Holder::Ptr CreateMultifileModule(const XSF::File& file, const XSF::FilesMap& additionalFiles,
                                       Parameters::Container::Ptr properties) const override
     {
       ModuleDataBuilder builder;
@@ -336,8 +331,8 @@ namespace Module::NCSF
   private:
     static const uint_t MAX_LEVEL = 10;
 
-    static void MergeSections(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
-                              ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeSections(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
+                              uint_t level = 1)
     {
       if (!data.Dependencies.empty() && level < MAX_LEVEL)
       {
@@ -353,8 +348,8 @@ namespace Module::NCSF
       }
     }
 
-    static void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
-                          ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeMeta(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
+                          uint_t level = 1)
     {
       if (level < MAX_LEVEL)
       {
@@ -370,8 +365,8 @@ namespace Module::NCSF
     }
   };
 
-  Module::Factory::Ptr CreateFactory()
+  XSF::Factory::Ptr CreateFactory()
   {
-    return XSF::CreateFactory(MakePtr<Factory>());
+    return MakePtr<Factory>();
   }
 }  // namespace Module::NCSF

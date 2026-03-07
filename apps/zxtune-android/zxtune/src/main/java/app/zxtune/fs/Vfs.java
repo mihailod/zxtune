@@ -8,17 +8,18 @@ package app.zxtune.fs;
 
 import android.content.Context;
 import android.net.Uri;
-import android.os.Build;
 import android.text.TextUtils;
 
 import androidx.annotation.Nullable;
 
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.Iterator;
 
 import app.zxtune.Features;
 import app.zxtune.MainApplication;
@@ -60,6 +61,7 @@ public final class Vfs {
     }
   }
 
+  @SuppressWarnings("unchecked")
   public static InputStream openStream(VfsFile file) throws IOException {
     final InputStream asStream = VfsExtensionsKt.getInputStream(file);
     if (asStream != null) {
@@ -72,6 +74,14 @@ public final class Vfs {
     final FileDescriptor asDescriptor = VfsExtensionsKt.getFileDescriptor(file);
     if (asDescriptor != null) {
       return new FileInputStream(asDescriptor);
+    }
+    if (file.getExtension(VfsExtensions.CACHE_PATH) == null) {
+      final Object uris = file.getExtension(VfsExtensions.DOWNLOAD_URIS);
+      if (uris instanceof Uri[]) {
+        return new BufferedInputStream(Holder.INSTANCE.network.getInputStream((Uri[]) uris));
+      } else if (uris instanceof Iterator) {
+        return new BufferedInputStream(Holder.INSTANCE.network.getInputStream((Iterator<Uri>) uris));
+      }
     }
     return Io.createByteBufferInputStream(download(file, null));
   }
@@ -105,23 +115,17 @@ public final class Vfs {
       }
 
       @Override
+      @SuppressWarnings("unchecked")
       public HttpObject getRemote() throws IOException {
         final Object uris = file.getExtension(VfsExtensions.DOWNLOAD_URIS);
         if (uris instanceof Uri[]) {
           return Holder.INSTANCE.network.getObject((Uri[]) uris);
+        } else if (uris instanceof Iterator) {
+          return Holder.INSTANCE.network.getObject((Iterator<Uri>) uris);
         }
         throw new IOException("Failed to get download uris for " + uri);
       }
     }, progress);
-  }
-
-  @Nullable
-  public static File getCacheOrFile(VfsFile obj) {
-    final Object asFile = obj.getExtension(VfsExtensions.FILE);
-    if (asFile instanceof File) {
-      return (File) asFile;
-    }
-    return getCache(obj);
   }
 
   @Nullable
@@ -135,8 +139,7 @@ public final class Vfs {
       return null;
     }
     final String compatId = getCacheCompatId(id);
-    return Holder.INSTANCE.cache.find(id + "/" + path,
-        compatId + "/" + path);
+    return Holder.INSTANCE.cache.find(id + "/" + path, compatId + "/" + path);
   }
 
   private static String getCacheCompatId(String id) {

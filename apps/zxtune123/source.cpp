@@ -8,46 +8,43 @@
  *
  **/
 
-// local includes
-#include "source.h"
-#include "config.h"
-#include "console.h"
-// common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <progress_callback.h>
-// library includes
-#include <core/additional_files_resolve.h>
-#include <core/core_parameters.h>
-#include <core/data_location.h>
-#include <core/plugin.h>
-#include <core/plugin_attrs.h>
-#include <core/service.h>
-#include <io/api.h>
-#include <io/providers_parameters.h>
-#include <module/properties/path.h>
-#include <parameters/merged_container.h>
-#include <platform/application.h>
-#include <strings/array.h>
-#include <time/elapsed.h>
-// std includes
-#include <iomanip>
-#include <iostream>
-// boost includes
-#include <boost/algorithm/string/classification.hpp>
-#include <boost/algorithm/string/split.hpp>
+#include "apps/zxtune123/source.h"
+
+#include "apps/zxtune123/config.h"
+#include "apps/zxtune123/console.h"
+
+#include "module/properties/path.h"
+
+#include "core/additional_files_resolve.h"
+#include "core/core_parameters.h"
+#include "core/data_location.h"
+#include "core/plugin.h"
+#include "core/plugin_attrs.h"
+#include "core/service.h"
+#include "io/api.h"
+#include "io/providers_parameters.h"
+#include "parameters/merged_container.h"
+#include "platform/application.h"
+#include "strings/array.h"
+#include "time/elapsed.h"
+#include "tools/progress_callback.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "string_view.h"
+
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/value_semantic.hpp>
 
-#define FILE_TAG 9EDFE3AF
+#include <iomanip>
+#include <iostream>
+#include <utility>
 
 namespace
 {
-  const Char DELIMITERS[] = {',', ';', ':', '\0'};
-
-  void OutputString(uint_t width, const String& text)
+  void OutputString(uint_t width, StringView text)
   {
-    const String::size_type curSize = text.size();
+    const auto curSize = text.size();
     if (curSize < width)
     {
       StdOut << text << String(width - curSize - 1, ' ') << '\r';
@@ -73,16 +70,14 @@ namespace
       OnProgress(current, EMPTY);
     }
 
-    void OnProgress(uint_t current, const String& message) override
+    void OnProgress(uint_t current, StringView message) override
     {
       if (ReportTimeout())
       {
         CheckForExit();
         if (const uint_t currentWidth = GetCurrentWidth())
         {
-          String text = message;
-          text += Strings::Format(" [%1%%%]", current);
-          OutputString(currentWidth, text);
+          OutputString(currentWidth, Strings::Format("{} [{}%]", message, current));
         }
       }
     }
@@ -116,7 +111,7 @@ namespace
       , Dir(ExtractDir(id))
     {}
 
-    Binary::Container::Ptr Get(const String& name) const override
+    Binary::Container::Ptr Get(StringView name) const override
     {
       return IO::OpenData(Dir + name, Params, Log::ProgressCallback::Stub());
     }
@@ -146,7 +141,7 @@ namespace
       , ProgressCallback(showLogs ? new ProgressCallbackImpl() : nullptr)
     {}
 
-    Parameters::Container::Ptr CreateInitialProperties(const String& subpath) const
+    Parameters::Container::Ptr CreateInitialProperties(StringView subpath) const override
     {
       auto subId = Id->WithSubpath(subpath);
       auto moduleProperties = Module::CreatePathProperties(std::move(subId));
@@ -158,7 +153,7 @@ namespace
     {
       if (location.GetPath()->Empty())
       {
-        if (const auto files = dynamic_cast<const Module::AdditionalFiles*>(holder.get()))
+        if (const auto* const files = dynamic_cast<const Module::AdditionalFiles*>(holder.get()))
         {
           const RealFilesSource source(*Params, *Id);
           Module::ResolveAdditionalFiles(source, *files);
@@ -192,8 +187,6 @@ namespace
       : Params(std::move(configParams))
       , Service(ZXTune::Service::Create(Params))
       , OptionsDescription("Input options")
-      , ShowProgress(false)
-      , YM(false)
     {
       using namespace boost::program_options;
       auto opt = OptionsDescription.add_options();
@@ -246,18 +239,18 @@ namespace
 
     void ProcessItems(OnItemCallback& callback) override
     {
-      for (Strings::Array::const_iterator it = Files.begin(), lim = Files.end(); it != lim; ++it)
+      for (const auto& file : Files)
       {
-        ProcessItem(*it, callback);
+        ProcessItem(file, callback);
       }
     }
 
   private:
-    void ProcessItem(const String& uri, OnItemCallback& callback) const
+    void ProcessItem(StringView uri, OnItemCallback& callback) const
     {
       try
       {
-        const IO::Identifier::Ptr id = IO::ResolveUri(uri);
+        const auto id = IO::ResolveUri(uri);
 
         DetectCallback detectCallback(Params, id, callback, ShowProgress);
         auto data = IO::OpenData(id->Path(), *Params, Log::ProgressCallback::Stub());
@@ -284,13 +277,13 @@ namespace
     boost::program_options::options_description OptionsDescription;
     Strings::Array Files;
     String ProvidersOptions;
-    bool ShowProgress;
+    bool ShowProgress = false;
     String CoreOptions;
-    bool YM;
+    bool YM = false;
   };
 }  // namespace
 
 std::unique_ptr<SourceComponent> SourceComponent::Create(Parameters::Container::Ptr configParams)
 {
-  return std::unique_ptr<SourceComponent>(new Source(configParams));
+  return std::unique_ptr<SourceComponent>(new Source(std::move(configParams)));
 }

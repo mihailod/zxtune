@@ -10,14 +10,11 @@
 
 #pragma once
 
-#include <playlist/supp/operations.h>
+#include "apps/zxtune-qt/playlist/supp/operations.h"
 
 class QWidget;
 
-namespace Playlist
+namespace Playlist::UI
 {
-  namespace UI
-  {
-    Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent);
-  }
-}  // namespace Playlist
+  Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent);
+}  // namespace Playlist::UI

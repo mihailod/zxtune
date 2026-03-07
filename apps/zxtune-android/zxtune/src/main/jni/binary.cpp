@@ -8,14 +8,14 @@
  *
  **/
 
-// local includes
-#include "binary.h"
-#include "exception.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/container_factories.h>
+#include "apps/zxtune-android/zxtune/src/main/jni/binary.h"
+
+#include "apps/zxtune-android/zxtune/src/main/jni/exception.h"
+
+#include "binary/container_factories.h"
+
+#include "contract.h"
+#include "make_ptr.h"
 
 namespace Binary
 {
@@ -48,11 +48,11 @@ namespace Binary
   private:
     static const uint8_t* GetData(JNIEnv* env, jobject byteBuffer)
     {
-      if (const auto addr = env->GetDirectBufferAddress(byteBuffer))
+      if (const auto* const addr = env->GetDirectBufferAddress(byteBuffer))
       {
         return static_cast<const uint8_t*>(addr);
       }
-      throw Jni::NullPointerException();
+      throw Jni::NullPointerException("Not a direct buffer!");
     }
 
     static std::size_t GetSize(JNIEnv* env, jobject byteBuffer)

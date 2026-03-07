@@ -10,9 +10,8 @@
 
 #pragma once
 
-// library includes
-#include <binary/view.h>
-// std includes
+#include "binary/view.h"
+
 #include <memory>
 
 namespace Binary
@@ -21,7 +20,7 @@ namespace Binary
   class Format
   {
   public:
-    typedef std::shared_ptr<const Format> Ptr;
+    using Ptr = std::shared_ptr<const Format>;
     virtual ~Format() = default;
 
     //! @brief Check if input data is data format

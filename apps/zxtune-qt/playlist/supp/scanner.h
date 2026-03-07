@@ -10,9 +10,8 @@
 
 #pragma once
 
-// local includes
-#include "data_provider.h"
-// qt includes
+#include "apps/zxtune-qt/playlist/supp/data_provider.h"
+
 #include <QtCore/QThread>
 
 namespace Playlist
@@ -20,7 +19,7 @@ namespace Playlist
   class ScanStatus
   {
   public:
-    typedef std::shared_ptr<const ScanStatus> Ptr;
+    using Ptr = std::shared_ptr<const ScanStatus>;
     virtual ~ScanStatus() = default;
 
     virtual unsigned DoneFiles() const = 0;
@@ -36,13 +35,12 @@ namespace Playlist
     explicit Scanner(QObject& parent);
 
   public:
-    typedef Scanner* Ptr;
+    using Ptr = Scanner*;
 
     static Ptr Create(QObject& parent, Item::DataProvider::Ptr provider);
 
     virtual void AddItems(const QStringList& items) = 0;
     virtual void PasteItems(const QStringList& items) = 0;
-  public slots:
     virtual void Pause(bool pause) = 0;
     virtual void Stop() = 0;
   signals:

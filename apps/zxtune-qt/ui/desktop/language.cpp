@@ -8,40 +8,42 @@
  *
  **/
 
-// local includes
-#include "language.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <l10n/control.h>
-// std includes
-#include <map>
-#include <set>
-// qt includes
+#include "apps/zxtune-qt/ui/desktop/language.h"
+
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "l10n/control.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <QtCore/QCoreApplication>
 #include <QtCore/QLocale>
 #include <QtCore/QTranslator>
+
+#include <map>
+#include <set>
 
 namespace
 {
   class QtTranslationLibrary : public L10n::Library
   {
   public:
-    void AddTranslation(const L10n::Translation& trans) override
+    void AddTranslation(L10n::Translation trans) override
     {
-      static const std::string QM_FILE("qm");
+      const auto QM_FILE = "qm"sv;
 
       if (trans.Type != QM_FILE)
       {
-        return L10n::Library::Instance().AddTranslation(trans);
+        return L10n::Library::Instance().AddTranslation(std::move(trans));
       }
-      Translations[trans.Language].insert(DumpPtr(new Binary::Dump(trans.Data)));
+      Translations[trans.Language].insert(std::move(trans.Data));
     }
 
-    void SelectTranslation(const std::string& translation) override
+    void SelectTranslation(StringView translation) override
     {
       UnloadTranslators();
-      const LangToDumpsSetMap::const_iterator it = Translations.find(translation);
+      const auto it = Translations.find(translation);
       if (it != Translations.end())
       {
         LoadTranslators(it->second);
@@ -49,14 +51,14 @@ namespace
       L10n::Library::Instance().SelectTranslation(translation);
     }
 
-    L10n::Vocabulary::Ptr GetVocabulary(const std::string& /*domain*/) const override
+    L10n::Vocabulary::Ptr GetVocabulary(StringView /*domain*/) const override
     {
-      return L10n::Vocabulary::Ptr();
+      return {};
     }
 
-    std::vector<std::string> EnumerateLanguages() const
+    std::vector<StringView> EnumerateLanguages() const
     {
-      std::vector<std::string> res;
+      std::vector<StringView> res;
       for (const auto& trans : Translations)
       {
         res.push_back(trans.first);
@@ -65,11 +67,10 @@ namespace
     }
 
   private:
-    typedef std::shared_ptr<const Binary::Dump> DumpPtr;
-    typedef std::set<DumpPtr> DumpsSet;
-    typedef std::map<std::string, DumpsSet> LangToDumpsSetMap;
-    typedef std::shared_ptr<QTranslator> TranslatorPtr;
-    typedef std::set<TranslatorPtr> TranslatorsSet;
+    using DumpsSet = std::set<Binary::Data::Ptr>;
+    using LangToDumpsSetMap = std::map<String, DumpsSet, std::less<>>;
+    using TranslatorPtr = std::shared_ptr<QTranslator>;
+    using TranslatorsSet = std::set<TranslatorPtr>;
 
     void UnloadTranslators()
     {
@@ -86,7 +87,7 @@ namespace
       for (const auto& dump : dumps)
       {
         auto trans = std::make_shared<QTranslator>();
-        trans->load(&dump->front(), static_cast<int>(dump->size()));
+        trans->load(static_cast<const uchar*>(dump->Start()), static_cast<int>(dump->Size()));
         QCoreApplication::installTranslator(trans.get());
         newTranslators.emplace(std::move(trans));
       }
@@ -112,7 +113,7 @@ namespace
       res << QLatin1String("en");  // by default
       for (const auto& lng : Lib.EnumerateLanguages())
       {
-        res << QString::fromStdString(lng);
+        res << ToQString(lng);
       }
       return res;
     }
@@ -147,11 +148,11 @@ namespace UI
   {
     // use slight caching to prevent heavy parsing
     static std::weak_ptr<Language> instance;
-    if (Language::Ptr res = instance.lock())
+    if (auto res = instance.lock())
     {
       return res;
     }
-    const Language::Ptr res = MakePtr<LanguageInResources>();
+    auto res = MakePtr<LanguageInResources>();
     instance = res;
     return res;
   }

@@ -1,59 +1,50 @@
 /**
-*
-* @file
-*
-* @brief  OGG subsystem API gate implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  OGG subsystem API gate implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "sound/backends/gates/ogg_api.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <debug/log.h>
-#include <platform/shared_library_adapter.h>
 
-namespace Sound
+#include "debug/log.h"
+#include "platform/shared_library_adapter.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
+namespace Sound::Ogg
 {
-  namespace Ogg
+  class LibraryName : public Platform::SharedLibrary::Name
   {
-    class LibraryName : public Platform::SharedLibrary::Name
-    {
-    public:
-      LibraryName()
-      {
-      }
+  public:
+    LibraryName() = default;
 
-      String Base() const override
-      {
-        return "ogg";
-      }
-      
-      std::vector<String> PosixAlternatives() const override
-      {
-        static const String ALTERNATIVES[] =
-        {
-          "libogg.so.0",
-        };
-        return std::vector<String>(ALTERNATIVES, std::end(ALTERNATIVES));
-      }
-      
-      std::vector<String> WindowsAlternatives() const override
-      {
-        return {};
-      }
-    };
+    StringView Base() const override
+    {
+      return "ogg"sv;
+    }
+
+    std::vector<StringView> PosixAlternatives() const override
+    {
+      return {"libogg.so.0"sv};
+    }
+
+    std::vector<StringView> WindowsAlternatives() const override
+    {
+      return {"libogg-0.dll"sv};
+    }
+  };
 
 <TMPL_INCLUDE NAME="api_dynamic.cpp.templ">
 
-    Api::Ptr LoadDynamicApi()
-    {
-      static const LibraryName NAME;
-      const Platform::SharedLibrary::Ptr lib = Platform::SharedLibrary::Load(NAME);
-      return MakePtr<DynamicApi>(lib);
-    }
+  Api::Ptr LoadDynamicApi()
+  {
+    static const LibraryName NAME;
+    auto lib = Platform::SharedLibrary::Load(NAME);
+    return MakePtr<DynamicApi>(std::move(lib));
   }
-}
+}  // namespace Sound::Ogg

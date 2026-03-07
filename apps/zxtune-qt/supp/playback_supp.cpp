@@ -8,21 +8,23 @@
  *
  **/
 
-// local includes
-#include "playback_supp.h"
-#include "playlist/supp/data.h"
-#include "supp/thread_utils.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-#include <error.h>
-#include <lazy.h>
-#include <pointers.h>
-// library includes
-#include <parameters/merged_accessor.h>
-#include <sound/service.h>
-// qt includes
+#include "apps/zxtune-qt/supp/playback_supp.h"
+
+#include "apps/zxtune-qt/playlist/supp/data.h"
+#include "apps/zxtune-qt/supp/thread_utils.h"
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "parameters/merged_accessor.h"
+#include "sound/service.h"
+
+#include "contract.h"
+#include "error.h"
+#include "lazy.h"
+#include "pointers.h"
+
 #include <QtCore/QTimer>
+
+#include <utility>
 
 namespace
 {
@@ -58,47 +60,45 @@ namespace
       : PlaybackSupport(parent)
       , Service(&Sound::CreateSystemService, std::move(sndOptions))
       , Control(StubControl::Instance())
+      , ItemCookie(nullptr)
     {
       const unsigned UI_UPDATE_FPS = 5;
       Timer.setInterval(1000 / UI_UPDATE_FPS);
-      Require(
-          Timer.connect(this, SIGNAL(OnStartModule(Sound::Backend::Ptr, Playlist::Item::Data::Ptr)), SLOT(start())));
-      Require(Timer.connect(this, SIGNAL(OnStopModule()), SLOT(stop())));
-      Require(connect(&Timer, SIGNAL(timeout()), SIGNAL(OnUpdateState())));
+      Require(connect(this, &PlaybackSupport::OnStartModule, &Timer,
+                      [timer = &Timer](Sound::Backend::Ptr, Playlist::Item::Data::Ptr) { timer->start(); }));
+      Require(connect(this, &PlaybackSupport::OnStopModule, &Timer, &QTimer::stop));
+      Require(connect(&Timer, &QTimer::timeout, this, &PlaybackSupport::OnUpdateState));
     }
 
     void SetDefaultItem(Playlist::Item::Data::Ptr item) override
     {
-      IOThread::Execute([this, item]() {
-        if (Backend)
-        {
-          return;
-        }
-        LoadItem(item);
-      });
+      if (!ItemCookie)
+      {
+        ItemCookie = item.get();
+        SetItemAsync(std::move(item), false);
+      }
     }
 
     void SetItem(Playlist::Item::Data::Ptr item) override
     {
-      IOThread::Execute([this, item]() {
-        try
-        {
-          if (LoadItem(item))
-          {
-            Control->Play();
-          }
-        }
-        catch (const Error& e)
-        {
-          emit ErrorOccurred(e);
-        }
-      });
+      if (item == Item)
+      {
+        // Clicked the same item, just replay it
+        Control->SetPosition({});
+        Play();
+      }
+      else if (ItemCookie.exchange(item.get()) != item.get())
+      {
+        // Change the item
+        SetItemAsync(std::move(item), true);
+      }
     }
 
     void ResetItem() override
     {
       Stop();
       Item.reset();
+      ItemCookie = nullptr;
       Control = StubControl::Instance();
       Backend.reset();
     }
@@ -184,42 +184,62 @@ namespace
 
     void OnFinish() override
     {
+      SelfThread::Execute(this, &PlaybackSupportImpl::ResetItem);
       emit OnFinishModule();
     }
 
   private:
-    bool LoadItem(Playlist::Item::Data::Ptr item)
+    void SetItemAsync(Playlist::Item::Data::Ptr item, bool play)
     {
+      IOThread::Execute([this, item, play]() { LoadItem(item, play); });
+    }
+
+    void LoadItem(Playlist::Item::Data::Ptr item, bool play)
+    {
+      // must not be in UI thread
+      Require(!MainThread::IsCurrent());
       const Module::Holder::Ptr module = item->GetModule();
-      if (!module)
+      if (!module || (item.get() != ItemCookie))
       {
-        return false;
+        return;
       }
+
       try
       {
-        ResetItem();
-        Backend = CreateBackend(module);
-        if (Backend)
+        auto backend = CreateBackend(module);
+        if (!backend || item.get() != ItemCookie)
         {
-          Control = Backend->GetPlaybackControl();
-          Item = item;
-          return true;
+          return;
         }
+        SelfThread::Execute(this, &PlaybackSupportImpl::ApplyItem, std::move(item), std::move(backend), play);
       }
       catch (const Error& e)
       {
         emit ErrorOccurred(e);
       }
-      return false;
     }
 
-    Sound::Backend::Ptr CreateBackend(Module::Holder::Ptr module)
+    void ApplyItem(Playlist::Item::Data::Ptr item, Sound::Backend::Ptr backend, bool play)
+    {
+      // must be in UI thread
+      Require(MainThread::IsCurrent());
+      ResetItem();
+      Backend = std::move(backend);
+      Control = Backend->GetPlaybackControl();
+      Item = std::move(item);
+      if (play)
+      {
+        Play();
+      }
+    }
+
+    Sound::Backend::Ptr CreateBackend(const Module::Holder::Ptr& module)
     {
       // create backend
       const Sound::BackendCallback::Ptr cb(static_cast<Sound::BackendCallback*>(this),
                                            NullDeleter<Sound::BackendCallback>());
       std::list<Error> errors;
-      const Strings::Array systemBackends = Service->GetAvailableBackends();
+      const auto systemBackends = Service->GetAvailableBackends();
       for (const auto& id : systemBackends)
       {
         try
@@ -232,7 +252,7 @@ namespace
         }
       }
       ReportErrors(errors);
-      return Sound::Backend::Ptr();
+      return {};
     }
 
     void ReportErrors(const std::list<Error>& errors)
@@ -249,6 +269,7 @@ namespace
     Playlist::Item::Data::Ptr Item;
     Sound::Backend::Ptr Backend;
     Sound::PlaybackControl::Ptr Control;
+    std::atomic<const void*> ItemCookie;
   };
 }  // namespace
 
@@ -260,5 +281,5 @@ PlaybackSupport* PlaybackSupport::Create(QObject& parent, Parameters::Accessor::
 {
   REGISTER_METATYPE(Sound::Backend::Ptr);
   REGISTER_METATYPE(Error);
-  return new PlaybackSupportImpl(parent, sndOptions);
+  return new PlaybackSupportImpl(parent, std::move(sndOptions));
 }

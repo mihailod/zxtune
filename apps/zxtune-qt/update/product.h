@@ -10,13 +10,12 @@
 
 #pragma once
 
-// std includes
-#include <memory>
-#include <vector>
-// qt includes
 #include <QtCore/QDate>
 #include <QtCore/QString>
 #include <QtCore/QUrl>
+
+#include <memory>
+#include <vector>
 
 namespace Product
 {
@@ -32,6 +31,7 @@ namespace Product
       MINGW,
       LINUX,
       DINGUX,
+      MACOSX,
     };
 
     enum ArchitectureTag
@@ -40,7 +40,9 @@ namespace Product
       X86,
       X86_64,
       ARM,
+      ARM64,
       ARMHF,
+      LOONG64,
       MIPSEL,
     };
 
@@ -53,7 +55,7 @@ namespace Product
   class Update : public Release
   {
   public:
-    typedef std::shared_ptr<const Update> Ptr;
+    using Ptr = std::shared_ptr<const Update>;
 
     enum PackagingTag
     {
@@ -63,6 +65,7 @@ namespace Product
       TARXZ,
       DEB,
       RPM,
+      DMG,
     };
 
     enum TypeTag
@@ -72,10 +75,13 @@ namespace Product
       WINDOWS_X86_64,
       MINGW_X86,
       MINGW_X86_64,
+      MINGW_ARM64,
       LINUX_X86,
       LINUX_X86_64,
       LINUX_ARM,
+      LINUX_ARM64,
       LINUX_ARMHF,
+      LINUX_LOONG64,
       DINGUX_MIPSEL,
       ARCHLINUX_X86,
       ARCHLINUX_X86_64,
@@ -83,6 +89,8 @@ namespace Product
       UBUNTU_X86_64,
       REDHAT_X86,
       REDHAT_X86_64,
+      MACOSX_X86_64,
+      MACOSX_ARM64,
     };
 
     virtual PackagingTag Packaging() const = 0;

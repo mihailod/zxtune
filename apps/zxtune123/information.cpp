@@ -8,41 +8,40 @@
  *
  **/
 
-// local includes
-#include "information.h"
-#include "sound.h"
-// common includes
-#include <static_string.h>
-// library includes
-#include <core/core_parameters.h>
-#include <core/freq_tables.h>
-#include <core/plugin.h>
-#include <core/plugin_attrs.h>
-#include <core/plugins_parameters.h>
-#include <io/io_parameters.h>
-#include <io/provider.h>
-#include <io/providers_parameters.h>
-#include <module/attributes.h>
-#include <platform/application.h>
-#include <sound/backend.h>
-#include <sound/backend_attrs.h>
-#include <sound/backends_parameters.h>
-#include <sound/mixer_parameters.h>
-#include <sound/service.h>
-#include <sound/sound_parameters.h>
-#include <strings/format.h>
-// std includes
-#include <iostream>
-// boost includes
+#include "apps/zxtune123/information.h"
+
+#include "apps/zxtune123/sound.h"
+
+#include "core/core_parameters.h"
+#include "core/freq_tables.h"
+#include "core/plugin.h"
+#include "core/plugin_attrs.h"
+#include "core/plugins_parameters.h"
+#include "io/io_parameters.h"
+#include "io/provider.h"
+#include "io/providers_parameters.h"
+#include "module/attributes.h"
+#include "platform/application.h"
+#include "sound/backend.h"
+#include "sound/backend_attrs.h"
+#include "sound/backends_parameters.h"
+#include "sound/mixer_parameters.h"
+#include "sound/service.h"
+#include "sound/sound_parameters.h"
+#include "strings/format.h"
+
+#include "static_string.h"
+#include "string_view.h"
+
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/value_semantic.hpp>
-#include <boost/tuple/tuple.hpp>
-#include <boost/variant/get.hpp>
-#include <boost/variant/variant.hpp>
+
+#include <iostream>
+#include <variant>
 
 namespace
 {
-  typedef std::pair<uint_t, StringView> CapsPair;
+  using CapsPair = std::pair<uint_t, StringView>;
   String SerializeBitmask(uint_t caps, const CapsPair* from)
   {
     String result;
@@ -50,14 +49,14 @@ namespace
     {
       if (cap->first & caps)
       {
-        result += Char(' ');
+        result += ' ';
         result += cap->second;
         caps ^= cap->first;
       }
     }
     if (caps)
     {
-      result += Strings::Format(" 0x%08x", caps);
+      result += Strings::Format(" 0x{:08x}", caps);
     }
     return result;
   }
@@ -68,7 +67,7 @@ namespace
     {
       if (cap->first == caps)
       {
-        return Char(' ') + cap->second.to_string();
+        return " "s + cap->second;
       }
     }
     return " unknown";
@@ -202,9 +201,9 @@ namespace
   inline String DescribePlugin(const ZXTune::Plugin& plugin)
   {
     return Strings::Format(
-        "Plugin:       %1%\n"
-        "Description:  %2%\n"
-        "Capabilities: %3%\n"
+        "Plugin:       {0}\n"
+        "Description:  {1}\n"
+        "Capabilities: {2}\n"
         "\n",
         plugin.Id(), plugin.Description(), PluginCaps(plugin.Capabilities()));
   }
@@ -228,20 +227,20 @@ namespace
   {
     const Error& status = info.Status();
     return Strings::Format(
-        "Backend:      %1%\n"
-        "Description:  %2%\n"
-        "Capabilities: %3%\n"
-        "Status:       %4%\n"
+        "Backend:      {0}\n"
+        "Description:  {1}\n"
+        "Capabilities: {2}\n"
+        "Status:       {3}\n"
         "\n",
         info.Id(), info.Description(), BackendCaps(info.Capabilities()), status ? status.GetText() : "Available");
   }
 
-  inline void ShowBackends(Sound::BackendInformation::Iterator::Ptr backends)
+  inline void ShowBackends(std::span<const Sound::BackendInformation::Ptr> backends)
   {
     StdOut << "Supported backends:" << std::endl;
-    for (; backends->IsValid(); backends->Next())
+    for (const auto& backend : backends)
     {
-      StdOut << DescribeBackend(*backends->Get());
+      StdOut << DescribeBackend(*backend);
     }
   }
 
@@ -249,9 +248,9 @@ namespace
   {
     const Error& status = provider.Status();
     return Strings::Format(
-        "Provider:    %1%\n"
-        "Description: %2%\n"
-        "Status:      %3%\n"
+        "Provider:    {0}\n"
+        "Description: {1}\n"
+        "Status:      {2}\n"
         "\n",
         provider.Id(), provider.Description(), status ? status.GetText() : "Available");
   }
@@ -259,28 +258,28 @@ namespace
   inline void ShowProviders()
   {
     StdOut << "Supported IO providers:" << std::endl;
-    for (IO::Provider::Iterator::Ptr providers = IO::EnumerateProviders(); providers->IsValid(); providers->Next())
+    for (const auto& provider : IO::EnumerateProviders())
     {
-      StdOut << DescribeProvider(*providers->Get());
+      StdOut << DescribeProvider(*provider);
     }
   }
 
-  typedef boost::variant<Parameters::IntType, Parameters::StringType> ValueType;
+  using ValueType = std::variant<Parameters::IntType, Parameters::StringType>;
 
   struct OptionDesc
   {
     OptionDesc(StringView name)
-      : Name(std::move(name))
+      : Name(name)
     {}
 
-    OptionDesc(Parameters::Identifier name, const Char* descr, ValueType def)
+    OptionDesc(Parameters::Identifier name, const char* descr, ValueType def)
       : Name(name)
       , Desc(descr)
       , Default(std::move(def))
     {}
 
     StringView Name;
-    const Char* const Desc = nullptr;
+    const char* const Desc = nullptr;
     ValueType Default;
 
     String Describe() const
@@ -288,18 +287,25 @@ namespace
       // section
       if (!Desc)
       {
-        return Name.to_string();
+        return String{Name};
       }
       else
       {
-        const Parameters::StringType* defValString = boost::get<const Parameters::StringType>(&Default);
-        if (defValString && defValString->empty())
+        if (const auto* defValString = std::get_if<Parameters::StringType>(&Default))
         {
-          return Strings::Format("  %1%\n  - %2%.", Name, Desc);
+          if (defValString->empty())
+          {
+            return Strings::Format("  {0}\n  - {1}.", Name, Desc);
+          }
+          else
+          {
+            return Strings::Format("  {0}\n  - {1} (default value is '{2}').", Name, Desc, *defValString);
+          }
         }
         else
         {
-          return Strings::Format("  %1%\n  - %2% (default value is '%3%').", Name, Desc, Default);
+          return Strings::Format("  {0}\n  - {1} (default value is {2}).", Name, Desc,
+                                 std::get<Parameters::IntType>(Default));
         }
       }
     }
@@ -433,10 +439,10 @@ namespace
     }
   }
 
-  typedef std::pair<StringView, const Char*> AttrType;
+  using AttrType = std::pair<StringView, const char*>;
   void ShowAttribute(const AttrType& arg)
   {
-    StdOut << Strings::Format(" %|1$-20|- %2%", arg.first, arg.second) << std::endl;
+    StdOut << Strings::Format(" {0:<20}- {1}", arg.first, arg.second) << std::endl;
   }
 
   void ShowAttributes()
@@ -469,13 +475,16 @@ namespace
 
   void ShowFreqtables()
   {
-    static const String FREQTABLES[] = {
+    static const StringView FREQTABLES[] = {
         Module::TABLE_SOUNDTRACKER,       Module::TABLE_PROTRACKER2,        Module::TABLE_PROTRACKER3_3,
         Module::TABLE_PROTRACKER3_4,      Module::TABLE_PROTRACKER3_3_ASM,  Module::TABLE_PROTRACKER3_4_ASM,
         Module::TABLE_PROTRACKER3_3_REAL, Module::TABLE_PROTRACKER3_4_REAL, Module::TABLE_ASM,
         Module::TABLE_SOUNDTRACKER_PRO,   Module::TABLE_NATURAL_SCALED};
-    StdOut << "Supported frequency tables: ";
-    std::copy(FREQTABLES, std::end(FREQTABLES), std::ostream_iterator<String>(StdOut, " "));
+    StdOut << "Supported frequency tables:";
+    for (const auto& table : FREQTABLES)
+    {
+      StdOut << ' ' << table;
+    }
     StdOut << std::endl;
   }
 
@@ -484,12 +493,6 @@ namespace
   public:
     Information()
       : OptionsDescription("Information keys")
-      , EnumPlugins()
-      , EnumBackends()
-      , EnumProviders()
-      , EnumOptions()
-      , EnumAttributes()
-      , EnumFreqtables()
     {
       using namespace boost::program_options;
       auto opt = OptionsDescription.add_options();
@@ -537,12 +540,12 @@ namespace
 
   private:
     boost::program_options::options_description OptionsDescription;
-    bool EnumPlugins;
-    bool EnumBackends;
-    bool EnumProviders;
-    bool EnumOptions;
-    bool EnumAttributes;
-    bool EnumFreqtables;
+    bool EnumPlugins = false;
+    bool EnumBackends = false;
+    bool EnumProviders = false;
+    bool EnumOptions = false;
+    bool EnumAttributes = false;
+    bool EnumFreqtables = false;
   };
 }  // namespace
 

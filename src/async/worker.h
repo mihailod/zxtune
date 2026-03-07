@@ -10,8 +10,7 @@
 
 #pragma once
 
-// library includes
-#include <async/job.h>
+#include "async/job.h"
 
 namespace Async
 {
@@ -25,7 +24,7 @@ namespace Async
   class Worker
   {
   public:
-    typedef std::shared_ptr<Worker> Ptr;
+    using Ptr = std::shared_ptr<Worker>;
     virtual ~Worker() = default;
 
     virtual void Initialize() = 0;

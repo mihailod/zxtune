@@ -10,11 +10,11 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// library includes
-#include <binary/dump.h>
-// std includes
+#include "binary/data.h"
+
+#include "string_type.h"
+#include "string_view.h"
+
 #include <memory>
 
 namespace L10n
@@ -25,7 +25,7 @@ namespace L10n
   class Vocabulary
   {
   public:
-    typedef std::shared_ptr<const Vocabulary> Ptr;
+    using Ptr = std::shared_ptr<const Vocabulary>;
     virtual ~Vocabulary() = default;
 
     //! @brief Retreiving translated or converted text message
@@ -48,10 +48,14 @@ namespace L10n
 
   struct Translation
   {
+    Translation() = default;
+    Translation(Translation&&) = default;
+    Translation(const Translation&) = delete;
+    Translation& operator=(const Translation&) = delete;
     String Domain;
     String Language;
     String Type;
-    Binary::Dump Data;
+    Binary::Data::Ptr Data;
   };
 
   class Library
@@ -59,11 +63,11 @@ namespace L10n
   public:
     virtual ~Library() = default;
 
-    virtual void AddTranslation(const Translation& trans) = 0;
+    virtual void AddTranslation(Translation trans) = 0;
 
-    virtual void SelectTranslation(const String& translation) = 0;
+    virtual void SelectTranslation(StringView translation) = 0;
 
-    virtual Vocabulary::Ptr GetVocabulary(const String& domain) const = 0;
+    virtual Vocabulary::Ptr GetVocabulary(StringView domain) const = 0;
 
     static Library& Instance();
   };

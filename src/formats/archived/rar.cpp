@@ -8,19 +8,21 @@
  *
  **/
 
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <binary/container_base.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <debug/log.h>
-#include <formats/archived.h>
-#include <formats/packed/decoders.h>
-#include <formats/packed/rar_supp.h>
-// std includes
+#include "formats/packed/decoders.h"
+#include "formats/packed/rar_supp.h"
+
+#include "binary/container_base.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+#include "formats/archived.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <cstring>
 #include <deque>
+#include <memory>
 #include <numeric>
 
 namespace Formats::Archived
@@ -31,15 +33,11 @@ namespace Formats::Archived
 
     struct FileBlock
     {
-      const Packed::Rar::FileBlockHeader* Header;
-      std::size_t Offset;
-      std::size_t Size;
+      const Packed::Rar::FileBlockHeader* Header = nullptr;
+      std::size_t Offset = 0;
+      std::size_t Size = 0;
 
-      FileBlock()
-        : Header()
-        , Offset()
-        , Size()
-      {}
+      FileBlock() = default;
 
       FileBlock(const Packed::Rar::FileBlockHeader* header, std::size_t offset, std::size_t size)
         : Header(header)
@@ -155,7 +153,7 @@ namespace Formats::Archived
     class ChainDecoder
     {
     public:
-      typedef std::shared_ptr<const ChainDecoder> Ptr;
+      using Ptr = std::shared_ptr<const ChainDecoder>;
 
       explicit ChainDecoder(Binary::Container::Ptr data)
         : Data(std::move(data))
@@ -183,7 +181,7 @@ namespace Formats::Archived
         if (ChainIterator->GetOffset() > offset)
         {
           Dbg(" Reset caching iterator to beginning");
-          ChainIterator.reset(new BlocksIterator(*Data));
+          ChainIterator = std::make_unique<BlocksIterator>(*Data);
         }
         while (ChainIterator->GetOffset() <= offset && !ChainIterator->IsEof())
         {
@@ -207,22 +205,22 @@ namespace Formats::Archived
 
       Binary::Container::Ptr DecodeSingleBlock(const FileBlock& block) const
       {
-        Dbg(" Decoding block @%1% (chained=%2%, hasParent=%3%)", block.Offset, block.IsChained(), block.HasParent());
-        const Binary::Container::Ptr blockContent = Data->GetSubcontainer(block.Offset, block.Size);
+        Dbg(" Decoding block @{} (chained={}, hasParent={})", block.Offset, block.IsChained(), block.HasParent());
+        const auto blockContent = Data->GetSubcontainer(block.Offset, block.Size);
         return StatefulDecoder->Decode(*blockContent);
       }
 
       void ProcessBlock(const FileBlock& block) const
       {
-        Dbg(" Decoding parent block @%1% (chained=%2%, hasParent=%3%)", block.Offset, block.IsChained(),
+        Dbg(" Decoding parent block @{} (chained={}, hasParent={})", block.Offset, block.IsChained(),
             block.HasParent());
-        const Binary::Container::Ptr blockContent = Data->GetSubcontainer(block.Offset, block.Size);
+        const auto blockContent = Data->GetSubcontainer(block.Offset, block.Size);
         StatefulDecoder->Decode(*blockContent);
       }
 
       void SkipBlock(const FileBlock& block) const
       {
-        Dbg(" Skip block @%1% (chained=%2%, hasParent=%3%)", block.Offset, block.IsChained(), block.HasParent());
+        Dbg(" Skip block @{} (chained={}, hasParent={})", block.Offset, block.IsChained(), block.HasParent());
       }
 
     private:
@@ -234,10 +232,10 @@ namespace Formats::Archived
     class File : public Archived::File
     {
     public:
-      File(ChainDecoder::Ptr decoder, FileBlock block, String name)
+      File(ChainDecoder::Ptr decoder, FileBlock block, StringView name)
         : Decoder(std::move(decoder))
-        , Block(std::move(block))
-        , Name(std::move(name))
+        , Block(block)
+        , Name(name)
       {}
 
       String GetName() const override
@@ -252,7 +250,7 @@ namespace Formats::Archived
 
       Binary::Container::Ptr GetData() const override
       {
-        Dbg("Decompressing '%1%' started at %2%", Name, Block.Offset);
+        Dbg("Decompressing '{}' started at {}", Name, Block.Offset);
         return Decoder->DecodeBlock(Block);
       }
 
@@ -280,13 +278,13 @@ namespace Formats::Archived
       bool IsValid() const
       {
         assert(!IsEof());
-        const Formats::Packed::Rar::FileBlockHeader& file = *Blocks.GetFileHeader();
+        const auto& file = *Blocks.GetFileHeader();
         return file.IsSupported();
       }
 
       String GetName() const
       {
-        const Formats::Packed::Rar::FileBlockHeader& file = *Blocks.GetFileHeader();
+        const auto& file = *Blocks.GetFileHeader();
         String name = file.GetName();
         std::replace(name.begin(), name.end(), '\\', '/');
         return name;
@@ -294,7 +292,7 @@ namespace Formats::Archived
 
       File::Ptr GetFile() const
       {
-        const Formats::Packed::Rar::FileBlockHeader& file = *Blocks.GetFileHeader();
+        const auto& file = *Blocks.GetFileHeader();
         if (file.IsSupported() && !Current)
         {
           const FileBlock block(&file, Blocks.GetOffset(), Blocks.GetBlockSize());
@@ -339,7 +337,7 @@ namespace Formats::Archived
         , Decoder(MakePtr<ChainDecoder>(Delegate))
         , FilesCount(filesCount)
       {
-        Dbg("Found %1% files. Size is %2%", filesCount, Delegate->Size());
+        Dbg("Found {} files. Size is {}", filesCount, Delegate->Size());
       }
 
       // Archive::Container
@@ -356,7 +354,7 @@ namespace Formats::Archived
         }
       }
 
-      File::Ptr FindFile(const String& name) const override
+      File::Ptr FindFile(StringView name) const override
       {
         for (FileIterator iter(Decoder, *Delegate); !iter.IsEof(); iter.Next())
         {
@@ -365,7 +363,7 @@ namespace Formats::Archived
             return iter.GetFile();
           }
         }
-        return File::Ptr();
+        return {};
       }
 
       uint_t CountFiles() const override
@@ -378,7 +376,7 @@ namespace Formats::Archived
       const uint_t FilesCount;
     };
 
-    const Char DESCRIPTION[] = "RAR";
+    const auto DESCRIPTION = "RAR"sv;
     const auto FORMAT =
         // file marker
         "5261"  // uint16_t CRC;   "Ra"
@@ -390,7 +388,7 @@ namespace Formats::Archived
         "73"    // uint8_t Type;
         "??"    // uint16_t Flags;
         "0d00"  // uint16_t Size
-        ""_sv;
+        ""sv;
   }  // namespace Rar
 
   class RarDecoder : public Decoder
@@ -400,7 +398,7 @@ namespace Formats::Archived
       : Format(Binary::CreateFormat(Rar::FORMAT))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Rar::DESCRIPTION;
     }
@@ -414,7 +412,7 @@ namespace Formats::Archived
     {
       if (!Format->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
 
       uint_t filesCount = 0;
@@ -433,7 +431,7 @@ namespace Formats::Archived
       }
       else
       {
-        return Container::Ptr();
+        return {};
       }
     }
 

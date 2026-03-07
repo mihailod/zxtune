@@ -8,17 +8,18 @@
  *
  **/
 
-// local includes
-#include "ogg_settings.h"
+#include "apps/zxtune-qt/ui/conversion/ogg_settings.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/conversion/backend_settings.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "ogg_settings.ui.h"
-#include "supp/options.h"
-#include "ui/tools/parameters_helpers.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <sound/backends_parameters.h>
-// std includes
+
+#include "sound/backends_parameters.h"
+
+#include "contract.h"
+
 #include <utility>
 
 namespace
@@ -40,10 +41,10 @@ namespace
       // setup self
       setupUi(this);
 
-      Require(connect(selectQuality, SIGNAL(toggled(bool)), SIGNAL(SettingsChanged())));
-      Require(connect(qualityValue, SIGNAL(valueChanged(int)), SIGNAL(SettingsChanged())));
-      Require(connect(selectBitrate, SIGNAL(toggled(bool)), SIGNAL(SettingsChanged())));
-      Require(connect(bitrateValue, SIGNAL(valueChanged(int)), SIGNAL(SettingsChanged())));
+      Require(connect(selectQuality, &QRadioButton::toggled, this, &UI::BackendSettingsWidget::SettingChanged<bool>));
+      Require(connect(qualityValue, &QSlider::valueChanged, this, &UI::BackendSettingsWidget::SettingChanged<int>));
+      Require(connect(selectBitrate, &QRadioButton::toggled, this, &UI::BackendSettingsWidget::SettingChanged<bool>));
+      Require(connect(bitrateValue, &QSlider::valueChanged, this, &UI::BackendSettingsWidget::SettingChanged<int>));
 
       using namespace Parameters;
       ExclusiveValue::Bind(*selectQuality, *Options, ZXTune::Sound::Backends::Ogg::MODE,
@@ -61,10 +62,9 @@ namespace
       }
     }
 
-    String GetBackendId() const override
+    StringView GetBackendId() const override
     {
-      static const Char ID[] = {'o', 'g', 'g', '\0'};
-      return ID;
+      return "ogg"sv;
     }
 
     QString GetDescription() const override
@@ -79,7 +79,7 @@ namespace
       }
       else
       {
-        return QString();
+        return {};
       }
     }
 

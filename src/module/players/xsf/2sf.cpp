@@ -8,28 +8,28 @@
  *
  **/
 
-// local includes
 #include "module/players/xsf/2sf.h"
+
+#include "formats/chiptune/emulation/nintendodssoundformat.h"
+#include "module/players/platforms.h"
+#include "module/players/streaming.h"
 #include "module/players/xsf/memory_region.h"
 #include "module/players/xsf/xsf.h"
-#include "module/players/xsf/xsf_factory.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/compression/zlib_container.h>
-#include <debug/log.h>
-#include <formats/chiptune/emulation/nintendodssoundformat.h>
-#include <math/bitops.h>
-#include <module/attributes.h>
-#include <module/players/platforms.h>
-#include <module/players/streaming.h>
-#include <sound/resampler.h>
-// std includes
+
+#include "binary/compression/zlib_container.h"
+#include "debug/log.h"
+#include "math/bitops.h"
+#include "module/attributes.h"
+#include "sound/resampler.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include "3rdparty/vio2sf/desmume/SPU.h"
+#include "3rdparty/vio2sf/desmume/state.h"
+
 #include <list>
-// 3rdparty includes
-#include <3rdparty/vio2sf/desmume/SPU.h>
-#include <3rdparty/vio2sf/desmume/state.h>
 
 namespace Module::TwoSF
 {
@@ -111,11 +111,11 @@ namespace Module::TwoSF
       // TODO: interpolation
       for (const auto& tag : meta.Tags)
       {
-        if (tag.first == "_clockdown")
+        if (tag.first == "_clockdown"sv)
         {
           clockDown = std::atoi(tag.second.c_str());
         }
-        else if (auto target = FindTagTarget(tag.first))
+        else if (auto* target = FindTagTarget(tag.first))
         {
           *target = std::atoi(tag.second.c_str());
         }
@@ -130,21 +130,21 @@ namespace Module::TwoSF
       }
     }
 
-    int* FindTagTarget(const String& name)
+    int* FindTagTarget(StringView name)
     {
-      if (name == "_frames")
+      if (name == "_frames"sv)
       {
         return &State.initial_frames;
       }
-      else if (name == "_vio2sf_sync_type")
+      else if (name == "_vio2sf_sync_type"sv)
       {
         return &State.sync_type;
       }
-      else if (name == "_vio2sf_arm9_clockdown_level")
+      else if (name == "_vio2sf_arm9_clockdown_level"sv)
       {
         return &State.arm9_clockdown_level;
       }
-      else if (name == "_vio2sf_arm7_clockdown_level")
+      else if (name == "_vio2sf_arm7_clockdown_level"sv)
       {
         return &State.arm7_clockdown_level;
       }
@@ -226,13 +226,9 @@ namespace Module::TwoSF
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto avail = State->Consume(FRAME_DURATION, looped);
+      const auto avail = State->ConsumeUpTo(FRAME_DURATION);
       return Target->Apply(Engine->Render(GetSamples(avail)));
     }
 
@@ -290,7 +286,7 @@ namespace Module::TwoSF
       {
         tune->Meta->Dump(*properties);
       }
-      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_DS.to_string());
+      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_DS);
       return MakePtr<Holder>(std::move(tune), std::move(properties));
     }
 
@@ -361,7 +357,7 @@ namespace Module::TwoSF
       return Holder::Create(builder.CaptureResult(), std::move(properties));
     }
 
-    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles,
+    Holder::Ptr CreateMultifileModule(const XSF::File& file, const XSF::FilesMap& additionalFiles,
                                       Parameters::Container::Ptr properties) const override
     {
       ModuleDataBuilder builder;
@@ -373,8 +369,8 @@ namespace Module::TwoSF
   private:
     static const uint_t MAX_LEVEL = 10;
 
-    static void MergeSections(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
-                              ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeSections(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
+                              uint_t level = 1)
     {
       if (!data.Dependencies.empty() && level < MAX_LEVEL)
       {
@@ -390,8 +386,8 @@ namespace Module::TwoSF
       }
     }
 
-    static void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
-                          ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeMeta(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
+                          uint_t level = 1)
     {
       if (level < MAX_LEVEL)
       {
@@ -407,8 +403,8 @@ namespace Module::TwoSF
     }
   };
 
-  Module::Factory::Ptr CreateFactory()
+  XSF::Factory::Ptr CreateFactory()
   {
-    return XSF::CreateFactory(MakePtr<Factory>());
+    return MakePtr<Factory>();
   }
 }  // namespace Module::TwoSF

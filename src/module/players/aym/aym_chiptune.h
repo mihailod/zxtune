@@ -10,46 +10,42 @@
 
 #pragma once
 
-// local includes
 #include "module/players/aym/aym_parameters.h"
+#include "module/players/iterator.h"
 #include "module/players/stream_model.h"
+#include "module/players/streaming.h"
 #include "module/players/track_model.h"
-// library includes
-#include <devices/aym.h>
-#include <module/players/iterator.h>
-#include <module/players/streaming.h>
-#include <module/players/tracking.h>
+#include "module/players/tracking.h"
 
-namespace Module
+#include "devices/aym.h"
+
+namespace Module::AYM
 {
-  namespace AYM
+  const auto BASE_FRAME_DURATION = Time::Microseconds::FromFrequency(50);
+
+  class DataIterator : public Iterator
   {
-    const auto BASE_FRAME_DURATION = Time::Microseconds::FromFrequency(50);
+  public:
+    using Ptr = std::unique_ptr<DataIterator>;
 
-    class DataIterator : public Iterator
-    {
-    public:
-      typedef std::shared_ptr<DataIterator> Ptr;
+    virtual State::Ptr GetStateObserver() const = 0;
 
-      virtual State::Ptr GetStateObserver() const = 0;
+    virtual Devices::AYM::Registers GetData() const = 0;
+  };
 
-      virtual Devices::AYM::Registers GetData() const = 0;
-    };
+  class Chiptune
+  {
+  public:
+    using Ptr = std::shared_ptr<const Chiptune>;
+    virtual ~Chiptune() = default;
 
-    class Chiptune
-    {
-    public:
-      typedef std::shared_ptr<const Chiptune> Ptr;
-      virtual ~Chiptune() = default;
+    virtual Time::Microseconds GetFrameDuration() const = 0;
 
-      virtual Time::Microseconds GetFrameDuration() const = 0;
+    // One of
+    virtual TrackModel::Ptr FindTrackModel() const = 0;
+    virtual Module::StreamModel::Ptr FindStreamModel() const = 0;
 
-      // One of
-      virtual TrackModel::Ptr FindTrackModel() const = 0;
-      virtual Module::StreamModel::Ptr FindStreamModel() const = 0;
-
-      virtual Parameters::Accessor::Ptr GetProperties() const = 0;
-      virtual DataIterator::Ptr CreateDataIterator(TrackParameters::Ptr trackParams) const = 0;
-    };
-  }  // namespace AYM
-}  // namespace Module
+    virtual Parameters::Accessor::Ptr GetProperties() const = 0;
+    virtual DataIterator::Ptr CreateDataIterator(TrackParameters::Ptr trackParams) const = 0;
+  };
+}  // namespace Module::AYM

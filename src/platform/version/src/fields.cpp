@@ -8,49 +8,48 @@
  *
  **/
 
-// local includes
-#include <platform/version/api.h>
-#include <platform/version/fields.h>
+#include "platform/version/fields.h"
 
-namespace Platform
+#include "platform/version/api.h"
+
+#include "string_view.h"
+
+namespace Platform::Version
 {
-  namespace Version
+  class VersionFieldsSource : public Strings::FieldsSource
   {
-    class VersionFieldsSource : public Strings::FieldsSource
+  public:
+    String GetFieldValue(StringView fieldName) const override
     {
-    public:
-      String GetFieldValue(const String& fieldName) const override
+      if (fieldName == "Program"sv)
       {
-        if (fieldName == "Program")
-        {
-          return GetProgramTitle();
-        }
-        else if (fieldName == "Version")
-        {
-          return GetProgramVersion();
-        }
-        else if (fieldName == "Date")
-        {
-          return GetBuildDate();
-        }
-        else if (fieldName == "Platform")
-        {
-          return GetBuildPlatform();
-        }
-        else if (fieldName == "Arch")
-        {
-          return GetBuildArchitecture();
-        }
-        else
-        {
-          return String();
-        }
+        return GetProgramTitle();
       }
-    };
-
-    std::unique_ptr<Strings::FieldsSource> CreateVersionFieldsSource()
-    {
-      return std::unique_ptr<Strings::FieldsSource>(new VersionFieldsSource());
+      else if (fieldName == "Version"sv)
+      {
+        return GetProgramVersion();
+      }
+      else if (fieldName == "Date"sv)
+      {
+        return GetBuildDate();
+      }
+      else if (fieldName == "Platform"sv)
+      {
+        return GetBuildPlatform();
+      }
+      else if (fieldName == "Arch"sv)
+      {
+        return GetBuildArchitecture();
+      }
+      else
+      {
+        return {};
+      }
     }
-  }  // namespace Version
-}  // namespace Platform
+  };
+
+  std::unique_ptr<Strings::FieldsSource> CreateVersionFieldsSource()
+  {
+    return std::unique_ptr<Strings::FieldsSource>(new VersionFieldsSource());
+  }
+}  // namespace Platform::Version

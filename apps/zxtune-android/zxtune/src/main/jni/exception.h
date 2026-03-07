@@ -10,11 +10,10 @@
 
 #pragma once
 
-// common includes
-#include <error.h>
-// platform includes
+#include "error.h"
+
 #include <jni.h>
-// std includes
+
 #include <type_traits>
 
 namespace Jni
@@ -49,8 +48,8 @@ namespace Jni
   class NullPointerException : public Exception
   {
   public:
-    NullPointerException()
-      : Exception("java/lang/NullPointerException")
+    explicit NullPointerException(const char* msg)
+      : Exception("java/lang/NullPointerException", msg)
     {}
   };
 
@@ -86,7 +85,7 @@ namespace Jni
 
   inline void Throw(JNIEnv* env, const char* clsName, const char* msg)
   {
-    const auto cls = env->FindClass(clsName);
+    auto* const cls = env->FindClass(clsName);
     env->ThrowNew(cls, msg);
   }
 
@@ -105,10 +104,15 @@ namespace Jni
     Throw(env, err.what());
   }
 
-  inline void Throw(JNIEnv* env, jthrowable thr)
+  struct JThrowable
+  {
+    const jthrowable Exception;
+  };
+
+  inline void Throw(JNIEnv* env, const JThrowable& thr)
   {
     env->ExceptionClear();
-    env->Throw(thr);
+    env->Throw(thr.Exception);
   }
 
   inline void Throw(JNIEnv* env, const Exception& ex)
@@ -121,7 +125,7 @@ namespace Jni
     if (const jthrowable e = env->ExceptionOccurred())
     {
       env->ExceptionDescribe();
-      throw e;
+      throw JThrowable{e};
     }
   }
 
@@ -147,7 +151,7 @@ namespace Jni
     {
       return f();
     }
-    catch (jthrowable e)
+    catch (const JThrowable& e)
     {
       Throw(env, e);
     }

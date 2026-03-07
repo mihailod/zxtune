@@ -10,20 +10,19 @@
 
 #pragma once
 
-// library includes
-#include <binary/container.h>
-#include <formats/archived.h>
-#include <formats/chiptune.h>
-#include <formats/image.h>
-#include <formats/packed.h>
+#include "binary/container.h"
+#include "formats/archived.h"
+#include "formats/chiptune.h"
+#include "formats/image.h"
+#include "formats/packed.h"
 
 namespace Analysis
 {
   class Scanner
   {
   public:
-    typedef std::shared_ptr<const Scanner> Ptr;
-    typedef std::shared_ptr<Scanner> RWPtr;
+    using Ptr = std::unique_ptr<const Scanner>;
+    using RWPtr = std::unique_ptr<Scanner>;
 
     virtual ~Scanner() = default;
 

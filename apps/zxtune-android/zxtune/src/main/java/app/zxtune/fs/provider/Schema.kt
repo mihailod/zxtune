@@ -8,8 +8,10 @@ import androidx.core.database.getBlobOrNull
 import androidx.core.database.getIntOrNull
 import androidx.core.database.getStringOrNull
 import java.util.*
+import androidx.core.net.toUri
 
 object Schema {
+    // listing:
     // int
     private const val COLUMN_TYPE = "type"
 
@@ -22,15 +24,13 @@ object Schema {
     // string
     private const val COLUMN_DESCRIPTION = "description"
 
-    // int - icon res or tracks count
+    // string - optional icon content/resource uri
     private const val COLUMN_ICON = "icon"
 
     // string - size for file, not null if dir has feed
     private const val COLUMN_DETAILS = "details"
 
-    // bool
-    private const val COLUMN_CACHED = "cached"
-
+    // status:
     // int
     private const val COLUMN_DONE = "done"
 
@@ -58,7 +58,7 @@ object Schema {
         }
     }
 
-    internal object Listing {
+    object Listing {
         val COLUMNS = arrayOf(
             COLUMN_TYPE,
             COLUMN_URI,
@@ -66,23 +66,23 @@ object Schema {
             COLUMN_DESCRIPTION,
             COLUMN_ICON,
             COLUMN_DETAILS,
-            COLUMN_CACHED
         )
 
-        private fun getUri(cursor: Cursor) = Uri.parse(cursor.getString(1))
+        private fun getUri(cursor: Cursor) = cursor.getString(1).toUri()
         private fun getName(cursor: Cursor) = cursor.getString(2)
         private fun getDescription(cursor: Cursor) = cursor.getString(3)
+        private fun getIcon(cursor: Cursor) = cursor.getStringOrNull(4)?.toUri()
 
-        fun parse(cursor: Cursor) = when {
-            cursor.getInt(0) == TYPE_DIR -> Dir.parse(cursor)
-            else -> File.parse(cursor)
+        fun parse(cursor: Cursor) = when(val type = cursor.getInt(0)) {
+            TYPE_DIR -> Dir.parse(cursor)
+            else -> File.parse(cursor, type)
         }
 
         data class Dir(
             val uri: Uri,
             val name: String,
             val description: String,
-            val icon: Int?,
+            val icon: Uri?,
             val hasFeed: Boolean
         ) : Object {
 
@@ -93,7 +93,6 @@ object Schema {
                 description,
                 icon,
                 if (hasFeed) "" else null,
-                null
             )
 
             companion object {
@@ -101,7 +100,7 @@ object Schema {
                     uri = getUri(cursor),
                     name = getName(cursor),
                     description = getDescription(cursor),
-                    icon = cursor.getIntOrNull(4),
+                    icon = getIcon(cursor),
                     hasFeed = !cursor.isNull(5)
                 )
             }
@@ -111,38 +110,45 @@ object Schema {
             val uri: Uri,
             val name: String,
             val description: String,
+            val icon: Uri?,
             val details: String,
-            val tracks: Int?,
-            val isCached: Boolean?
+            val type: Type,
         ) : Object {
 
+            enum class Type {
+                UNKNOWN,
+                REMOTE,
+                UNSUPPORTED,
+                TRACK,
+                ARCHIVE,
+            }
+
             override fun serialize() = arrayOf<Any?>(
-                TYPE_FILE,
+                TYPE_FILE + type.ordinal,
                 uri.toString(),
                 name,
                 description,
-                tracks,
+                icon,
                 details,
-                isCached.toInt()
             )
 
             companion object {
-                fun parse(cursor: Cursor) = File(
+                fun parse(cursor: Cursor, type: Int) = File(
                     uri = getUri(cursor),
                     name = getName(cursor),
                     description = getDescription(cursor),
-                    tracks = cursor.getIntOrNull(4),
+                    icon = getIcon(cursor),
                     details = cursor.getString(5),
-                    isCached = cursor.getIntOrNull(6).toBoolean()
+                    type = Type.entries[type - TYPE_FILE]
                 )
             }
         }
     }
 
-    internal object Status {
+    object Status {
         val COLUMNS = arrayOf(COLUMN_DONE, COLUMN_TOTAL, COLUMN_ERROR)
 
-        internal fun isStatus(cursor: Cursor) = Arrays.equals(cursor.columnNames, COLUMNS)
+        internal fun isStatus(cursor: Cursor) = cursor.columnNames.contentEquals(COLUMNS)
 
         fun parse(cursor: Cursor) = when (val err = cursor.getStringOrNull(2)) {
             null -> Progress.parse(cursor)
@@ -168,7 +174,7 @@ object Schema {
         }
     }
 
-    internal object Parents {
+    object Parents {
         val COLUMNS = arrayOf(COLUMN_URI, COLUMN_NAME, COLUMN_ICON)
 
         data class Object(val uri: Uri, val name: String, val icon: Int?) : Schema.Object {
@@ -179,7 +185,7 @@ object Schema {
                 fun parse(cursor: Cursor) = when {
                     Status.isStatus(cursor) -> Status.parse(cursor)
                     else -> Object(
-                        Uri.parse(cursor.getString(0)),
+                        cursor.getString(0).toUri(),
                         cursor.getString(1),
                         cursor.getIntOrNull(2)
                     )
@@ -217,10 +223,6 @@ object Schema {
         }
     }
 }
-
-private fun Int?.toBoolean() = this?.let { it != 0 }
-
-private fun Boolean?.toInt() = this?.let { if (it) 1 else 0 }
 
 private fun <T> Parcel.use(cmd: (Parcel) -> T) = try {
     cmd(this)

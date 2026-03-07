@@ -49,13 +49,13 @@ class DatabaseTest {
 
     @Test
     fun `test empty database`() {
-        testVisitor<Catalog.AuthorsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Author>> { visitor ->
             assertFalse(underTest.queryAuthors(visitor))
         }
-        testVisitor<Catalog.PartiesVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Party>> { visitor ->
             assertFalse(underTest.queryParties(visitor))
         }
-        testVisitor<Catalog.TracksVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Track>> { visitor ->
             assertFalse(underTest.queryTopTracks(100, visitor))
         }
         testVisitor<Catalog.FoundTracksVisitor> { visitor ->
@@ -67,7 +67,6 @@ class DatabaseTest {
     fun `test queryAuthors`() = testQueryObjects(
         addObject = ::addAuthor,
         queryObjects = underTest::queryAuthors,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, author -> visitor.accept(author) }
     )
 
@@ -75,7 +74,6 @@ class DatabaseTest {
     fun `test queryParties`() = testQueryObjects(
         addObject = ::addParty,
         queryObjects = underTest::queryParties,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, party -> visitor.accept(party) }
     )
 
@@ -85,7 +83,6 @@ class DatabaseTest {
         addGroup = ::makeAuthor,
         addObjectToGroup = underTest::addAuthorTrack,
         queryObjects = underTest::queryAuthorTracks,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, track -> visitor.accept(track) }
     )
 
@@ -95,7 +92,6 @@ class DatabaseTest {
         addGroup = ::makeParty,
         addObjectToGroup = underTest::addPartyTrack,
         queryObjects = underTest::queryPartyTracks,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, track -> visitor.accept(track) }
     )
 
@@ -105,10 +101,9 @@ class DatabaseTest {
             (1..5).map { id -> Track(id, "track$id", "", id.toDouble().toString(), "", 0, "", 0) }
                 .onEach { underTest.addTrack(it) }
 
-        testVisitor<Catalog.TracksVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Track>> { visitor ->
             assertTrue(underTest.queryTopTracks(3, visitor))
             inOrder(visitor).run {
-                verify(visitor).setCountHint(3)
                 verify(visitor).accept(tracks[4])
                 verify(visitor).accept(tracks[3])
                 verify(visitor).accept(tracks[2])
@@ -126,7 +121,6 @@ class DatabaseTest {
             underTest.findTracks("3", visitor)
             makeTrack(3)
         },
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, author, track -> visitor.accept(author, track) }
     )
 

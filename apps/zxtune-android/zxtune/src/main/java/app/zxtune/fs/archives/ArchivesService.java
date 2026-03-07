@@ -24,9 +24,8 @@ public class ArchivesService {
 
   private static final String TAG = ArchivesService.class.getName();
 
+  @FunctionalInterface
   public interface ListingCallback {
-    void onItemsCount(int hint);
-
     void onEntry(Entry entry);
   }
 
@@ -81,7 +80,6 @@ public class ArchivesService {
   public final void listDir(Uri uri, ListingCallback cb) {
     final Cursor cursor = db.queryListing(uri);
     try {
-      cb.onItemsCount(cursor.getCount());
       while (cursor.moveToNext()) {
         cb.onEntry(Entry.fromCursor(cursor));
       }
@@ -97,8 +95,7 @@ public class ArchivesService {
     final HashSet<Identifier> dirEntries = new HashSet<>();
     final int[] report = new int[]{0, 10};
     db.runInTransaction(() -> {
-      Core.detectModules(file, (subpath, module) -> {
-        final Identifier moduleId = new Identifier(path, subpath);
+      Core.detectModules(file, (moduleId, module) -> {
         final DirEntry dirEntry = DirEntry.create(moduleId);
 
         try {
@@ -110,7 +107,8 @@ public class ArchivesService {
           module.release();
 
           db.addTrack(track);
-          final int doneTracks = ++report[0];
+          ++report[0];
+          final int doneTracks = report[0];
           final int period = report[1];
           if (0 == doneTracks % period) {
             Log.d(TAG, "Found tracks: %d", doneTracks);

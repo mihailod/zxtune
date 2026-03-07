@@ -10,9 +10,8 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// std includes
+#include "types.h"
+
 #include <memory>
 
 namespace Module
@@ -20,7 +19,7 @@ namespace Module
   class StreamModel
   {
   public:
-    typedef std::shared_ptr<const StreamModel> Ptr;
+    using Ptr = std::shared_ptr<const StreamModel>;
     virtual ~StreamModel() = default;
 
     virtual uint_t GetTotalFrames() const = 0;

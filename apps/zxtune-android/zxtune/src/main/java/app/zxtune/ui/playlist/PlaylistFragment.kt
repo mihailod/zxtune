@@ -7,82 +7,95 @@ package app.zxtune.ui.playlist
 
 import android.net.Uri
 import android.os.Bundle
-import android.os.Parcelable
-import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.view.*
-import android.widget.SearchView
+import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SearchView
+import androidx.appcompat.widget.Toolbar
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.selection.Selection
 import androidx.recyclerview.selection.SelectionPredicates
 import androidx.recyclerview.selection.SelectionTracker
 import androidx.recyclerview.selection.StorageStrategy
 import androidx.recyclerview.widget.RecyclerView
 import app.zxtune.R
-import app.zxtune.device.PersistentStorage
-import app.zxtune.device.media.MediaSessionModel
+import app.zxtune.device.media.MediaModel
+import app.zxtune.fs.provider.VfsProviderClient
 import app.zxtune.playlist.ProviderClient
+import app.zxtune.ui.PersistentStorageSetupFragment
 import app.zxtune.ui.utils.SelectionUtils
+import app.zxtune.ui.utils.item
+import app.zxtune.ui.utils.whenLifecycleStarted
+import kotlinx.coroutines.launch
 
 class PlaylistFragment : Fragment() {
     private lateinit var listing: RecyclerView
     private lateinit var search: SearchView
     private lateinit var selectionTracker: SelectionTracker<Long>
 
-    private val model by lazy {
-        Model.of(this)
-    }
-    private val mediaSessionModel
-        get() = MediaSessionModel.of(requireActivity())
+    private val model by activityViewModels<Model>()
+    private val mediaModel
+        get() = MediaModel.of(requireActivity())
     private val mediaController
         get() = MediaControllerCompat.getMediaController(requireActivity())
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setHasOptionsMenu(true)
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-        super.onCreateOptionsMenu(menu, inflater)
-        inflater.inflate(R.menu.playlist, menu)
-        val sortMenuRoot = requireNotNull(menu.findItem(R.id.action_sort)).subMenu
-        for (sortBy in ProviderClient.SortBy.values()) {
-            for (sortOrder in ProviderClient.SortOrder.values()) {
-                sortMenuRoot.add(getMenuTitle(sortBy)).run {
-                    setOnMenuItemClickListener {
-                        model.sort(sortBy, sortOrder)
-                        true
-                    }
-                    setIcon(getMenuIcon(sortOrder))
-                }
-            }
-        }
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem) = processMenuItem(
-        item.itemId,
-        selectionTracker.selection
-    ) || super.onOptionsItemSelected(item)
-
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
-        savedInstanceState: Bundle?
+        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ) = container?.let { inflater.inflate(R.layout.playlist, it, false) }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        listing = setupListing(view)
-        search = setupSearchView(view)
+        val panel = view.findViewById<FrameLayout>(R.id.playlist_top_panel)
+        setupToolbarMenu(panel)
+        listing = setupListing(
+            panel, view.findViewById(R.id.playlist_content), view.findViewById(R.id.playlist_stub)
+        )
+        search = setupSearchView(view.findViewById(R.id.playlist_search))
     }
 
-    private fun setupListing(view: View) =
-        view.findViewById<RecyclerView>(R.id.playlist_content).apply {
+    private fun setupToolbarMenu(panel: FrameLayout) {
+        require(panel.childCount == 1)
+        val toolbar = panel.getChildAt(0) as Toolbar
+        toolbar.addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+                menuInflater.inflate(R.menu.playlist, menu)
+                // for some reason, onPrepareMenu is not called anymore if menu is shown via
+                // showAsAction for some items
+                requireNotNull(menu.item(R.id.action_sort).subMenu).run {
+                    for (sortBy in ProviderClient.SortBy.values()) {
+                        for (sortOrder in ProviderClient.SortOrder.values()) {
+                            add(getMenuTitle(sortBy)).run {
+                                setOnMenuItemClickListener {
+                                    model.sort(sortBy, sortOrder)
+                                    true
+                                }
+                                setIcon(getMenuIcon(sortOrder))
+                            }
+                        }
+                    }
+                }
+            }
+
+            override fun onMenuItemSelected(menuItem: MenuItem) =
+                processMenuItem(menuItem.itemId, selectionTracker.selection)
+        })
+    }
+
+    private fun setupListing(panel: FrameLayout, listing: RecyclerView, stub: View) =
+        listing.apply {
             setHasFixedSize(true)
             val adapter = ViewAdapter(model::move).apply {
                 adapter = this
@@ -93,85 +106,86 @@ class PlaylistFragment : Fragment() {
                 ViewAdapter.KeyProvider(adapter),
                 ViewAdapter.DetailsLookup(this, adapter),
                 StorageStrategy.createLongStorage()
-            )
-                .withSelectionPredicate(SelectionPredicates.createSelectAnything())
+            ).withSelectionPredicate(SelectionPredicates.createSelectAnything())
                 .withOnItemActivatedListener { item, _ ->
                     item.selectionKey?.let { onItemClick(it) }
-                    true
+                    false // for ripple
                 }.build().also {
                     adapter.setSelection(it.selection)
-                    // another class for test
-                    (activity as? AppCompatActivity)?.let { activity ->
-                        SelectionUtils.install(activity, it, SelectionClient(adapter))
+                    SelectionUtils.install(panel, it, SelectionClient(adapter))
+                }
+            viewLifecycleOwner.whenLifecycleStarted {
+                launch {
+                    model.state.collect { state ->
+                        adapter.submitList(state.entries) {
+                            if (0 == adapter.itemCount) {
+                                visibility = View.GONE
+                                stub.visibility = View.VISIBLE
+                            } else {
+                                visibility = View.VISIBLE
+                                stub.visibility = View.GONE
+                            }
+                        }
                     }
                 }
-            model.state.observe(viewLifecycleOwner) { state ->
-                adapter.submitList(state.entries) {
-                    val stub = view.findViewById<View>(R.id.playlist_stub)
-                    if (0 == adapter.itemCount) {
-                        visibility = View.GONE
-                        stub.visibility = View.VISIBLE
-                    } else {
-                        visibility = View.VISIBLE
-                        stub.visibility = View.GONE
+                launch {
+                    mediaModel.playbackState.collect { state: PlaybackStateCompat? ->
+                        adapter.setIsPlaying(PlaybackStateCompat.STATE_PLAYING == state?.state)
                     }
                 }
-            }
-            mediaSessionModel.run {
-                state.observe(viewLifecycleOwner) { state: PlaybackStateCompat? ->
-                    adapter.setIsPlaying(PlaybackStateCompat.STATE_PLAYING == state?.state)
-                }
-                metadata.observe(viewLifecycleOwner) { metadata: MediaMetadataCompat? ->
-                    metadata?.let {
-                        val uri = Uri.parse(it.description.mediaId)
-                        adapter.setNowPlaying(ProviderClient.findId(uri))
+                launch {
+                    mediaModel.metadata.collect { metadata ->
+                        metadata?.let {
+                            val uri = Uri.parse(it.description.mediaId)
+                            adapter.setNowPlaying(ProviderClient.findId(uri))
+                        }
                     }
                 }
             }
         }
 
-    private fun setupSearchView(view: View) = view.findViewById<SearchView>(R.id.playlist_search)
-        .apply {
-            isSubmitButtonEnabled = false
-            setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                override fun onQueryTextSubmit(query: String) = true
-                override fun onQueryTextChange(newText: String): Boolean {
-                    model.filter(newText)
-                    return true
-                }
-            })
+    private fun setupSearchView(view: SearchView) = view.apply {
+        isSubmitButtonEnabled = false
+        setOnCloseListener {
+            post {
+                clearFocus()
+            }
+            false
         }
+        setOnQueryTextFocusChangeListener { _, hasFocus ->
+            if (!hasFocus && query.isEmpty()) {
+                isIconified = true
+            }
+        }
+        setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String) = true
+            override fun onQueryTextChange(newText: String): Boolean {
+                model.filter = newText
+                return true
+            }
+        })
+    }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         selectionTracker.onSaveInstanceState(outState)
-        listing.layoutManager?.run {
-            outState.putParcelable(LISTING_STATE_KEY, onSaveInstanceState())
-        }
-        search.query?.let { query ->
-            outState.putString(FILTER_STATE_KEY, query.toString())
-        }
     }
 
     override fun onViewStateRestored(savedInstanceState: Bundle?) {
         super.onViewStateRestored(savedInstanceState)
         savedInstanceState?.let { state ->
             selectionTracker.onRestoreInstanceState(state)
-            listing.layoutManager?.run {
-                state.getParcelable<Parcelable>(LISTING_STATE_KEY)?.let {
-                    onRestoreInstanceState(it)
-                }
+        }
+        model.filter.takeIf { it.isNotEmpty() }?.let { query ->
+            search.post {
+                search.setQuery(query, false)
             }
-            state.getString(FILTER_STATE_KEY)?.takeIf { it.isNotEmpty() }?.let { query ->
-                search.post {
-                    search.setQuery(query, false)
-                }
-            } ?: model.filter("")
         }
     }
 
-    private fun onItemClick(id: Long) =
-        mediaController?.transportControls?.playFromUri(ProviderClient.createUri(id), null) ?: Unit
+    private fun onItemClick(id: Long) = mediaController?.transportControls?.playFromUri(
+        ProviderClient.createUri(id), null
+    ) ?: Unit
 
     // ArchivesService for selection
     private inner class SelectionClient(private val adapter: ViewAdapter) :
@@ -179,7 +193,8 @@ class PlaylistFragment : Fragment() {
         override fun getTitle(count: Int) =
             resources.getQuantityString(R.plurals.tracks, count, count)
 
-        override fun getAllItems() = adapter.currentList.map(Entry::id)
+        override val allItems
+            get() = adapter.currentList.map(Entry::id)
 
         override fun fillMenu(inflater: MenuInflater, menu: Menu) =
             inflater.inflate(R.menu.playlist_items, menu)
@@ -193,11 +208,13 @@ class PlaylistFragment : Fragment() {
             R.id.action_clear -> deletionAlert(R.string.delete_all_items_query) {
                 model.deleteAll()
             }
+
             R.id.action_delete -> convertSelection(selection)?.let {
                 deletionAlert(R.string.delete_selected_items_query) {
                     model.delete(it)
                 }
             }
+
             R.id.action_save -> savePlaylist(convertSelection(selection))
             R.id.action_statistics -> showStatistics(convertSelection(selection))
             else -> return false
@@ -207,26 +224,24 @@ class PlaylistFragment : Fragment() {
 
     // TODO: think about using DialogFragment - complicated lambda passing
     private fun deletionAlert(@StringRes message: Int, action: () -> Unit) =
-        AlertDialog.Builder(requireContext())
-            .setTitle(message)
+        AlertDialog.Builder(requireContext()).setTitle(message)
             .setPositiveButton(R.string.delete) { _, _ ->
                 action()
-            }
-            .show()
+            }.show()
 
-    private fun savePlaylist(ids: LongArray?) =
-        PlaylistSaveFragment.show(requireActivity(), PersistentStorage.instance, ids)
+    private fun savePlaylist(ids: LongArray?) = lifecycleScope.launch {
+        val persistentStorageSetupAction =
+            VfsProviderClient(requireContext()).getNotification(Uri.parse("playlists:/"))?.action
+        val fragment = persistentStorageSetupAction?.let {
+            PersistentStorageSetupFragment.createInstance(it)
+        } ?: PlaylistSaveFragment.createInstance(ids)
+        fragment.show(parentFragmentManager, "save")
+    }
 
     private fun showStatistics(ids: LongArray?) =
         PlaylistStatisticsFragment.createInstance(ids).show(parentFragmentManager, "statistics")
 
     companion object {
-        private const val LISTING_STATE_KEY = "listing_state"
-        private const val FILTER_STATE_KEY = "search_state"
-
-        @JvmStatic
-        fun createInstance(): Fragment = PlaylistFragment()
-
         @StringRes
         private fun getMenuTitle(by: ProviderClient.SortBy) = when (by) {
             ProviderClient.SortBy.title -> R.string.information_title

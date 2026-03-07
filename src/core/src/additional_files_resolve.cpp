@@ -8,16 +8,13 @@
  *
  **/
 
-// local includes
-#include "core/src/l10n.h"
-// common includes
-#include <error_tools.h>
-// library includes
-#include <core/additional_files_resolve.h>
-// boost includes
-#include <boost/algorithm/string/join.hpp>
+#include "core/additional_files_resolve.h"
 
-#define FILE_TAG 3BC2770E
+#include "core/src/l10n.h"
+
+#include "strings/join.h"
+
+#include "error_tools.h"
 
 namespace Module
 {
@@ -34,8 +31,8 @@ namespace Module
         auto newFilenames = files.Enumerate();
         if (newFilenames == filenames)
         {
-          throw MakeFormattedError(THIS_LINE, translate("None of the additional files %1% were resolved."),
-                                   boost::algorithm::join(filenames, ","));
+          throw MakeFormattedError(THIS_LINE, translate("None of the additional files {} were resolved."),
+                                   Strings::Join(filenames, ","sv));
         }
         filenames.swap(newFilenames);
       }
@@ -46,5 +43,3 @@ namespace Module
     }
   }
 }  // namespace Module
-
-#undef FILE_TAG

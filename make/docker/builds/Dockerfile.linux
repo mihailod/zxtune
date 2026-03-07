@@ -1,55 +1,134 @@
-FROM debian:buster-slim
-ARG cores=12
+# --begin: keep in sync with other linux-based builds
+ARG arch
+
+FROM debian:bookworm-slim as debian-buildenv
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates wget xz-utils bzip2 git make zip nano less sudo \
-      g++ gcc python3-minimal \
-      libpulse-dev libclalsadrv-dev zlib1g-dev \
-      libfontconfig1-dev libfreetype6-dev libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxi-dev libgl-dev \
-      libxrender-dev libxcb1-dev libxcb-glx0-dev libxcb-keysyms1-dev libxcb-image0-dev libxcb-shm0-dev libxcb-util0-dev \
-      libxcb-icccm4-dev libxcb-sync0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-randr0-dev libxcb-render-util0-dev \
-      libxcb-xinerama0-dev libxkbcommon-dev libxkbcommon-x11-dev && \
-    rm -rf /var/lib/apt/lists/* && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+     ca-certificates debian-ports-archive-keyring \
+     wget xz-utils bzip2 zip nano less sudo \
+     git make cmake g++ gcc python3-minimal ccache && \
     useradd -m -s /bin/bash -U -G users,sudo -d /build build && \
     echo '%sudo ALL = (root) NOPASSWD: ALL' >> /etc/sudoers
+ENV prebuilt=/build/prebuilt toolchains=/build/toolchains
+# --end
+
+FROM debian-buildenv as debian-x86_64
+ENV arch=x86_64 execprefix=x86_64-linux-gnu- debianarch=amd64 debiancompiler=g++-x86-64-linux-gnu
+
+FROM debian-buildenv as debian-arm64
+ENV arch=arm64 execprefix=aarch64-linux-gnu- debianarch=arm64 debiancompiler=g++-aarch64-linux-gnu
+
+FROM debian-buildenv as debian-x86
+ENV arch=x86 execprefix=i686-linux-gnu- debianarch=i386 debiancompiler=g++-i686-linux-gnu
+
+FROM debian-buildenv as debian-armhf
+ENV arch=armhf execprefix=armv6-rpi-linux-gnueabihf- PATH=${toolchains}/x-tools/armv6-rpi-linux-gnueabihf/bin:${PATH}
+# Toolchain from https://github.com/tttapa/docker-arm-cross-toolchain
+RUN mkdir -p ${toolchains} && cd ${toolchains} && \
+    wget -q https://github.com/tttapa/docker-arm-cross-toolchain/releases/download/0.2.0/x-tools-armv6-rpi-linux-gnueabihf-gcc14.tar.xz -O - | tar -xJ
+RUN apt-get install gnupg2 -y --no-install-recommends && \
+    wget -q -O- https://archive.raspbian.org/raspbian.public.key | gpg --no-default-keyring --keyring gnupg-ring:/etc/apt/trusted.gpg.d/raspbian.gpg --import && \
+    chmod 644 /etc/apt/trusted.gpg.d/raspbian.gpg && \
+    echo "deb [arch=armhf] http://mirrordirector.raspbian.org/raspbian/ buster main rpi" > /etc/apt/sources.list.d/raspbian.list && \
+    apt-get update
+# Compiler sysroot structure is different from system's so just install to existing sysroot
+RUN cd "${toolchains}/x-tools/armv6-rpi-linux-gnueabihf/armv6-rpi-linux-gnueabihf/sysroot" && \
+    bash -c "apt-get download lib{xcb1{,-dev},xcb-icccm4{,-dev},xcb-{image,randr,render,render-util,shape,shm,util,xfixes,xinerama}0{,-dev},\
+xcb-{sync,xkb}{1,-dev},xcb-keysyms1{,-dev},x11-dev,\
+{fontconfig1,freetype6}{,-dev},xkbcommon{0,-dev},xkbcommon-x11-{0,dev},\
+ssl{1.1,-dev},{bsd0,expat1,xau6,xdmcp6,uuid1},c6{,-dev},png{16-16,-dev},\
+{asound2,pulse}-dev}:armhf zlib1g{,-dev}:armhf" && \
+    (for pkg in *.deb ; do dpkg -x ${pkg} . ; done) && \
+    rm *.deb
+# Fix symbolic links pointed to absolute root
+RUN  cd "${toolchains}/x-tools/armv6-rpi-linux-gnueabihf/armv6-rpi-linux-gnueabihf/sysroot/usr/lib/arm-linux-gnueabihf" && \
+      ln -sf ../../../lib/arm-linux-gnueabihf/libthread_db.so.1 libthread_db.so && \
+      ln -sf ../../../lib/arm-linux-gnueabihf/libz.so.1.2.11 libz.so && \
+      ln -sf ../../../lib/arm-linux-gnueabihf/librt.so.1 librt.so && \
+      ln -sf ../../../lib/arm-linux-gnueabihf/libpthread.so.0 libpthread.so && \
+      ln -sf ../../../lib/arm-linux-gnueabihf/libdl.so.2 libdl.so && \
+      ln -sf ../../../lib/arm-linux-gnueabihf/libm.so.6 libm.so
+
+FROM debian-buildenv as debian-loong64
+ENV arch=loong64 execprefix=loongarch64-unknown-linux-gnu- PATH=${toolchains}/cross-tools/bin:${PATH} crossroot=/build/rootfs-loong64
+# Toolchain and rootfs from https://github.com/loongson/build-tools
+RUN mkdir -p ${toolchains} && cd ${toolchains} && \
+    wget -q https://github.com/loongson/build-tools/releases/download/2024.06.01/x86_64-cross-tools-loongarch64-binutils_2.42-gcc_14.1.0-glibc_2.39.tar.xz -O - | tar -xJ
+RUN mkdir -p ${crossroot} && \
+    apt-get install -y squashfs-tools && \
+    echo 'Fetch and unpack rootfs' && \
+    wget -q https://github.com/loongson/build-tools/releases/download/2023.08.08/clfs-loongarch64-system-8.1-sysroot.squashfs && \
+    unsquashfs -d ${crossroot} *.squashfs usr/include usr/lib usr/lib64 && \
+    (echo 'Cleanup rootfs' && cd ${crossroot}/usr && \
+      # qt5
+      rm -Rf include/qt* lib64/metatypes/qt* lib64/pkgconfig/Qt* lib64/libQt* lib64/cmake/Qt* lib64/qt* && \
+      # boost
+      rm -Rf include/boost lib64/cmake/?oost* lib64/libboost* \
+    ) && \
+    rm *.squashfs && \
+    echo 'Protect crossroot' && chmod -R a-w ${crossroot} && \
+    # TODO: create or switch user before this stage, should be no more root'ed folders!
+    chown build /build
+
+FROM debian-${arch}
+RUN bash -c 'dependencies=(libpulse-dev libasound2-dev zlib1g-dev libssl-dev \
+      libfontconfig1-dev libfreetype6-dev libx11-dev libxfixes-dev libxi-dev \
+      libxrender-dev libxcb1-dev libxcb-glx0-dev libxcb-keysyms1-dev libxcb-image0-dev libxcb-shm0-dev \
+      libxcb-icccm4-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-randr0-dev libxcb-render-util0-dev \
+      libxcb-util-dev libxcb-xinerama0-dev libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev); \
+      if [ -n "${debianarch}" ]; then \
+       dpkg --add-architecture ${debianarch} && \
+       apt-get update && \
+       apt-get install -y --no-install-recommends ${dependencies[@]/%/:${debianarch}} ${debiancompiler} ; fi'
 
 USER build
 WORKDIR /build
 
-ENV prebuilt=/build/prebuilt
+ARG cores=12
 
-ENV boost=1.77.0
-RUN bash -c "wget -q https://boostorg.jfrog.io/artifactory/main/release/${boost}/source/boost_\${boost//./_}.tar.bz2 -O - | tar -xj" && \
-    cd boost_* && ./bootstrap.sh && \
-    ./b2 toolset=gcc link=static threading=multi target-os=linux variant=release --layout=system \
-      --with-filesystem --with-locale --with-program_options --with-system -j${cores} \
-      --includedir=${prebuilt}/boost-${boost}/include --libdir=${prebuilt}/boost-${boost}-linux-x86_64/lib install && \
-    cd .. && rm -Rf boost_*
+ARG boost=1.82.0
+RUN wget -q https://github.com/boostorg/boost/releases/download/boost-${boost}/boost-${boost}.tar.xz -O - | tar -xJ && \
+    (cd boost* && \
+    ./bootstrap.sh && \
+    echo "using gcc : current : ${execprefix}g++ ;" > tools/build/src/user-config.jam && \
+    ./b2 toolset=gcc-current link=static threading=multi target-os=linux variant=release --layout=system \
+      --with-locale --with-program_options -j${cores} \
+      --includedir=${prebuilt}/boost-${boost}/include --libdir=${prebuilt}/boost-${boost}-linux-${arch}/lib install) && \
+    rm -Rf boost*
 
-ENV qt=5.15.2
-RUN bash -c "wget -q http://download.qt.io/archive/qt/${qt%.*}/${qt}/single/qt-everywhere-src-${qt}.tar.xz -O - | tar -xJ" && \
-    cd qt-everywhere* && \
-     ./configure -v -platform linux-g++-64 -prefix ${prebuilt}/qt-${qt}-linux-x86_64 -release -opensource -static -confirm-license -no-rpath \
-      -no-opengl -no-openvg -no-sql-sqlite \
-      -no-ico -no-gif -no-libjpeg -no-openssl -no-cups -no-pch -no-glib \
-      -no-directfb -no-evdev -no-tslib -no-linuxfb -no-kms \
-      -no-feature-testlib \
-      -qt-pcre -system-zlib -system-libpng -fontconfig \
-      -skip qt3d -skip qtactiveqt -skip qtandroidextras -skip qtcharts -skip qtconnectivity -skip qtdatavis3d -skip qtdeclarative -skip qtdoc -skip qtgamepad -skip qtgraphicaleffects -skip qtlocation \
-      -skip qtlottie -skip qtmacextras -skip qtmultimedia -skip qtnetworkauth -skip qtpurchasing -skip qtquick3d -skip qtquickcontrols -skip qtquickcontrols2 -skip qtquicktimeline -skip qtremoteobjects \
-      -skip qtscript -skip qtscxml -skip qtsensors -skip qtserialbus -skip qtserialport -skip qtspeech -skip qtsvg -skip qttranslations -skip qtvirtualkeyboard -skip qtwayland -skip qtwebchannel \
-      -skip qtwebengine -skip qtwebglplugin -skip qtwebsockets -skip qtwebview -skip qtwinextras -skip qtxmlpatterns \
+ARG qt=5.15.2
+# fontconfig uses system libpng16, so reuse it
+RUN bash -c "git clone --depth=1 --branch=${qt} https://github.com/qt/qt5.git" && \
+    (cd qt5 && \
+     ./init-repository --module-subset=qtbase,qtimageformats && \
+     (cd qtbase/src/corelib && sed -i '/QT_BEGIN_NAMESPACE/i#include <limits>' global/qfloat16.h text/qbytearraymatcher.h global/qendian.h tools/qoffsetstringarray_p.h) && \
+     sed -i '/__mips__/adefined(__loongarch__) || \\' qtbase/src/3rdparty/double-conversion/include/double-conversion/utils.h && \
+     ./configure -v -device linux-generic-g++ -device-option CROSS_COMPILE=${execprefix} \
+      ${crossroot:+-sysroot ${crossroot}} -extprefix ${prebuilt}/qt-${qt}-linux-${arch} \
+      -release -opensource -static -confirm-license -no-rpath \
+      -no-opengl -no-openvg \
+      -no-ico -no-gif -no-cups -no-pch -no-glib -no-icu \
+      -no-directfb -no-evdev -no-tslib -no-linuxfb -no-kms -no-vulkan \
+      -xcb -bundled-xcb-xinput -no-xcb-xlib -qpa xcb \
+      -no-feature-testlib -no-feature-sql -no-feature-pdf -no-feature-printer -no-feature-gssapi -no-feature-zstd \
+      -qt-harfbuzz -qt-pcre -system-zlib -system-libpng -qt-libjpeg -qt-webp -fontconfig -openssl-linked \
       -make libs && \
      make -j${cores} install && \
-     cd .. && rm -Rf qt-everywhere*
+     cp -r config.* ${prebuilt}/qt-${qt}-linux-${arch}) && \
+     rm -Rf qt5
 
 RUN mkdir -p /build/zxtune && cd /build/zxtune && \
     git init && \
     git remote add --tags origin https://bitbucket.org/zxtune/zxtune.git && \
-    echo "platform=linux\narch=x86_64\npackaging=any\ntools.python=python3\nsystem.zlib=1\n" \
-         "prebuilt.dir=${prebuilt}\nboost.version=${boost}\nqt.version=${qt}\ncxx_flags=-fPIC\n" \
-         "qt.plugins=QXcbIntegrationPlugin\n" \
-         "libraries.qt.system.linux=qxcb qtpcre2 png16 qtharfbuzz fontconfig freetype xcb xcb-icccm xcb-image" \
-            "xcb-keysyms xcb-randr xcb-render xcb-render-util xcb-shape xcb-shm xcb-sync xcb-xfixes xcb-xinerama xcb-xkb xkbcommon xkbcommon-x11\n" \
+    echo "platform=linux\npackaging=any\ntools.python=python3\nsystem.zlib=1\n" \
+         "prebuilt.dir=${prebuilt}\nboost.version=${boost}\nqt.version=${qt}\n" \
+         "ld_flags=-static-libstdc++\n" \
+         "cxx_flags=-fPIC\n" \
+         "qt.plugins=QXcbIntegrationPlugin QJpegPlugin\n" \
+         "libraries.qt.system.linux=qxcb qtpcre2 qtharfbuzz qjpeg png16 fontconfig freetype ssl crypto" \
+           "xcb xcb-icccm xcb-image xcb-keysyms xcb-randr xcb-render xcb-render-util xcb-shape xcb-shm xcb-sync xcb-xfixes xcb-xinerama" \
+           "xcb-xkb xkbcommon xkbcommon-x11\n" \
          "libraries.qt.linux=XcbQpa XkbCommonSupport ThemeSupport DBus EdidSupport FontDatabaseSupport ServiceSupport" > variables.mak
 
 WORKDIR /build/zxtune

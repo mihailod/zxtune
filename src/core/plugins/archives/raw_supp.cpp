@@ -8,32 +8,33 @@
  *
  **/
 
-// local includes
 #include "core/plugins/archives/raw_supp.h"
+
+#include "core/plugins/archive_plugins_registrator.h"
 #include "core/plugins/archives/archived.h"
-#include <core/plugins/archive_plugins_registrator.h>
-#include <core/plugins/archives/l10n.h>
-#include <core/plugins/players/plugin.h>
-// common includes
-#include <error_tools.h>
-#include <make_ptr.h>
-#include <progress_callback.h>
-// library includes
-#include <binary/container.h>
-#include <core/plugin_attrs.h>
-#include <core/plugins_parameters.h>
-#include <debug/log.h>
-#include <math/scale.h>
-#include <strings/prefixed_index.h>
-#include <time/duration.h>
-#include <time/serialize.h>
-#include <time/timer.h>
-// std includes
+#include "core/plugins/archives/l10n.h"
+#include "core/plugins/players/plugin.h"
+
+#include "binary/container.h"
+#include "core/plugin_attrs.h"
+#include "core/plugins_parameters.h"
+#include "debug/log.h"
+#include "math/scale.h"
+#include "strings/conversion.h"
+#include "strings/prefixed_index.h"
+#include "time/duration.h"
+#include "time/serialize.h"
+#include "time/timer.h"
+#include "tools/progress_callback.h"
+
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <algorithm>
 #include <array>
 #include <list>
 #include <map>
-
-#define FILE_TAG 7E0CBD98
 
 namespace ZXTune
 {
@@ -41,7 +42,7 @@ namespace ZXTune
   class StatisticBuilder
   {
   public:
-    typedef std::array<String, Fields> Line;
+    using Line = std::array<String, Fields>;
 
     StatisticBuilder()
       : Lines()
@@ -87,7 +88,7 @@ namespace ZXTune
       return res;
     }
 
-    static String Widen(const String& str, std::size_t wid)
+    static String Widen(StringView str, std::size_t wid)
     {
       String res(wid, ' ');
       std::copy(str.begin(), str.end(), res.begin());
@@ -104,30 +105,26 @@ namespace ZXTune
     using TimeUnit = Time::Timer::NativeUnit;
 
   public:
-    Statistic()
-      : TotalData(0)
-      , ArchivedData(0)
-      , ModulesData(0)
-    {}
+    Statistic() = default;
 
     ~Statistic()
     {
       const Debug::Stream Dbg("Core::RawScaner::Statistic");
       const auto spent = Timer.Elapsed();
-      Dbg("Total processed: %1%", TotalData);
-      Dbg("Time spent: %1%", Time::ToString(spent));
+      Dbg("Total processed: {}", TotalData);
+      Dbg("Time spent: {}", Time::ToString(spent));
       const uint64_t useful = ArchivedData + ModulesData;
-      Dbg("Useful detected: %1% (%2% archived + %3% modules)", useful, ArchivedData, ModulesData);
-      Dbg("Coverage: %1%%%", useful * 100 / TotalData);
-      Dbg("Speed: %1% b/s", spent.Get() ? (TotalData * spent.PER_SECOND / spent.Get()) : TotalData);
+      Dbg("Useful detected: {} ({} archived + {} modules)", useful, ArchivedData, ModulesData);
+      Dbg("Coverage: {}%", useful * 100 / TotalData);
+      Dbg("Speed: {} b/s", spent.Get() ? (TotalData * spent.PER_SECOND / spent.Get()) : TotalData);
       StatisticBuilder<7> builder;
       builder.Add(MakeStatLine(), 0);
       StatItem total;
       total.Name = "Total";
-      for (DetectMap::const_iterator it = Detection.begin(), lim = Detection.end(); it != lim; ++it)
+      for (const auto& it : Detection)
       {
-        builder.Add(MakeStatLine(it->second), 1 + it->second.Index);
-        total += it->second;
+        builder.Add(MakeStatLine(it.second), 1 + it.second.Index);
+        total += it.second;
       }
       builder.Add(MakeStatLine(total), 1 + Detection.size());
       Dbg(builder.Get().c_str());
@@ -183,21 +180,14 @@ namespace ZXTune
     struct StatItem
     {
       String Name;
-      std::size_t Index;
-      std::size_t Aimed;
-      std::size_t Missed;
+      std::size_t Index = 0;
+      std::size_t Aimed = 0;
+      std::size_t Missed = 0;
       Time::Duration<TimeUnit> AimedTime;
       Time::Duration<TimeUnit> MissedTime;
       Time::Duration<TimeUnit> ScanTime;
 
-      StatItem()
-        : Index()
-        , Aimed()
-        , Missed()
-        , AimedTime()
-        , MissedTime()
-        , ScanTime()
-      {}
+      StatItem() = default;
 
       StatItem& operator+=(const StatItem& rh)
       {
@@ -226,12 +216,12 @@ namespace ZXTune
     {
       std::array<String, 7> res;
       res[0] = item.Name;
-      res[1] = std::to_string(item.Missed);
-      res[2] = std::to_string(item.Aimed + item.Missed);
-      res[3] = std::to_string(Percent(item.Aimed, item.Missed));
-      res[4] = std::to_string(item.MissedTime.CastTo<Time::Millisecond>().Get());
-      res[5] = std::to_string((item.MissedTime + item.AimedTime).CastTo<Time::Millisecond>().Get());
-      res[6] = std::to_string(Percent(item.AimedTime.Get(), item.MissedTime.Get()));
+      res[1] = Strings::ConvertFrom(item.Missed);
+      res[2] = Strings::ConvertFrom(item.Aimed + item.Missed);
+      res[3] = Strings::ConvertFrom(Percent(item.Aimed, item.Missed));
+      res[4] = Strings::ConvertFrom(item.MissedTime.CastTo<Time::Millisecond>().Get());
+      res[5] = Strings::ConvertFrom((item.MissedTime + item.AimedTime).CastTo<Time::Millisecond>().Get());
+      res[6] = Strings::ConvertFrom(Percent(item.AimedTime.Get(), item.MissedTime.Get()));
       return res;
     }
 
@@ -262,10 +252,10 @@ namespace ZXTune
 
   private:
     const Time::Timer Timer;
-    uint64_t TotalData;
-    uint64_t ArchivedData;
-    uint64_t ModulesData;
-    typedef std::map<const void*, StatItem> DetectMap;
+    uint64_t TotalData = 0;
+    uint64_t ArchivedData = 0;
+    uint64_t ModulesData = 0;
+    using DetectMap = std::map<const void*, StatItem>;
     DetectMap Detection;
   };
 }  // namespace ZXTune
@@ -274,10 +264,10 @@ namespace ZXTune::Raw
 {
   const Debug::Stream Dbg("Core::RawScaner");
 
-  const auto PLUGIN_PREFIX = "+"_sv;
+  const auto PLUGIN_PREFIX = "+"sv;
 
-  const Char ID[] = {'R', 'A', 'W', 0};
-  const Char* const INFO = ID;
+  const auto ID = "RAW"_id;
+  const auto INFO = "Raw scaner"sv;
   const uint_t CAPS = Capabilities::Category::CONTAINER | Capabilities::Container::Type::SCANER;
 
   const std::size_t SCAN_STEP = 1;
@@ -286,7 +276,7 @@ namespace ZXTune::Raw
   String CreateFilename(std::size_t offset)
   {
     assert(offset);
-    return Strings::PrefixedIndex(PLUGIN_PREFIX, offset).ToString();
+    return Strings::PrefixedIndex::Create(PLUGIN_PREFIX, offset).ToString();
   }
 
   class PluginParameters
@@ -298,21 +288,19 @@ namespace ZXTune::Raw
 
     std::size_t GetMinimalSize() const
     {
-      Parameters::IntType minRawSize = Parameters::ZXTune::Core::Plugins::Raw::MIN_SIZE_DEFAULT;
-      if (Accessor.FindValue(Parameters::ZXTune::Core::Plugins::Raw::MIN_SIZE, minRawSize)
-          && minRawSize < Parameters::IntType(MIN_MINIMAL_RAW_SIZE))
+      using namespace Parameters::ZXTune::Core::Plugins::Raw;
+      const auto minRawSize = Parameters::GetInteger<std::size_t>(Accessor, MIN_SIZE, MIN_SIZE_DEFAULT);
+      if (minRawSize < MIN_MINIMAL_RAW_SIZE)
       {
-        throw MakeFormattedError(THIS_LINE, translate("Specified minimal scan size (%1%). Should be more than %2%."),
+        throw MakeFormattedError(THIS_LINE, translate("Specified minimal scan size ({0}). Should be more than {1}."),
                                  minRawSize, MIN_MINIMAL_RAW_SIZE);
       }
-      return static_cast<std::size_t>(minRawSize);
+      return minRawSize;
     }
 
     bool GetDoubleAnalysis() const
     {
-      Parameters::IntType doubleAnalysis = 0;
-      Accessor.FindValue(Parameters::ZXTune::Core::Plugins::Raw::PLAIN_DOUBLE_ANALYSIS, doubleAnalysis);
-      return doubleAnalysis != 0;
+      return 0 != Parameters::GetInteger(Accessor, Parameters::ZXTune::Core::Plugins::Raw::PLAIN_DOUBLE_ANALYSIS);
     }
 
   private:
@@ -322,7 +310,7 @@ namespace ZXTune::Raw
   class ScanProgress
   {
   public:
-    ScanProgress(Log::ProgressCallback* delegate, std::size_t limit, const String& path)
+    ScanProgress(Log::ProgressCallback* delegate, std::size_t limit, StringView path)
       : Delegate(delegate)
       , ToPercent(limit, 100)
       , Text(ProgressMessage(ID, path))
@@ -338,19 +326,19 @@ namespace ZXTune::Raw
 
   private:
     Log::ProgressCallback* const Delegate;
-    const Math::ScaleFunctor<std::size_t> ToPercent;
+    const Math::ScaleFunctor<uint64_t> ToPercent;
     const String Text;
   };
 
   class ScanDataContainer : public Binary::Container
   {
   public:
-    typedef std::shared_ptr<ScanDataContainer> Ptr;
+    using Ptr = std::shared_ptr<ScanDataContainer>;
 
     ScanDataContainer(Binary::Container::Ptr delegate, std::size_t offset)
-      : Delegate(delegate)
-      , OriginalSize(delegate->Size())
-      , OriginalData(static_cast<const uint8_t*>(delegate->Start()))
+      : Delegate(std::move(delegate))
+      , OriginalSize(Delegate->Size())
+      , OriginalData(static_cast<const uint8_t*>(Delegate->Start()))
       , Offset(offset)
     {}
 
@@ -374,7 +362,7 @@ namespace ZXTune::Raw
       return Offset + minSize <= OriginalSize;
     }
 
-    std::size_t GetOffset()
+    std::size_t GetOffset() const
     {
       return Offset;
     }
@@ -394,7 +382,7 @@ namespace ZXTune::Raw
   class ScanDataLocation : public DataLocation
   {
   public:
-    typedef std::shared_ptr<ScanDataLocation> Ptr;
+    using Ptr = std::shared_ptr<ScanDataLocation>;
 
     ScanDataLocation(DataLocation::Ptr parent, std::size_t offset)
       : Parent(std::move(parent))
@@ -408,8 +396,8 @@ namespace ZXTune::Raw
 
     Analysis::Path::Ptr GetPath() const override
     {
-      const Analysis::Path::Ptr parentPath = Parent->GetPath();
-      if (std::size_t offset = Subdata->GetOffset())
+      auto parentPath = Parent->GetPath();
+      if (const auto offset = Subdata->GetOffset())
       {
         const auto subPath = CreateFilename(offset);
         return parentPath->Append(subPath);
@@ -419,7 +407,7 @@ namespace ZXTune::Raw
 
     Analysis::Path::Ptr GetPluginsChain() const override
     {
-      const Analysis::Path::Ptr parentPlugins = Parent->GetPluginsChain();
+      auto parentPlugins = Parent->GetPluginsChain();
       if (Subdata->GetOffset())
       {
         return parentPlugins->Append(ID);
@@ -463,7 +451,7 @@ namespace ZXTune::Raw
       , Start(start)
       , End(end)
     {
-      Dbg("Unknown data at %1%..%2%", Start, End);
+      Dbg("Unknown data at {}..{}", Start, End);
     }
 
     Binary::Container::Ptr GetData() const override
@@ -473,12 +461,23 @@ namespace ZXTune::Raw
 
     Analysis::Path::Ptr GetPath() const override
     {
-      return Parent->GetPath()->Append(CreateFilename(Start));
+      auto parentPath = Parent->GetPath();
+      if (Start)
+      {
+        const auto subPath = CreateFilename(Start);
+        return parentPath->Append(subPath);
+      }
+      return parentPath;
     }
 
     Analysis::Path::Ptr GetPluginsChain() const override
     {
-      return Parent->GetPluginsChain()->Append(ID);
+      auto parentPlugins = Parent->GetPluginsChain();
+      if (Start)
+      {
+        return parentPlugins->Append(ID);
+      }
+      return parentPlugins;
     }
 
   private:
@@ -493,18 +492,15 @@ namespace ZXTune::Raw
     struct PluginEntry
     {
       typename P::Ptr Plugin;
-      std::size_t Offset;
+      std::size_t Offset = 0;
 
       explicit PluginEntry(typename P::Ptr plugin)
         : Plugin(std::move(plugin))
-        , Offset()
       {}
 
-      PluginEntry()
-        : Offset()
-      {}
+      PluginEntry() = default;
     };
-    typedef typename std::vector<PluginEntry> PluginsList;
+    using PluginsList = typename std::vector<PluginEntry>;
 
   public:
     class Iterator
@@ -559,7 +555,6 @@ namespace ZXTune::Raw
 
     template<class Container>
     explicit LookaheadPluginsStorage(const Container& plugins)
-      : Offset()
     {
       for (const auto& plugin : plugins)
       {
@@ -569,7 +564,7 @@ namespace ZXTune::Raw
         }
         else
         {
-          Dbg("Ignore '%1%'", plugin->Description());
+          Dbg("Ignore '{}'", plugin->Description());
         }
       }
     }
@@ -593,7 +588,7 @@ namespace ZXTune::Raw
     }
 
   private:
-    std::size_t Offset;
+    std::size_t Offset = 0;
     PluginsList Plugins;
   };
 
@@ -604,17 +599,17 @@ namespace ZXTune::Raw
       : Delegate(std::move(delegate))
     {}
 
-    String Id() const override
+    PluginId Id() const override
     {
       return Delegate->Id();
     }
 
-    String Description() const override
+    StringView Description() const override
     {
       return Delegate->Description();
     }
 
-    uint_t Capabilities() const
+    uint_t Capabilities() const override
     {
       return Delegate->Capabilities();
     }
@@ -680,7 +675,6 @@ namespace ZXTune::Raw
       : Params(params)
       , Players(PlayerPlugin::Enumerate())
       , Archives(plainArchivesDoubleAnalysis ? DoubleAnalyzedArchives::GetPlugins() : ArchivePlugin::Enumerate())
-      , Offset()
     {}
 
     std::pair<std::size_t, bool> Detect(DataLocation::Ptr input, ArchiveCallback& callback)
@@ -691,7 +685,7 @@ namespace ZXTune::Raw
         Statistic::Self().AddModule(matched);
         return {matched, true};
       }
-      const auto detectedArchives = DetectIn(Archives, input, callback);
+      const auto detectedArchives = DetectIn(Archives, std::move(input), callback);
       if (const auto matched = detectedArchives->GetMatchedDataSize())
       {
         Statistic::Self().AddArchived(matched);
@@ -699,7 +693,7 @@ namespace ZXTune::Raw
       }
       const auto archiveLookahead = detectedArchives->GetLookaheadOffset();
       const auto moduleLookahead = detectedModules->GetLookaheadOffset();
-      Dbg("No archives for nearest %1% bytes, modules for %2% bytes", archiveLookahead, moduleLookahead);
+      Dbg("No archives for nearest {} bytes, modules for {} bytes", archiveLookahead, moduleLookahead);
       return {static_cast<std::size_t>(std::min(archiveLookahead, moduleLookahead)), false};
     }
 
@@ -721,12 +715,12 @@ namespace ZXTune::Raw
       {
         const Time::Timer detectTimer;
         const auto& plugin = iter.GetPlugin();
-        const auto result = plugin.Detect(Params, input, callback);
+        auto result = plugin.Detect(Params, input, callback);
         const auto id = plugin.Id();
         if (const auto usedSize = result->GetMatchedDataSize())
         {
           Statistic::Self().AddAimed(plugin, detectTimer);
-          Dbg("Detected %1% in %2% bytes at %3%.", id, usedSize, input->GetPath()->AsString());
+          Dbg("Detected {} in {} bytes at {}", id, usedSize, input->GetPath()->AsString());
           return result;
         }
         else if (!initialScan)
@@ -735,7 +729,7 @@ namespace ZXTune::Raw
           const Time::Timer scanTimer;
           const std::size_t lookahead = result->GetLookaheadOffset();
           iter.SetLookahead(lookahead);
-          Dbg("Disabling check of %1% for neareast %2% bytes starting from %3%", id, lookahead, Offset);
+          Dbg("Disabling check of {} for neareast {} bytes starting from {}", id, lookahead, Offset);
           if (lookahead == maxSize)
           {
             Statistic::Self().AddAimed(plugin, scanTimer);
@@ -754,7 +748,7 @@ namespace ZXTune::Raw
     const Parameters::Accessor& Params;
     LookaheadPluginsStorage<PlayerPlugin> Players;
     LookaheadPluginsStorage<ArchivePlugin> Archives;
-    std::size_t Offset;
+    std::size_t Offset = 0;
   };
 
   class Scaner : public ArchivePlugin
@@ -762,12 +756,12 @@ namespace ZXTune::Raw
   public:
     Scaner() = default;
 
-    String Id() const override
+    PluginId Id() const override
     {
       return ID;
     }
 
-    String Description() const override
+    StringView Description() const override
     {
       return INFO;
     }
@@ -790,7 +784,7 @@ namespace ZXTune::Raw
       Statistic::Self().Enqueue(size);
       if (size < MIN_MINIMAL_RAW_SIZE)
       {
-        Dbg("Size is too small (%1%)", size);
+        Dbg("Size is too small ({})", size);
         return Analysis::CreateUnmatchedResult(size);
       }
 
@@ -798,7 +792,7 @@ namespace ZXTune::Raw
       const std::size_t minRawSize = scanParams.GetMinimalSize();
 
       const String currentPath = input->GetPath()->AsString();
-      Dbg("Detecting modules in raw data at '%1%'", currentPath);
+      Dbg("Detecting modules in raw data at '{}'", currentPath);
       ScanProgress progress(callback.GetProgress(), size, currentPath);
 
       RawDetectionPlugins usedPlugins(params, scanParams.GetDoubleAnalysis());
@@ -837,8 +831,8 @@ namespace ZXTune::Raw
     DataLocation::Ptr TryOpen(const Parameters::Accessor& /*params*/, DataLocation::Ptr location,
                               const Analysis::Path& inPath) const override
     {
-      const String& pathComp = inPath.GetIterator()->Get();
-      const Strings::PrefixedIndex pathIndex(PLUGIN_PREFIX, pathComp);
+      const auto& pathComp = inPath.Elements().front();
+      const auto pathIndex = Strings::PrefixedIndex::Parse(PLUGIN_PREFIX, pathComp);
       if (pathIndex.IsValid())
       {
         const auto offset = pathIndex.GetIndex();

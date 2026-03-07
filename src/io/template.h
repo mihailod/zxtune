@@ -10,10 +10,11 @@
 
 #pragma once
 
-// library includes
-#include <strings/template.h>
+#include "strings/template.h"
+
+#include "string_view.h"
 
 namespace IO
 {
-  Strings::Template::Ptr CreateFilenameTemplate(const String& notation);
+  Strings::Template::Ptr CreateFilenameTemplate(StringView notation);
 }

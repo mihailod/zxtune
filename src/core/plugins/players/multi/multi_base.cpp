@@ -8,29 +8,24 @@
  *
  **/
 
-// local includes
 #include "core/plugins/players/multi/multi_base.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <parameters/merged_accessor.h>
-#include <parameters/visitor.h>
-#include <sound/loop.h>
-// std includes
+
+#include "parameters/merged_accessor.h"
+#include "parameters/visitor.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <algorithm>
 
 namespace Module
 {
-  typedef std::vector<Renderer::Ptr> RenderersArray;
+  using RenderersArray = std::vector<Renderer::Ptr>;
 
   class WideSample
   {
   public:
-    WideSample()
-      : Left()
-      , Right()
-    {}
+    WideSample() = default;
 
     explicit WideSample(const Sound::Sample& rh)
       : Left(rh.Left())
@@ -46,12 +41,12 @@ namespace Module
     Sound::Sample Convert(int_t divisor) const
     {
       static_assert(Sound::Sample::MID == 0, "Sound samples should be signed");
-      return Sound::Sample(Left / divisor, Right / divisor);
+      return {Left / divisor, Right / divisor};
     }
 
   private:
-    Sound::Sample::WideType Left;
-    Sound::Sample::WideType Right;
+    Sound::Sample::WideType Left = 0;
+    Sound::Sample::WideType Right = 0;
   };
 
   class CumulativeChunk
@@ -148,14 +143,13 @@ namespace Module
       return Delegates.front()->GetState();
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      static const Sound::LoopParameters INFINITE_LOOP{true, 0};
       for (std::size_t idx = 0, lim = Delegates.size(); idx != lim; ++idx)
       {
         if (Target.NeedStream(idx))
         {
-          auto data = Delegates[idx]->Render(idx == 0 ? looped : INFINITE_LOOP);
+          auto data = Delegates[idx]->Render();
           Target.MixStream(idx, data);
         }
       }
@@ -180,7 +174,7 @@ namespace Module
       Target.Reset();
     }
 
-    static Ptr Create(uint_t samplerate, Parameters::Accessor::Ptr params, const Multi::HoldersArray& holders)
+    static Ptr Create(uint_t samplerate, const Parameters::Accessor::Ptr& params, const Multi::HoldersArray& holders)
     {
       const auto count = holders.size();
       Require(count > 1);
@@ -219,7 +213,7 @@ namespace Module
 
     Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr params) const override
     {
-      return MultiRenderer::Create(samplerate, std::move(params), Delegates);
+      return MultiRenderer::Create(samplerate, params, Delegates);
     }
 
   private:
@@ -229,15 +223,12 @@ namespace Module
   };
 }  // namespace Module
 
-namespace Module
+namespace Module::Multi
 {
-  namespace Multi
+  Module::Holder::Ptr CreateHolder(Parameters::Accessor::Ptr tuneProperties, HoldersArray holders)
   {
-    Module::Holder::Ptr CreateHolder(Parameters::Accessor::Ptr tuneProperties, HoldersArray holders)
-    {
-      Require(!holders.empty());
-      return holders.size() == 1 ? std::move(holders.front())
-                                 : MakePtr<MultiHolder>(std::move(tuneProperties), std::move(holders));
-    }
-  }  // namespace Multi
-}  // namespace Module
+    Require(!holders.empty());
+    return holders.size() == 1 ? std::move(holders.front())
+                               : MakePtr<MultiHolder>(std::move(tuneProperties), std::move(holders));
+  }
+}  // namespace Module::Multi

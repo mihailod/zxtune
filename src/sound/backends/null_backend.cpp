@@ -8,20 +8,17 @@
  *
  **/
 
-// local includes
 #include "sound/backends/backend_impl.h"
 #include "sound/backends/storage.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <l10n/markup.h>
-#include <sound/backend_attrs.h>
 
-#define FILE_TAG 9A6FD87F
+#include "l10n/markup.h"
+#include "sound/backend_attrs.h"
+
+#include "make_ptr.h"
 
 namespace Sound::Null
 {
-  const Char BACKEND_ID[] = "null";
+  const auto BACKEND_ID = "null"_id;
   const char* const DESCRIPTION = L10n::translate("Null output backend");
 
   class BackendWorker : public Sound::BackendWorker
@@ -41,7 +38,7 @@ namespace Sound::Null
 
     VolumeControl::Ptr GetVolumeControl() const override
     {
-      return VolumeControl::Ptr();
+      return {};
     }
   };
 
@@ -59,9 +56,7 @@ namespace Sound
 {
   void RegisterNullBackend(BackendsStorage& storage)
   {
-    const BackendWorkerFactory::Ptr factory = MakePtr<Null::BackendWorkerFactory>();
-    storage.Register(Null::BACKEND_ID, Null::DESCRIPTION, CAP_TYPE_STUB, factory);
+    auto factory = MakePtr<Null::BackendWorkerFactory>();
+    storage.Register(Null::BACKEND_ID, Null::DESCRIPTION, CAP_TYPE_STUB, std::move(factory));
   }
 }  // namespace Sound
-
-#undef FILE_TAG

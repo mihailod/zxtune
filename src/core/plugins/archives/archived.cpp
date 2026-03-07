@@ -8,17 +8,18 @@
  *
  **/
 
-// local includes
 #include "core/plugins/archives/archived.h"
+
 #include "core/plugins/archives/l10n.h"
-// common includes
-#include <make_ptr.h>
-#include <progress_callback.h>
-// library includes
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <module/attributes.h>
-#include <strings/format.h>
+
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "module/attributes.h"
+#include "strings/format.h"
+#include "tools/progress_callback.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
 
 namespace ZXTune
 {
@@ -27,14 +28,14 @@ namespace ZXTune
   class LoggerHelper
   {
   public:
-    LoggerHelper(uint_t total, Log::ProgressCallback* delegate, String plugin, String path)
+    LoggerHelper(uint_t total, Log::ProgressCallback* delegate, PluginId plugin, StringView path)
       : Delegate(path.empty() ? delegate : nullptr)  // track only toplevel container
       , ToPercent(total, 100)
-      , Id(std::move(plugin))
-      , Path(std::move(path))
+      , Id(plugin)
+      , Path(path)
     {}
 
-    void Report(const String& name)
+    void Report(StringView name)
     {
       if (Delegate)
       {
@@ -46,7 +47,7 @@ namespace ZXTune
   private:
     Log::ProgressCallback* const Delegate;
     const Math::ScaleFunctor<uint_t> ToPercent;
-    const String Id;
+    const PluginId Id;
     const String Path;
     uint_t Current = 0;
   };
@@ -54,11 +55,11 @@ namespace ZXTune
   class ContainerDetectCallback : public Formats::Archived::Container::Walker
   {
   public:
-    ContainerDetectCallback(std::size_t maxSize, String plugin, DataLocation::Ptr location, uint_t count,
+    ContainerDetectCallback(std::size_t maxSize, PluginId plugin, DataLocation::Ptr location, uint_t count,
                             ArchiveCallback& callback)
       : MaxSize(maxSize)
       , BaseLocation(std::move(location))
-      , SubPlugin(std::move(plugin))
+      , SubPlugin(plugin)
       , Logger(count, callback.GetProgress(), SubPlugin, BaseLocation->GetPath()->AsString())
       , Callback(callback)
     {}
@@ -73,7 +74,7 @@ namespace ZXTune
       }
       else
       {
-        ArchivedDbg("'%1%' is too big (%1%). Skipping.", name, size);
+        ArchivedDbg("'{}' is too big ({}). Skipping.", name, size);
       }
       Logger.Report(name);
     }
@@ -92,7 +93,7 @@ namespace ZXTune
   private:
     const std::size_t MaxSize;
     const DataLocation::Ptr BaseLocation;
-    const String SubPlugin;
+    const PluginId SubPlugin;
     mutable LoggerHelper Logger;
     ArchiveCallback& Callback;
   };
@@ -100,18 +101,18 @@ namespace ZXTune
   class ArchivedContainerPlugin : public ArchivePlugin
   {
   public:
-    ArchivedContainerPlugin(StringView id, uint_t caps, Formats::Archived::Decoder::Ptr decoder)
-      : Identifier(id.to_string())
+    ArchivedContainerPlugin(PluginId id, uint_t caps, Formats::Archived::Decoder::Ptr decoder)
+      : Identifier(id)
       , Caps(caps)
       , Decoder(std::move(decoder))
     {}
 
-    String Id() const override
+    PluginId Id() const override
     {
       return Identifier;
     }
 
-    String Description() const override
+    StringView Description() const override
     {
       return Decoder->GetDescription();
     }
@@ -134,7 +135,7 @@ namespace ZXTune
       {
         if (const auto count = archive->CountFiles())
         {
-          ContainerDetectCallback detect(~std::size_t(0), Identifier, input, count, callback);
+          const ContainerDetectCallback detect(~std::size_t(0), Identifier, input, count, callback);
           archive->ExploreFiles(detect);
         }
         return Analysis::CreateMatchedResult(archive->Size());
@@ -169,11 +170,11 @@ namespace ZXTune
                                           const Analysis::Path& path) const
     {
       auto resolved = Analysis::ParsePath(String(), Module::SUBPATH_DELIMITER);
-      for (const auto components = path.GetIterator(); components->IsValid(); components->Next())
+      for (const auto& element : path.Elements())
       {
-        resolved = resolved->Append(components->Get());
+        resolved = resolved->Append(element);
         const String filename = resolved->AsString();
-        ArchivedDbg("Trying '%1%'", filename);
+        ArchivedDbg("Trying '{}'", filename);
         if (auto file = container.FindFile(filename))
         {
           ArchivedDbg("Found");
@@ -188,7 +189,7 @@ namespace ZXTune
     }
 
   private:
-    const String Identifier;
+    const PluginId Identifier;
     const uint_t Caps;
     const Formats::Archived::Decoder::Ptr Decoder;
   };
@@ -196,20 +197,20 @@ namespace ZXTune
 
 namespace ZXTune
 {
-  ArchivePlugin::Ptr CreateArchivePlugin(StringView id, uint_t caps, Formats::Archived::Decoder::Ptr decoder)
+  ArchivePlugin::Ptr CreateArchivePlugin(PluginId id, uint_t caps, Formats::Archived::Decoder::Ptr decoder)
   {
-    return MakePtr<ArchivedContainerPlugin>(id, caps | Capabilities::Category::CONTAINER, decoder);
+    return MakePtr<ArchivedContainerPlugin>(id, caps | Capabilities::Category::CONTAINER, std::move(decoder));
   }
 
-  String ProgressMessage(const String& id, const String& path)
+  String ProgressMessage(PluginId id, StringView path)
   {
-    return path.empty() ? Strings::Format(translate("%1% processing"), id)
-                        : Strings::Format(translate("%1% processing at %2%"), id, path);
+    return path.empty() ? Strings::FormatRuntime(translate("{} processing"), id)
+                        : Strings::FormatRuntime(translate("{0} processing at {1}"), id, path);
   }
 
-  String ProgressMessage(const String& id, const String& path, const String& element)
+  String ProgressMessage(PluginId id, StringView path, StringView element)
   {
-    return path.empty() ? Strings::Format(translate("%1% processing for %2%"), id, element)
-                        : Strings::Format(translate("%1% processing for %2% at %3%"), id, element, path);
+    return path.empty() ? Strings::FormatRuntime(translate("{0} processing for {1}"), id, element)
+                        : Strings::FormatRuntime(translate("{0} processing for {1} at {2}"), id, element, path);
   }
 }  // namespace ZXTune

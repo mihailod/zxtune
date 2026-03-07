@@ -10,10 +10,11 @@
 
 #pragma once
 
-// common includes
-#include <parameters/container.h>
-#include <types.h>
-// qt includes
+#include "parameters/container.h"
+
+#include "string_view.h"
+#include "types.h"
+
 #include <QtWidgets/QWidget>
 
 namespace UI
@@ -25,8 +26,15 @@ namespace UI
     explicit BackendSettingsWidget(QWidget& parent);
 
   public:
-    virtual String GetBackendId() const = 0;
+    // TODO: use Sound::BackendId
+    virtual StringView GetBackendId() const = 0;
     virtual QString GetDescription() const = 0;
+
+    template<class T>
+    void SettingChanged(T)
+    {
+      emit SettingsChanged();
+    }
   signals:
     void SettingsChanged();
   };

@@ -19,7 +19,7 @@ source_files = $(addprefix emu/cores/,\
   pwm \
   gb \
   nesintf np_nes_apu np_nes_dmc np_nes_fds nes_apu \
-  multipcm \
+  mikey multipcm \
   upd7759 \
   okim6258 \
   okim6295 okiadpcm \
@@ -48,6 +48,8 @@ source_files += $(addprefix utils/,DataLoader StrUtils-CPConv_Stub)
 
 source_files := $(addsuffix .c,$(source_files))
 
-source_files += $(addprefix player/,playerbase.cpp s98player.cpp vgmplayer.cpp vgmplayer_cmdhandler.cpp helper.c dblk_compr.c)
+source_files += $(addprefix player/,playera.cpp playerbase.cpp s98player.cpp vgmplayer.cpp vgmplayer_cmdhandler.cpp helper.c dblk_compr.c)
+
+defines += HAVE_STDINT_H VGM_LITTLE_ENDIAN
 
 include $(dirs.root)/makefile.mak

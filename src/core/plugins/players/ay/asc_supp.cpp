@@ -8,31 +8,25 @@
  *
  **/
 
-// local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/ay/aym_plugin.h"
-// library includes
-#include <module/players/aym/ascsoundmaster.h>
+#include "module/players/aym/ascsoundmaster.h"
 
 namespace ZXTune
 {
   void RegisterASCSupport(PlayerPluginsRegistrator& registrator)
   {
     {
-      const Char ID[] = {'A', 'S', '0', 0};
-      const Formats::Chiptune::ASCSoundMaster::Decoder::Ptr decoder =
-          Formats::Chiptune::ASCSoundMaster::Ver0::CreateDecoder();
-      const Module::AYM::Factory::Ptr factory = Module::ASCSoundMaster::CreateFactory(decoder);
-      const PlayerPlugin::Ptr plugin = CreateTrackPlayerPlugin(ID, decoder, factory);
-      registrator.RegisterPlugin(plugin);
+      auto decoder = Formats::Chiptune::ASCSoundMaster::Ver0::CreateDecoder();
+      auto factory = Module::ASCSoundMaster::CreateFactory(decoder);
+      auto plugin = CreateTrackPlayerPlugin("AS0"_id, std::move(decoder), std::move(factory));
+      registrator.RegisterPlugin(std::move(plugin));
     }
     {
-      const Char ID[] = {'A', 'S', 'C', 0};
-      const Formats::Chiptune::ASCSoundMaster::Decoder::Ptr decoder =
-          Formats::Chiptune::ASCSoundMaster::Ver1::CreateDecoder();
-      const Module::AYM::Factory::Ptr factory = Module::ASCSoundMaster::CreateFactory(decoder);
-      const PlayerPlugin::Ptr plugin = CreateTrackPlayerPlugin(ID, decoder, factory);
-      registrator.RegisterPlugin(plugin);
+      auto decoder = Formats::Chiptune::ASCSoundMaster::Ver1::CreateDecoder();
+      auto factory = Module::ASCSoundMaster::CreateFactory(decoder);
+      auto plugin = CreateTrackPlayerPlugin("ASC"_id, std::move(decoder), std::move(factory));
+      registrator.RegisterPlugin(std::move(plugin));
     }
   }
 }  // namespace ZXTune

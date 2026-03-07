@@ -8,22 +8,22 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/digital/digitalstudio.h"
+
 #include "formats/chiptune/container.h"
 #include "formats/chiptune/digital/digital_detail.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-// library includes
-#include <binary/dump.h>
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <strings/optimize.h>
-// std includes
+
+#include "binary/dump.h"
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "strings/optimize.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <array>
 #include <cstring>
 
@@ -33,9 +33,9 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::DigitalStudio");
 
-    const Char DESCRIPTION[] = "Digital Studio";
-    const Char VERSION_AY[] = " (AY)";
-    const Char VERSION_DAC[] = " (Covox/SD)";
+    const auto DESCRIPTION = "Digital Studio"sv;
+    const auto VERSION_AY = " (AY)"sv;
+    const auto VERSION_DAC = " (Covox/SD)"sv;
 
     const std::size_t COMPILED_MODULE_SIZE = 0x1c200;
     const std::size_t MODULE_SIZE = 0x1b200;
@@ -72,7 +72,7 @@ namespace Formats::Chiptune
       std::array<char, 8> Name;
     };
 
-    typedef std::array<uint8_t, 0x38> ZeroesArray;
+    using ZeroesArray = std::array<uint8_t, 56>;
 
     // Usually located at #7e00
     struct Header
@@ -111,10 +111,7 @@ namespace Formats::Chiptune
     class SamplesSet
     {
     public:
-      SamplesSet()
-        : SamplesTotal()
-        , Samples4Bit()
-      {}
+      SamplesSet() = default;
 
       void Add(uint_t idx, std::size_t loop, Binary::View data1, Binary::View data2 = Binary::View(nullptr, 0))
       {
@@ -126,21 +123,21 @@ namespace Formats::Chiptune
         {
           std::memcpy(res.data() + size1, data2.Start(), size2);
         }
-        Add(idx, loop, res);
+        Add(idx, loop, std::move(res));
       }
 
       void Add(uint_t idx, std::size_t loop, Binary::Dump data)
       {
         Description& desc = Samples[idx];
         desc = Description(loop, std::move(data));
-        Dbg(" size #%1$05x, loop #%2$04x%3%", desc.Content.size(), loop, desc.Is4Bit ? " 4bit" : "");
+        Dbg(" size #{:05x}, loop #{:04x}{}", desc.Content.size(), loop, desc.Is4Bit ? " 4bit" : "");
         ++SamplesTotal;
         Samples4Bit += desc.Is4Bit;
       }
 
       bool Is4Bit() const
       {
-        Dbg("%1% 4-bit samples out of %2%", Samples4Bit, SamplesTotal);
+        Dbg("{} 4-bit samples out of {}", Samples4Bit, SamplesTotal);
         return Samples4Bit >= SamplesTotal / 2;
       }
 
@@ -171,15 +168,11 @@ namespace Formats::Chiptune
 
       struct Description
       {
-        std::size_t Loop;
+        std::size_t Loop = 0;
         Binary::Dump Content;
-        bool Is4Bit;
+        bool Is4Bit = false;
 
-        Description()
-          : Loop()
-          , Content()
-          , Is4Bit()
-        {}
+        Description() = default;
 
         Description(std::size_t loop, Binary::Dump content)
           : Loop(loop)
@@ -188,8 +181,8 @@ namespace Formats::Chiptune
         {}
       };
       std::array<Description, SAMPLES_COUNT> Samples;
-      uint_t SamplesTotal;
-      uint_t Samples4Bit;
+      uint_t SamplesTotal = 0;
+      uint_t Samples4Bit = 0;
     };
 
     class Format
@@ -217,7 +210,7 @@ namespace Formats::Chiptune
         {
           names[idx] = Strings::OptimizeAscii(Source.Samples[idx].Name);
         }
-        meta.SetStrings(std::move(names));
+        meta.SetStrings(names);
       }
 
       void ParsePositions(Builder& target) const
@@ -226,7 +219,7 @@ namespace Formats::Chiptune
         Digital::Positions positions;
         positions.Loop = Source.Loop;
         positions.Lines.assign(Source.Positions.begin(), Source.Positions.begin() + Source.Length);
-        Dbg("Positions: %1%, loop to %2%", positions.GetSize(), positions.GetLoop());
+        Dbg("Positions: {}, loop to {}", positions.GetSize(), positions.GetLoop());
         target.SetPositions(std::move(positions));
       }
 
@@ -235,7 +228,7 @@ namespace Formats::Chiptune
         for (Indices::Iterator it = pats.Items(); it; ++it)
         {
           const uint_t patIndex = *it;
-          Dbg("Parse pattern %1%", patIndex);
+          Dbg("Parse pattern {}", patIndex);
           PatternBuilder& patBuilder = target.StartPattern(patIndex);
           ParsePattern(Source.Patterns[patIndex], patBuilder, target);
         }
@@ -247,7 +240,7 @@ namespace Formats::Chiptune
         {
           const uint_t samIdx = *it;
           const SampleInfo& info = Source.Samples[samIdx];
-          Dbg("Sample %1%: start=#%2$04x loop=#%3$04x page=#%4$02x size=#%5$04x", samIdx, info.Start, info.Loop,
+          Dbg("Sample {}: start=#{:04x} loop=#{:04x} page=#{:02x} size=#{:04x}", samIdx, info.Start, info.Loop,
               unsigned(info.Page), info.Size);
           if (!ParseSample(samIdx, info, samples))
           {
@@ -268,7 +261,7 @@ namespace Formats::Chiptune
       Binary::View GetSampleData(std::size_t offset, std::size_t size) const
       {
         const auto total = RawData.SubView(offset, size);
-        const uint8_t* const start = total.As<uint8_t>();
+        const auto* const start = total.As<uint8_t>();
         const uint8_t* const end = start + total.Size();
         const uint8_t* const sampleEnd = std::find(start, end, 0xff);
         if (const std::size_t newSize = sampleEnd - start)
@@ -278,7 +271,7 @@ namespace Formats::Chiptune
         }
         else
         {
-          return Binary::View(nullptr, 0);
+          return {nullptr, 0};
         }
       }
 
@@ -392,11 +385,11 @@ namespace Formats::Chiptune
             const auto part1 = RawData.SubView(firstOffset, firstSize);
             const std::size_t secondOffset = offsets[pageNumber];
             const std::size_t secondSize = sampleOffsetInPage + sampleSize - ZX_PAGE_SIZE;
-            Dbg(" Two parts in low memory: #%1$05x..#%2$05x + #%3$05x..#%4$05x", firstOffset, firstOffset + firstSize,
+            Dbg(" Two parts in low memory: #{:05x}..#{:05x} + #{:05x}..#{:05x}", firstOffset, firstOffset + firstSize,
                 secondOffset, secondOffset + secondSize);
             if (const auto part2 = GetSampleData(secondOffset, secondSize))
             {
-              Dbg(" Using two parts with sizes #%1$05x + #%2$05x", part1.Size(), part2.Size());
+              Dbg(" Using two parts with sizes #{:05x} + #{:05x}", part1.Size(), part2.Size());
               out.Add(samIdx, loop, part1, part2);
               return true;
             }
@@ -410,7 +403,7 @@ namespace Formats::Chiptune
           else
           {
             const std::size_t dataOffset = offsets[0] + sampleOffsetInPage;
-            Dbg(" One part in low memory: #%1$05x..#%2$05x", dataOffset, dataOffset + sampleSize);
+            Dbg(" One part in low memory: #{:05x}..#{:05x}", dataOffset, dataOffset + sampleSize);
             if (const auto data = GetSampleData(dataOffset, sampleSize))
             {
               out.Add(samIdx, loop, data);
@@ -421,7 +414,7 @@ namespace Formats::Chiptune
         else
         {
           const std::size_t dataOffset = offsets[pageNumber] + sampleOffsetInPage;
-          Dbg(" Hi memory: #%1$05x..#%2$05x", dataOffset, dataOffset + sampleSize);
+          Dbg(" Hi memory: #{:05x}..#{:05x}", dataOffset, dataOffset + sampleSize);
           if (const auto data = GetSampleData(dataOffset, sampleSize))
           {
             out.Add(samIdx, loop, data);
@@ -455,7 +448,7 @@ namespace Formats::Chiptune
         "ff{10}"
         "????????"  //"ae7eae7e51000000"
         "20{8}"
-        ""_sv;
+        ""sv;
 
     const uint64_t Z80_FREQ = 3500000;
     // step is not changed in AY and SounDrive versions
@@ -470,7 +463,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MODULE_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -489,7 +482,7 @@ namespace Formats::Chiptune
       {
         if (!Format->Match(rawData))
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
         Builder& stub = Digital::GetStubBuilder();
         return Parse(rawData, stub);
@@ -504,7 +497,7 @@ namespace Formats::Chiptune
       const Binary::View data(rawData);
       if (!FastCheck(data))
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
 
       try
@@ -534,7 +527,7 @@ namespace Formats::Chiptune
       catch (const std::exception&)
       {
         Dbg("Failed to create");
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
   }  // namespace DigitalStudio

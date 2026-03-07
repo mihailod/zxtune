@@ -10,12 +10,11 @@
 
 #pragma once
 
-// local includes
-#include "playlist/supp/data.h"
-// library includes
-#include <parameters/accessor.h>
-#include <parameters/identifier.h>
-// qt includes
+#include "apps/zxtune-qt/playlist/supp/data.h"
+
+#include "parameters/accessor.h"
+#include "parameters/identifier.h"
+
 #include <QtCore/QLatin1String>
 
 namespace Playlist
@@ -36,7 +35,7 @@ namespace Playlist
     class Container
     {
     public:
-      typedef std::shared_ptr<const Container> Ptr;
+      using Ptr = std::shared_ptr<const Container>;
 
       virtual ~Container() = default;
 

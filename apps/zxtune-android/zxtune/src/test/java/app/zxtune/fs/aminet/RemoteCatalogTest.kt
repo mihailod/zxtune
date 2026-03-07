@@ -5,10 +5,16 @@ import app.zxtune.fs.httpdir.RemoteCatalogTestBase
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
+import org.robolectric.ParameterizedRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
-class RemoteCatalogTest : RemoteCatalogTestBase() {
+@RunWith(ParameterizedRobolectricTestRunner::class)
+class RemoteCatalogTest(remoteUrlIdx: Int) : RemoteCatalogTestBase(remoteUrlIdx) {
+
+    companion object {
+        @JvmStatic
+        @ParameterizedRobolectricTestRunner.Parameters
+        fun data() = Array(Path.REMOTE_URLS_COUNT) { i -> i }
+    }
 
     @Before
     fun setUp() = setUpTest(::RemoteCatalog)
@@ -17,7 +23,7 @@ class RemoteCatalogTest : RemoteCatalogTestBase() {
     fun `test root`() = with(Path.create()) {
         //hardcoded entries, filtered in Root
         val entries = arrayOf(
-            "32bit", "@MP3s by 32bit choonz (2 packages)",
+            "32bit", "@MP3s by 32bit choonz (6 packages)",
             "xm", "@Multichannel xm mods (413 packages)"
         )
         test(this, entries, Mode.CHECK_MISSED)
@@ -35,8 +41,8 @@ class RemoteCatalogTest : RemoteCatalogTestBase() {
     @Test
     fun `test search`() {
         val entries = arrayOf( //filename
-            "/misc/BeginLife.lha", "116K@Rymix/[Death] mod: 'Beginning of Life'",  //description
-            "/neuro/nd-cls03.lha", "105K@The new Beginning (older Module by Neurodancer/1oo%)"
+            "/misc/BeginLife.lha", "116K@Rymix/[Death] mod: \\'Beginning of Life\\'",  //description
+            "/wmr/newbegin.lha", "155K@IMM-Mon: \\\"A New Beginning\\\" by Deeno"
         )
         with(CheckingVisitor(entries, Mode.CHECK_MISSED)) {
             (catalog as RemoteCatalog).find("begin", this)

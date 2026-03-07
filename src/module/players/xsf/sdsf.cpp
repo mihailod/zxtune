@@ -8,25 +8,24 @@
  *
  **/
 
-// local includes
 #include "module/players/xsf/sdsf.h"
+
+#include "module/players/platforms.h"
+#include "module/players/streaming.h"
 #include "module/players/xsf/xsf.h"
-#include "module/players/xsf/xsf_factory.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/compression/zlib_container.h>
-#include <debug/log.h>
-#include <module/attributes.h>
-#include <module/players/platforms.h>
-#include <module/players/streaming.h>
-#include <sound/resampler.h>
-// std includes
+
+#include "binary/compression/zlib_container.h"
+#include "debug/log.h"
+#include "module/attributes.h"
+#include "sound/resampler.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
+#include "3rdparty/ht/Core/sega.h"
+
 #include <list>
-// 3rdparty includes
-#include <3rdparty/ht/Core/sega.h>
 
 namespace Module::SDSF
 {
@@ -72,7 +71,7 @@ namespace Module::SDSF
       Dreamcast = 2,
     };
 
-    std::unique_ptr<uint8_t[]> CreateSega(Version version) const
+    static std::unique_ptr<uint8_t[]> CreateSega(Version version)
     {
       std::unique_ptr<uint8_t[]> res(new uint8_t[::sega_get_state_size(static_cast<uint8>(version))]);
       ::sega_clear_state(res.get(), static_cast<uint8>(version));
@@ -154,10 +153,10 @@ namespace Module::SDSF
         const auto unpackedSection = Binary::Compression::Zlib::Decompress(*packed);
         const auto rawSize = unpackedSection->Size();
         Require(rawSize > sizeof(le_uint32_t));
-        const auto rawStart = static_cast<le_uint32_t*>(const_cast<void*>(unpackedSection->Start()));
+        auto* const rawStart = static_cast<le_uint32_t*>(const_cast<void*>(unpackedSection->Start()));
         const auto toCopy = FixupSection(rawStart, rawSize);
         // TODO: make input const
-        Dbg("Section %1% -> %2%  @ 0x%3$08x", packed->Size(), toCopy, *rawStart);
+        Dbg("Section {} -> {}  @ 0x{:08x}", packed->Size(), toCopy, *rawStart);
         Require(0 == ::sega_upload_program(Emu.get(), rawStart, toCopy));
       }
     }
@@ -199,13 +198,9 @@ namespace Module::SDSF
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto avail = State->Consume(FRAME_DURATION, looped);
+      const auto avail = State->ConsumeUpTo(FRAME_DURATION);
       return Target->Apply(Engine.Render(GetSamples(avail)));
     }
 
@@ -263,8 +258,7 @@ namespace Module::SDSF
       {
         tune->Meta->Dump(*properties);
       }
-      properties->SetValue(ATTR_PLATFORM, tune->Version == 0x11 ? Platforms::SEGA_SATURN.to_string()
-                                                                : Platforms::DREAMCAST.to_string());
+      properties->SetValue(ATTR_PLATFORM, tune->Version == 0x11 ? Platforms::SEGA_SATURN : Platforms::DREAMCAST);
       return MakePtr<Holder>(std::move(tune), std::move(properties));
     }
 
@@ -325,7 +319,7 @@ namespace Module::SDSF
       return Holder::Create(builder.CaptureResult(file.Version), std::move(properties));
     }
 
-    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles,
+    Holder::Ptr CreateMultifileModule(const XSF::File& file, const XSF::FilesMap& additionalFiles,
                                       Parameters::Container::Ptr properties) const override
     {
       ModuleDataBuilder builder;
@@ -354,8 +348,8 @@ namespace Module::SDSF
     */
     static const uint_t MAX_LEVEL = 10;
 
-    static void MergeSections(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
-                              ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeSections(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
+                              uint_t level = 1)
     {
       auto it = data.Dependencies.begin();
       const auto lim = data.Dependencies.end();
@@ -373,8 +367,8 @@ namespace Module::SDSF
       }
     }
 
-    static void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
-                          ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeMeta(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
+                          uint_t level = 1)
     {
       if (level < MAX_LEVEL)
       {
@@ -390,8 +384,8 @@ namespace Module::SDSF
     }
   };
 
-  Module::Factory::Ptr CreateFactory()
+  XSF::Factory::Ptr CreateFactory()
   {
-    return XSF::CreateFactory(MakePtr<Factory>());
+    return MakePtr<Factory>();
   }
 }  // namespace Module::SDSF

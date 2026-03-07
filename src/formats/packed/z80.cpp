@@ -8,16 +8,17 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <formats/packed.h>
-// std includes
+
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <array>
 #include <numeric>
 #include <utility>
@@ -165,7 +166,7 @@ namespace Formats::Packed
       static Formats::Packed::Container::Ptr Decode(Binary::InputStream& stream);
     };
 
-    const StringView Version1_45::DESCRIPTION = "Z80 v1.45"_sv;
+    const StringView Version1_45::DESCRIPTION = "Z80 v1.45"sv;
     const StringView Version1_45::HEADER =
         "(\?\?){6}"                      // skip registers
         "%001xxxxx"                      // take into account only compressed data
@@ -173,14 +174,14 @@ namespace Formats::Packed
         "00|01|ff"                       // iff1
         "00|01|ff"                       // iff2
         "%xxxxxx00|%xxxxxx01|%xxxxxx10"  // im3 cannot be
-        ""_sv;
-    const StringView Version1_45::FOOTER = "00eded00"_sv;
+        ""sv;
+    const StringView Version1_45::FOOTER = "00eded00"sv;
 
     // even if all 48kb are compressed, minimal compressed size is 4 bytes for each 255 sequenced bytes + final marker
     const std::size_t Version1_45::MIN_SIZE = sizeof(Version1_45::Header) + 4 * (49152 / 255) + 4;
     const std::size_t Version1_45::MAX_SIZE = sizeof(Version1_45::Header) + 49152 + 4;
 
-    const StringView Version2_0::DESCRIPTION = "Z80 v2.x"_sv;
+    const StringView Version2_0::DESCRIPTION = "Z80 v2.x"sv;
     const StringView Version2_0::FORMAT =
         "(\?\?){3}"  // skip registers
         "0000"       // PC is 0
@@ -198,13 +199,13 @@ namespace Formats::Packed
         "%000000xx"                      // Flag3
         "\?"                             // fffd
         "\?{16}"                         // AYPorts
-        ""_sv;
+        ""sv;
 
     // at least 3 pages by 16384 bytes each
     const std::size_t Version2_0::MIN_SIZE =
         sizeof(Version2_0::Header) + 3 * (sizeof(Version2_0::MemoryPage) + 4 * (16384 / 255));
 
-    const StringView Version3_0::DESCRIPTION = "Z80 v3.x"_sv;
+    const StringView Version3_0::DESCRIPTION = "Z80 v3.x"sv;
     const StringView Version3_0::FORMAT =
         "(\?\?){3}"  // skip registers
         "0000"       // PC is 0
@@ -230,7 +231,7 @@ namespace Formats::Packed
         "\?{20}"                         // joystick
         "00|01|10"                       // GordonType
         "00|ff{2}"                       // Inhibitstate
-        ""_sv;
+        ""sv;
 
     // at least 3 pages by 16384 bytes each
     const std::size_t Version3_0::MIN_SIZE =
@@ -270,10 +271,10 @@ namespace Formats::Packed
       return srcSize - restIn;
     }
 
-    void DecodeBlock(Binary::InputStream& stream, std::size_t srcSize, Binary::Dump& dst)
+    void DecodeBlock(Binary::InputStream& stream, std::size_t srcSize, void* dst, std::size_t dstSize)
     {
-      const auto src = stream.PeekRawData(srcSize);
-      const auto used = DecodeBlock(src, srcSize, dst.data(), dst.size());
+      const auto* const src = stream.PeekRawData(srcSize);
+      const auto used = DecodeBlock(src, srcSize, static_cast<uint8_t*>(dst), dstSize);
       stream.Skip(used);
     }
 
@@ -290,11 +291,11 @@ namespace Formats::Packed
         return CreateContainer(rest->GetSubcontainer(0, TARGET_SIZE), sizeof(hdr) + TARGET_SIZE);
       }
       Require(restSize > sizeof(FOOTER));
-      std::unique_ptr<Binary::Dump> res(new Binary::Dump(TARGET_SIZE));
-      DecodeBlock(stream, restSize - sizeof(FOOTER), *res);
+      Binary::DataBuilder res;
+      DecodeBlock(stream, restSize - sizeof(FOOTER), res.Allocate(TARGET_SIZE), TARGET_SIZE);
       const uint32_t footer = stream.Read<le_uint32_t>();
       Require(footer == FOOTER);
-      return CreateContainer(std::move(res), stream.GetPosition());
+      return CreateContainer(res.CaptureResult(), stream.GetPosition());
     }
 
     struct PlatformTraits
@@ -303,8 +304,6 @@ namespace Formats::Packed
       static const int_t NO_PAGE = -1;
 
       PlatformTraits(std::size_t additionalSize, uint_t hwMode, uint_t port7ffd)
-        : MinPages()
-        , Pages()
       {
         if (additionalSize == Version2_0::ADDITIONAL_SIZE)
         {
@@ -461,8 +460,8 @@ namespace Formats::Packed
       }
 
     private:
-      uint_t MinPages;
-      uint_t Pages;
+      uint_t MinPages = 0;
+      uint_t Pages = 0;
       std::vector<int_t> Numbers;
     };
 
@@ -475,8 +474,8 @@ namespace Formats::Packed
       Require(additionalSize >= readAdditionalSize);
       stream.Skip(additionalSize - readAdditionalSize);
       const PlatformTraits traits(additionalSize, hdr.HardwareMode, hdr.Port7ffd);
-      std::unique_ptr<Binary::Dump> res(new Binary::Dump(ZX_PAGE_SIZE * traits.PagesCount()));
-      Binary::Dump curPage(ZX_PAGE_SIZE);
+      Binary::DataBuilder res;
+      res.Allocate(ZX_PAGE_SIZE * traits.PagesCount());
       for (uint_t idx = 0; idx != traits.PagesCount(); ++idx)
       {
         const bool isPageRequired = idx < traits.MinimalPagesCount();
@@ -493,21 +492,18 @@ namespace Formats::Packed
         }
         Require(isPageValid);
         const std::size_t pageSize = page.DataSize;
-        const uint8_t* pageSource = nullptr;
+        auto* pageTarget = res.Get(pageNumber * ZX_PAGE_SIZE);
         if (pageSize == page.UNCOMPRESSED)
         {
-          pageSource = stream.PeekRawData(ZX_PAGE_SIZE);
-          stream.Skip(ZX_PAGE_SIZE);
+          std::memcpy(pageTarget, stream.ReadData(ZX_PAGE_SIZE).Start(), ZX_PAGE_SIZE);
         }
         else
         {
           Require(pageSize <= stream.GetRestSize());
-          DecodeBlock(stream, pageSize, curPage);
-          pageSource = curPage.data();
+          DecodeBlock(stream, pageSize, pageTarget, ZX_PAGE_SIZE);
         }
-        std::memcpy(res->data() + pageNumber * ZX_PAGE_SIZE, pageSource, ZX_PAGE_SIZE);
       }
-      return CreateContainer(std::move(res), stream.GetPosition());
+      return CreateContainer(res.CaptureResult(), stream.GetPosition());
     }
 
     Formats::Packed::Container::Ptr Version2_0::Decode(Binary::InputStream& stream)
@@ -533,9 +529,9 @@ namespace Formats::Packed
       : Format(std::move(format))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Version::DESCRIPTION.to_string();
+      return Version::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -547,7 +543,7 @@ namespace Formats::Packed
     {
       if (!Format->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       try
       {
@@ -556,7 +552,7 @@ namespace Formats::Packed
       }
       catch (const std::exception&)
       {
-        return Container::Ptr();
+        return {};
       }
     }
 

@@ -8,40 +8,41 @@
  *
  **/
 
-// common includes
-#include <make_ptr.h>
-#include <progress_callback.h>
-// library includes
-#include <analysis/path.h>
-#include <analysis/result.h>
-#include <analysis/scanner.h>
-#include <async/data_receiver.h>
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <formats/archived/decoders.h>
-#include <formats/chiptune/decoders.h>
-#include <formats/image/decoders.h>
-#include <formats/packed/decoders.h>
-#include <io/api.h>
-#include <io/impl/boost_filesystem_path.h>
-#include <io/providers_parameters.h>
-#include <parameters/container.h>
-#include <platform/application.h>
-#include <platform/version/api.h>
-#include <strings/array.h>
-#include <strings/fields.h>
-#include <strings/format.h>
-#include <strings/template.h>
-// std includes
+#include "formats/archived/decoders.h"
+#include "formats/chiptune/decoders.h"
+#include "formats/image/decoders.h"
+#include "formats/packed/decoders.h"
+#include "io/impl/filesystem_path.h"
+
+#include "analysis/path.h"
+#include "analysis/result.h"
+#include "analysis/scanner.h"
+#include "async/data_receiver.h"
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "io/api.h"
+#include "io/providers_parameters.h"
+#include "parameters/container.h"
+#include "platform/application.h"
+#include "platform/version/api.h"
+#include "strings/array.h"
+#include "strings/fields.h"
+#include "strings/format.h"
+#include "strings/join.h"
+#include "strings/template.h"
+#include "tools/progress_callback.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <boost/program_options.hpp>
+
 #include <iostream>
 #include <locale>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <set>
-// boost includes
-#include <boost/algorithm/string/join.hpp>
-#include <boost/filesystem.hpp>
-#include <boost/program_options.hpp>
 
 namespace
 {
@@ -50,7 +51,7 @@ namespace
 
 namespace Platform::Version
 {
-  extern const Char PROGRAM_NAME[] = "xtractor";
+  const StringView PROGRAM_NAME = "xtractor"sv;
 }
 
 namespace Analysis
@@ -58,7 +59,7 @@ namespace Analysis
   class Node
   {
   public:
-    typedef std::shared_ptr<const Node> Ptr;
+    using Ptr = std::shared_ptr<const Node>;
     virtual ~Node() = default;
 
     //! Name to distinguish. Can be empty
@@ -69,8 +70,8 @@ namespace Analysis
     virtual Ptr Parent() const = 0;
   };
 
-  Node::Ptr CreateRootNode(Binary::Container::Ptr data, const String& name);
-  Node::Ptr CreateSubnode(Node::Ptr parent, Binary::Container::Ptr data, const String& name);
+  Node::Ptr CreateRootNode(Binary::Container::Ptr data, StringView name);
+  Node::Ptr CreateSubnode(Node::Ptr parent, Binary::Container::Ptr data, StringView name);
   Node::Ptr CreateSubnode(Node::Ptr parent, Binary::Container::Ptr data, std::size_t offset);
 }  // namespace Analysis
 
@@ -79,9 +80,9 @@ namespace
   class RootNode : public Analysis::Node
   {
   public:
-    RootNode(Binary::Container::Ptr data, String name)
+    RootNode(Binary::Container::Ptr data, StringView name)
       : DataVal(std::move(data))
-      , NameVal(std::move(name))
+      , NameVal(name)
     {}
 
     String Name() const override
@@ -96,7 +97,7 @@ namespace
 
     Analysis::Node::Ptr Parent() const override
     {
-      return Analysis::Node::Ptr();
+      return {};
     }
 
   private:
@@ -107,10 +108,10 @@ namespace
   class SubNode : public Analysis::Node
   {
   public:
-    SubNode(Analysis::Node::Ptr parent, Binary::Container::Ptr data, String name)
+    SubNode(Analysis::Node::Ptr parent, Binary::Container::Ptr data, StringView name)
       : ParentVal(std::move(parent))
       , DataVal(std::move(data))
-      , NameVal(std::move(name))
+      , NameVal(name)
     {}
 
     String Name() const override
@@ -138,33 +139,33 @@ namespace
 namespace Analysis
 {
   // since data is required, place it first
-  Node::Ptr CreateRootNode(Binary::Container::Ptr data, const String& name)
+  Node::Ptr CreateRootNode(Binary::Container::Ptr data, StringView name)
   {
     return MakePtr<RootNode>(std::move(data), name);
   }
 
-  Node::Ptr CreateSubnode(Node::Ptr parent, Binary::Container::Ptr data, const String& name)
+  Node::Ptr CreateSubnode(Node::Ptr parent, Binary::Container::Ptr data, StringView name)
   {
     return MakePtr<SubNode>(std::move(parent), std::move(data), name);
   }
 
   Node::Ptr CreateSubnode(Node::Ptr parent, Binary::Container::Ptr data, std::size_t offset)
   {
-    return MakePtr<SubNode>(std::move(parent), std::move(data), Strings::Format("+%1%", offset));
+    return MakePtr<SubNode>(std::move(parent), std::move(data), Strings::Format("+{}", offset));
   }
 
-  Node::Ptr CreateSubnode(Node::Ptr parent, Binary::Container::Ptr data, const String& name, std::size_t offset)
+  Node::Ptr CreateSubnode(Node::Ptr parent, Binary::Container::Ptr data, StringView name, std::size_t offset)
   {
-    auto intermediate = CreateSubnode(parent, data, offset);
+    auto intermediate = CreateSubnode(std::move(parent), data, offset);
     return CreateSubnode(std::move(intermediate), std::move(data), name);
   }
 }  // namespace Analysis
 
 namespace Analysis
 {
-  typedef DataReceiver<Node::Ptr> NodeReceiver;
-  typedef DataTransmitter<Node::Ptr> NodeTransmitter;
-  typedef DataTransceiver<Node::Ptr> NodeTransceiver;
+  using NodeReceiver = DataReceiver<Node::Ptr>;
+  using NodeTransmitter = DataTransmitter<Node::Ptr>;
+  using NodeTransceiver = DataTransceiver<Node::Ptr>;
 }  // namespace Analysis
 
 namespace Formats
@@ -183,13 +184,12 @@ namespace Formats
       scanner.AddDecoder(CreateZXStateDecoder());
       scanner.AddDecoder(CreateUMXDecoder());
       scanner.AddDecoder(Create7zipDecoder());
-      scanner.AddDecoder(CreateFSBDecoder());
     }
   }  // namespace Archived
 
   namespace Packed
   {
-    void FillScanner(Analysis::Scanner& scanner)
+    void FillScanner(bool skipChiptunes, Analysis::Scanner& scanner)
     {
       scanner.AddDecoder(CreateCodeCruncher3Decoder());
       scanner.AddDecoder(CreateCompressorCode4Decoder());
@@ -225,14 +225,17 @@ namespace Formats
       scanner.AddDecoder(CreateDSKDecoder());
       scanner.AddDecoder(CreateGzipDecoder());
       // players
-      scanner.AddDecoder(CreateCompiledASC0Decoder());
-      scanner.AddDecoder(CreateCompiledASC1Decoder());
-      scanner.AddDecoder(CreateCompiledASC2Decoder());
-      scanner.AddDecoder(CreateCompiledST3Decoder());
-      scanner.AddDecoder(CreateCompiledSTP1Decoder());
-      scanner.AddDecoder(CreateCompiledSTP2Decoder());
-      scanner.AddDecoder(CreateCompiledPT24Decoder());
-      scanner.AddDecoder(CreateCompiledPTU13Decoder());
+      if (!skipChiptunes)
+      {
+        scanner.AddDecoder(CreateCompiledASC0Decoder());
+        scanner.AddDecoder(CreateCompiledASC1Decoder());
+        scanner.AddDecoder(CreateCompiledASC2Decoder());
+        scanner.AddDecoder(CreateCompiledST3Decoder());
+        scanner.AddDecoder(CreateCompiledSTP1Decoder());
+        scanner.AddDecoder(CreateCompiledSTP2Decoder());
+        scanner.AddDecoder(CreateCompiledPT24Decoder());
+        scanner.AddDecoder(CreateCompiledPTU13Decoder());
+      }
     }
   }  // namespace Packed
 
@@ -305,19 +308,19 @@ namespace Parsing
   class Result
   {
   public:
-    typedef std::unique_ptr<const Result> Ptr;
+    using Ptr = std::unique_ptr<const Result>;
     virtual ~Result() = default;
 
     virtual String Name() const = 0;
     virtual Binary::Container::Ptr Data() const = 0;
   };
 
-  Result::Ptr CreateResult(const String& name, Binary::Container::Ptr data);
+  Result::Ptr CreateResult(StringView name, Binary::Container::Ptr data);
 
-  typedef DataReceiver<Result::Ptr> Target;
+  using Target = DataReceiver<Result::Ptr>;
 
-  typedef DataTransmitter<Result::Ptr> Source;
-  typedef DataTransceiver<Result::Ptr> Pipe;
+  using Source = DataTransmitter<Result::Ptr>;
+  using Pipe = DataTransceiver<Result::Ptr>;
 }  // namespace Parsing
 
 namespace
@@ -325,8 +328,8 @@ namespace
   class StaticResult : public Parsing::Result
   {
   public:
-    StaticResult(String name, Binary::Container::Ptr data)
-      : NameVal(std::move(name))
+    StaticResult(StringView name, Binary::Container::Ptr data)
+      : NameVal(name)
       , DataVal(std::move(data))
     {}
 
@@ -348,9 +351,9 @@ namespace
 
 namespace Parsing
 {
-  Result::Ptr CreateResult(const String& name, Binary::Container::Ptr data)
+  Result::Ptr CreateResult(StringView name, Binary::Container::Ptr data)
   {
-    return MakePtr<StaticResult>(name, data);
+    return MakePtr<StaticResult>(name, std::move(data));
   }
 }  // namespace Parsing
 
@@ -389,10 +392,7 @@ namespace
   class StatisticTarget : public Parsing::Target
   {
   public:
-    StatisticTarget()
-      : Total(0)
-      , TotalSize(0)
-    {}
+    StatisticTarget() = default;
 
     void ApplyData(Parsing::Result::Ptr data) override
     {
@@ -402,12 +402,12 @@ namespace
 
     void Flush() override
     {
-      std::cout << Strings::Format("%1% files output. Total size is %2% bytes", Total, TotalSize) << std::endl;
+      std::cout << Strings::Format("{0} files output. Total size is {1} bytes", Total, TotalSize) << std::endl;
     }
 
   private:
-    std::size_t Total;
-    uint64_t TotalSize;
+    std::size_t Total = 0;
+    uint64_t TotalSize = 0;
   };
 }  // namespace
 
@@ -462,7 +462,7 @@ namespace
     void ApplyData(Analysis::Node::Ptr result) override
     {
       const Binary::Container::Ptr data = result->Data();
-      const uint8_t* const begin = static_cast<const uint8_t*>(data->Start());
+      const auto* const begin = static_cast<const uint8_t*>(data->Start());
       const uint8_t* const end = begin + data->Size();
       const auto first = *begin;
       if (std::any_of(begin, end, [first](auto b) { return first != b; }))
@@ -483,7 +483,7 @@ namespace
   class MatchedDataFilter : public Analysis::NodeReceiver
   {
   public:
-    MatchedDataFilter(const std::string& format, Analysis::NodeReceiver::Ptr target)
+    MatchedDataFilter(StringView format, Analysis::NodeReceiver::Ptr target)
       : Format(Binary::CreateFormat(format))
       , Target(std::move(target))
     {}
@@ -513,17 +513,17 @@ namespace Analysis
 {
   NodeReceiver::Ptr CreateSizeFilter(std::size_t minSize, NodeReceiver::Ptr target)
   {
-    return MakePtr<SizeFilter>(minSize, target);
+    return MakePtr<SizeFilter>(minSize, std::move(target));
   }
 
   NodeReceiver::Ptr CreateEmptyDataFilter(NodeReceiver::Ptr target)
   {
-    return MakePtr<EmptyDataFilter>(target);
+    return MakePtr<EmptyDataFilter>(std::move(target));
   }
 
-  NodeReceiver::Ptr CreateMatchFilter(const std::string& filter, NodeReceiver::Ptr target)
+  NodeReceiver::Ptr CreateMatchFilter(StringView filter, NodeReceiver::Ptr target)
   {
-    return MakePtr<MatchedDataFilter>(filter, target);
+    return MakePtr<MatchedDataFilter>(filter, std::move(target));
   }
 }  // namespace Analysis
 
@@ -541,8 +541,8 @@ namespace
     void Apply(const Formats::Archived::Decoder& decoder, std::size_t offset,
                Formats::Archived::Container::Ptr data) override
     {
-      const String name = decoder.GetDescription();
-      Dbg("Found %1% in %2% bytes at %3%", name, data->Size(), offset);
+      const auto name = decoder.GetDescription();
+      Dbg("Found {0} in {1} bytes at {2}", name, data->Size(), offset);
       auto archNode = Analysis::CreateSubnode(Root, data, name, offset);
       const ScanFiles walker(ToScan, std::move(archNode));
       data->ExploreFiles(walker);
@@ -551,32 +551,32 @@ namespace
     void Apply(const Formats::Packed::Decoder& decoder, std::size_t offset,
                Formats::Packed::Container::Ptr data) override
     {
-      const String name = decoder.GetDescription();
-      Dbg("Found %1% in %2% bytes at %3%", name, data->PackedSize(), offset);
+      const auto name = decoder.GetDescription();
+      Dbg("Found {0} in {1} bytes at {2}", name, data->PackedSize(), offset);
       auto packNode = Analysis::CreateSubnode(Root, std::move(data), name, offset);
       ToScan.ApplyData(std::move(packNode));
     }
 
     void Apply(const Formats::Image::Decoder& decoder, std::size_t offset, Formats::Image::Container::Ptr data) override
     {
-      const String name = decoder.GetDescription();
-      Dbg("Found %1% in %2% bytes at %3%", name, data->OriginalSize(), offset);
-      auto imageNode = Analysis::CreateSubnode(Root, std::move(data), Strings::Format("+%1%.image", offset));
+      const auto name = decoder.GetDescription();
+      Dbg("Found {0} in {1} bytes at {2}", name, data->OriginalSize(), offset);
+      auto imageNode = Analysis::CreateSubnode(Root, std::move(data), Strings::Format("+{}.image", offset));
       ToStore.ApplyData(std::move(imageNode));
     }
 
     void Apply(const Formats::Chiptune::Decoder& decoder, std::size_t offset,
                Formats::Chiptune::Container::Ptr data) override
     {
-      const String name = decoder.GetDescription();
-      Dbg("Found %1% in %2% bytes at %3%", name, data->Size(), offset);
-      auto chiptuneNode = Analysis::CreateSubnode(Root, std::move(data), Strings::Format("+%1%.chiptune", offset));
+      const auto name = decoder.GetDescription();
+      Dbg("Found {0} in {1} bytes at {2}", name, data->Size(), offset);
+      auto chiptuneNode = Analysis::CreateSubnode(Root, std::move(data), Strings::Format("+{}.chiptune", offset));
       ToStore.ApplyData(std::move(chiptuneNode));
     }
 
     void Apply(std::size_t offset, Binary::Container::Ptr data) override
     {
-      Dbg("Unresolved %1% bytes at %2%", data->Size(), offset);
+      Dbg("Unresolved {0} bytes at {1}", data->Size(), offset);
       auto rawNode = Analysis::CreateSubnode(Root, std::move(data), offset);
       ToStore.ApplyData(std::move(rawNode));
     }
@@ -595,7 +595,7 @@ namespace
         if (const Binary::Container::Ptr data = file.GetData())
         {
           const String name = file.GetName();
-          Dbg("Processing %1%", name);
+          Dbg("Processing {}", name);
           auto fileNode = Analysis::CreateSubnode(ArchiveNode, data, name);
           ToScan.ApplyData(std::move(fileNode));
         }
@@ -615,18 +615,21 @@ namespace
   class AnalysisTarget : public Analysis::NodeTransceiver
   {
   public:
-    AnalysisTarget()
+    explicit AnalysisTarget(bool skipChiptunes)
       : Scanner(Analysis::CreateScanner())
     {
       Formats::Archived::FillScanner(*Scanner);
-      Formats::Packed::FillScanner(*Scanner);
+      Formats::Packed::FillScanner(skipChiptunes, *Scanner);
       Formats::Image::FillScanner(*Scanner);
-      Formats::Chiptune::FillScanner(*Scanner);
+      if (!skipChiptunes)
+      {
+        Formats::Chiptune::FillScanner(*Scanner);
+      }
     }
 
     void ApplyData(Analysis::Node::Ptr node) override
     {
-      Dbg("Analyze %1%", node->Name());
+      Dbg("Analyze {}", node->Name());
       NestedScannerTarget target(node, *this, *Target);
       try
       {
@@ -656,18 +659,18 @@ namespace
 
 namespace
 {
-  const auto TEMPLATE_FIELD_FILENAME = "Filename"_sv;
-  const auto TEMPLATE_FIELD_PATH = "Path"_sv;
-  const auto TEMPLATE_FIELD_FLATPATH = "FlatPath"_sv;
-  const auto TEMPLATE_FIELD_SUBPATH = "Subpath"_sv;
-  const auto TEMPLATE_FIELD_FLATSUBPATH = "FlatSubpath"_sv;
+  const auto TEMPLATE_FIELD_FILENAME = "Filename"sv;
+  const auto TEMPLATE_FIELD_PATH = "Path"sv;
+  const auto TEMPLATE_FIELD_FLATPATH = "FlatPath"sv;
+  const auto TEMPLATE_FIELD_SUBPATH = "Subpath"sv;
+  const auto TEMPLATE_FIELD_FLATSUBPATH = "FlatSubpath"sv;
 
   const auto DEFAULT_TARGET_NAME_TEMPLATE =
-      Strings::Format("XTractor/[%1%]/[%2%]", TEMPLATE_FIELD_FILENAME, TEMPLATE_FIELD_SUBPATH);
+      Strings::Format("XTractor/[{0}]/[{1}]", TEMPLATE_FIELD_FILENAME, TEMPLATE_FIELD_SUBPATH);
 
-  typedef DataReceiver<String> StringsReceiver;
+  using StringsReceiver = DataReceiver<String>;
 
-  typedef DataTransceiver<String, Analysis::Node::Ptr> OpenPoint;
+  using OpenPoint = DataTransceiver<String, Analysis::Node::Ptr>;
 
   class OpenPointImpl : public OpenPoint
   {
@@ -681,7 +684,7 @@ namespace
     {
       try
       {
-        Dbg("Opening '%1%'", filename);
+        Dbg("Opening '{}'", filename);
         const Binary::Container::Ptr data = IO::OpenData(filename, *Params, Log::ProgressCallback::Stub());
         auto root = Analysis::CreateRootNode(data, filename);
         Analyse->ApplyData(std::move(root));
@@ -715,51 +718,55 @@ namespace
       : Node(std::move(node))
     {}
 
-    String GetFieldValue(const String& name) const override
+    String GetFieldValue(StringView fieldName) const override
     {
-      static const Char SUBPATH_DELIMITER[] = {'/', 0};
-      static const Char FLATPATH_DELIMITER[] = {'_', 0};
+      static const auto SUBPATH_DELIMITER = "/"sv;
+      static const auto FLATPATH_DELIMITER = "_"sv;
 
-      const StringView fieldName(name);
       if (fieldName == TEMPLATE_FIELD_FILENAME)
       {
-        const IO::Identifier& id = GetRootIdentifier();
+        const auto& id = GetRootIdentifier();
         return id.Filename();
       }
       else if (fieldName == TEMPLATE_FIELD_PATH)
       {
-        const IO::Identifier& id = GetRootIdentifier();
+        const auto& id = GetRootIdentifier();
         return id.Path();
       }
       else if (fieldName == TEMPLATE_FIELD_FLATPATH)
       {
         // TODO: use IO::FilenameTemplate
-        const IO::Identifier& id = GetRootIdentifier();
-        const boost::filesystem::path path(id.Path());
-        const boost::filesystem::path root(path.root_directory());
-        Strings::Array components;
-        for (boost::filesystem::path::const_iterator it = path.begin(), lim = path.end(); it != lim; ++it)
+        const auto& id = GetRootIdentifier();
+        const auto path = IO::Details::FromString(id.Path());
+        const auto root = path.root_directory();
+        String result;
+        for (const auto& it : path)
         {
-          if (*it != root)
+          if (it == root)
           {
-            components.push_back(IO::Details::ToString(*it));
+            continue;
           }
+          if (!result.empty())
+          {
+            result += FLATPATH_DELIMITER;
+          }
+          result += IO::Details::ToString(it);
         }
-        return boost::algorithm::join(components, FLATPATH_DELIMITER);
+        return result;
       }
       else if (fieldName == TEMPLATE_FIELD_SUBPATH)
       {
-        const Strings::Array& subPath = GetSubpath();
-        return boost::algorithm::join(subPath, SUBPATH_DELIMITER);
+        const auto& subPath = GetSubpath();
+        return Strings::Join(subPath, SUBPATH_DELIMITER);
       }
       else if (fieldName == TEMPLATE_FIELD_FLATSUBPATH)
       {
-        const Strings::Array& subPath = GetSubpath();
-        return boost::algorithm::join(subPath, FLATPATH_DELIMITER);
+        const auto& subPath = GetSubpath();
+        return Strings::Join(subPath, FLATPATH_DELIMITER);
       }
       else
       {
-        return String();
+        return {};
       }
     }
 
@@ -775,7 +782,7 @@ namespace
 
     const Strings::Array& GetSubpath() const
     {
-      if (!Subpath.get())
+      if (!Subpath)
       {
         FillCache();
       }
@@ -797,7 +804,7 @@ namespace
         {
           const String fileName = node->Name();
           RootIdentifier = IO::ResolveUri(fileName);
-          Subpath.reset(new Strings::Array(subpath.rbegin(), subpath.rend()));
+          Subpath = std::make_unique<Strings::Array>(subpath.rbegin(), subpath.rend());
           break;
         }
       }
@@ -812,7 +819,7 @@ namespace
   class TargetNamePoint : public Analysis::NodeReceiver
   {
   public:
-    TargetNamePoint(const String& nameTemplate, Parsing::Target::Ptr target)
+    TargetNamePoint(StringView nameTemplate, Parsing::Target::Ptr target)
       : Template(Strings::Template::Create(nameTemplate))
       , Target(std::move(target))
     {}
@@ -877,8 +884,8 @@ namespace
 
     void ApplyData(String filename) override
     {
-      const boost::filesystem::path path(filename);
-      if (boost::filesystem::is_directory(path))
+      const auto path = IO::Details::FromString(filename);
+      if (std::filesystem::is_directory(path))
       {
         ApplyRecursive(path);
       }
@@ -899,14 +906,15 @@ namespace
     }
 
   private:
-    void ApplyRecursive(const boost::filesystem::path& path) const
+    void ApplyRecursive(const std::filesystem::path& path) const
     {
-      for (boost::filesystem::recursive_directory_iterator iter(path /*, boost::filesystem::symlink_option::recurse*/),
-           lim = boost::filesystem::recursive_directory_iterator();
+      for (std::filesystem::recursive_directory_iterator
+               iter(path /*, std::filesystem::directory_options::follow_directory_symlink*/),
+           lim = std::filesystem::recursive_directory_iterator();
            iter != lim; ++iter)
       {
-        const boost::filesystem::path subpath = iter->path();
-        if (!boost::filesystem::is_directory(iter->status()))
+        const auto& subpath = iter->path();
+        if (!std::filesystem::is_directory(iter->status()))
         {
           const String subPathString = subpath.string();
           Target->ApplyData(subPathString);
@@ -922,7 +930,7 @@ namespace
   typename DataReceiver<Object>::Ptr AsyncWrap(std::size_t threads, std::size_t queueSize,
                                                typename DataReceiver<Object>::Ptr target)
   {
-    return Async::DataReceiver<Object>::Create(threads, queueSize, target);
+    return Async::DataReceiver<Object>::Create(threads, queueSize, std::move(target));
   }
 
   class TargetOptions
@@ -946,24 +954,70 @@ namespace
 
     virtual std::size_t AnalysisThreads() const = 0;
     virtual std::size_t AnalysisDataQueueSize() const = 0;
+    virtual bool SkipChiptunes() const = 0;
+  };
+
+  class PipelineBuilder
+  {
+  public:
+    explicit PipelineBuilder(const TargetOptions& opts)
+    {
+      Target = MakePtr<TargetNamePoint>(opts.TargetNameTemplate(), CreateTarget(opts.StatisticOutput()));
+    }
+
+    void AddEmptyDataFilter()
+    {
+      Target = Analysis::CreateEmptyDataFilter(std::move(Target));
+    }
+
+    void AddMinSizeFilter(std::size_t minSize)
+    {
+      Target = Analysis::CreateSizeFilter(minSize, std::move(Target));
+    }
+
+    void AddFormatFilter(StringView format)
+    {
+      Target = Analysis::CreateMatchFilter(format, std::move(Target));
+    }
+
+    Analysis::NodeReceiver::Ptr CaptureResult()
+    {
+      return {std::move(Target)};
+    }
+
+  private:
+    Parsing::Target::Ptr CreateTarget(bool statistics)
+    {
+      if (statistics)
+      {
+        return Parsing::CreateStatisticTarget();
+      }
+      else
+      {
+        return Parsing::CreateSaveTarget();
+      }
+    }
+
+  private:
+    Analysis::NodeReceiver::Ptr Target;
   };
 
   Analysis::NodeReceiver::Ptr CreateTarget(const TargetOptions& opts)
   {
-    const Parsing::Target::Ptr save = opts.StatisticOutput() ? Parsing::CreateStatisticTarget()
-                                                             : Parsing::CreateSaveTarget();
-    const Analysis::NodeReceiver::Ptr makeName = MakePtr<TargetNamePoint>(opts.TargetNameTemplate(), save);
-    const Analysis::NodeReceiver::Ptr storeAll = makeName;
-    const Analysis::NodeReceiver::Ptr storeNoEmpty = opts.IgnoreEmptyData() ? Analysis::CreateEmptyDataFilter(storeAll)
-                                                                            : storeAll;
-    const std::size_t minSize = opts.MinDataSize();
-    const Analysis::NodeReceiver::Ptr storeEnoughSize = minSize ? Analysis::CreateSizeFilter(minSize, storeNoEmpty)
-                                                                : storeNoEmpty;
-    const std::string filter = opts.FormatFilter();
-    const Analysis::NodeReceiver::Ptr storeMatchedFilter =
-        !filter.empty() ? Analysis::CreateMatchFilter(filter, storeEnoughSize) : storeEnoughSize;
-    const Analysis::NodeReceiver::Ptr result = storeMatchedFilter;
-    return AsyncWrap<Analysis::Node::Ptr>(opts.SaveThreadsCount(), opts.SaveDataQueueSize(), result);
+    PipelineBuilder builder(opts);
+    if (opts.IgnoreEmptyData())
+    {
+      builder.AddEmptyDataFilter();
+    }
+    if (const auto minSize = opts.MinDataSize())
+    {
+      builder.AddMinSizeFilter(minSize);
+    }
+    if (const auto& filter = opts.FormatFilter(); !filter.empty())
+    {
+      builder.AddFormatFilter(filter);
+    }
+    return AsyncWrap<Analysis::Node::Ptr>(opts.SaveThreadsCount(), opts.SaveDataQueueSize(), builder.CaptureResult());
   }
 
   template<class InType, class OutType = InType>
@@ -997,7 +1051,7 @@ namespace
 
   Analysis::NodeTransceiver::Ptr CreateAnalyser(const AnalysisOptions& opts)
   {
-    const Analysis::NodeTransceiver::Ptr analyser = MakePtr<AnalysisTarget>();
+    const Analysis::NodeTransceiver::Ptr analyser = MakePtr<AnalysisTarget>(opts.SkipChiptunes());
     const Analysis::NodeReceiver::Ptr input =
         AsyncWrap<Analysis::Node::Ptr>(opts.AnalysisThreads(), opts.AnalysisDataQueueSize(), analyser);
     return MakePtr<TransceivePipe<Analysis::Node::Ptr> >(input, analyser);
@@ -1017,46 +1071,38 @@ namespace
   {
   public:
     Options()
-      : AnalysisThreadsValue(1)
-      , AnalysisDataQueueSizeValue(10)
-      , TargetNameTemplateValue(DEFAULT_TARGET_NAME_TEMPLATE)
-      , IgnoreEmptyDataValue(false)
-      , MinDataSizeValue(0)
-      , FormatFilterValue()
-      , SaveThreadsCountValue(1)
-      , SaveDataQueueSizeValue(500)
-      , StatisticOutputValue(false)
-      // cmdline
+      : TargetNameTemplateValue(DEFAULT_TARGET_NAME_TEMPLATE)
       , OptionsDescription("Target options")
     {
       using namespace boost::program_options;
       auto opt = OptionsDescription.add_options();
       opt("analysis-threads", value<std::size_t>(&AnalysisThreadsValue),
-          Strings::Format("threads count for parallel analysis. 0 to disable paralleling. Default is %1%",
+          Strings::Format("threads count for parallel analysis. 0 to disable paralleling. Default is {}",
                           AnalysisThreadsValue)
               .c_str());
       opt("analysis-queue-size", value<std::size_t>(&AnalysisDataQueueSizeValue),
           Strings::Format("queue size for parallel analysis. Valuable only when analysis threads count is more than 0. "
-                          "Default is %1%",
+                          "Default is {}",
                           AnalysisDataQueueSizeValue)
               .c_str());
+      opt("skip-chiptunes", bool_switch(&SkipChiptunesValue), "do not parse chiptunes");
       opt("target-name-template", value<String>(&TargetNameTemplateValue),
-          Strings::Format("target name template. Default is %s. "
-                          "Applicable fields: [%s],[%s],[%s],[%s],[%s]",
+          Strings::Format("target name template. Default is {0}. "
+                          "Applicable fields: [{1}],[{2}],[{3}],[{4}],[{5}]",
                           DEFAULT_TARGET_NAME_TEMPLATE, TEMPLATE_FIELD_FILENAME, TEMPLATE_FIELD_PATH,
                           TEMPLATE_FIELD_FLATPATH, TEMPLATE_FIELD_SUBPATH, TEMPLATE_FIELD_FLATSUBPATH)
               .c_str());
       opt("ignore-empty", bool_switch(&IgnoreEmptyDataValue), "do not store files filled with single byte");
       opt("minimal-size", value<std::size_t>(&MinDataSizeValue),
-          Strings::Format("do not store files with lesser size. Default is %1%", MinDataSizeValue).c_str());
+          Strings::Format("do not store files with lesser size. Default is {}", MinDataSizeValue).c_str());
       opt("format", value<std::string>(&FormatFilterValue), "specify fuzzy data format to save");
       opt("save-threads", value<std::size_t>(&SaveThreadsCountValue),
-          Strings::Format("threads count for parallel data saving. 0 to disable paralleling. Default is %1%",
+          Strings::Format("threads count for parallel data saving. 0 to disable paralleling. Default is {}",
                           SaveThreadsCountValue)
               .c_str());
       opt("save-queue-size", value<std::size_t>(&SaveDataQueueSizeValue),
           Strings::Format(
-              "queue size for parallel data saving. Valuable only when save threads is more than 0. Default is %1%",
+              "queue size for parallel data saving. Valuable only when save threads is more than 0. Default is {}",
               SaveDataQueueSizeValue)
               .c_str());
       opt("statistic", bool_switch(&StatisticOutputValue), "do not save any data, just collect summary statistic");
@@ -1070,6 +1116,11 @@ namespace
     std::size_t AnalysisDataQueueSize() const override
     {
       return AnalysisDataQueueSizeValue;
+    }
+
+    bool SkipChiptunes() const override
+    {
+      return SkipChiptunesValue;
     }
 
     String TargetNameTemplate() const override
@@ -1113,15 +1164,16 @@ namespace
     }
 
   private:
-    std::size_t AnalysisThreadsValue;
-    std::size_t AnalysisDataQueueSizeValue;
+    std::size_t AnalysisThreadsValue = 1;
+    std::size_t AnalysisDataQueueSizeValue = 10;
+    bool SkipChiptunesValue = false;
     String TargetNameTemplateValue;
-    bool IgnoreEmptyDataValue;
-    std::size_t MinDataSizeValue;
+    bool IgnoreEmptyDataValue = false;
+    std::size_t MinDataSizeValue = 0;
     std::string FormatFilterValue;
-    std::size_t SaveThreadsCountValue;
-    std::size_t SaveDataQueueSizeValue;
-    bool StatisticOutputValue;
+    std::size_t SaveThreadsCountValue = 1;
+    std::size_t SaveDataQueueSizeValue = 500;
+    bool StatisticOutputValue = false;
     boost::program_options::options_description OptionsDescription;
   };
 }  // namespace
@@ -1129,7 +1181,7 @@ namespace
 class MainApplication : public Platform::Application
 {
 public:
-  MainApplication() {}
+  MainApplication() = default;
 
   int Run(Strings::Array args) override
   {
@@ -1148,12 +1200,12 @@ public:
                                        factory      +<-converted-+                            factory directory
 
     */
-    const Analysis::NodeReceiver::Ptr result = CreateTarget(Opts);
-    const Analysis::NodeTransceiver::Ptr analyse = CreateAnalyser(Opts);
+    auto result = CreateTarget(Opts);
+    auto analyse = CreateAnalyser(Opts);
     const OpenPoint::Ptr input = CreateSource();
 
-    input->SetTarget(analyse);
-    analyse->SetTarget(result);
+    analyse->SetTarget(std::move(result));
+    input->SetTarget(std::move(analyse));
 
     for (const auto& p : paths)
     {
@@ -1167,10 +1219,10 @@ private:
   bool ParseCmdline(Strings::Array args, Strings::Array& paths) const
   {
     using namespace boost::program_options;
-    const auto helpKey = "help";
-    const auto inputKey = "input";
-    const auto versionKey = "version";
-    options_description options(Strings::Format("Usage:\n%1% [options] [--%2%] <input paths>", args[0], inputKey));
+    const auto* const helpKey = "help";
+    const auto* const inputKey = "input";
+    const auto* const versionKey = "version";
+    options_description options(Strings::Format("Usage:\n{0} [options] [--{1}] <input paths>", args[0], inputKey));
     auto opt = options.add_options();
     opt(helpKey, "show this message");
     opt(versionKey, "show application version");

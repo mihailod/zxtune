@@ -8,15 +8,17 @@
  *
  **/
 
-// local includes
 #include "binary/format/syntax.h"
+
 #include "binary/format/grammar.h"
-// common includes
-#include <contract.h>
-#include <iterator.h>
-#include <locale_helpers.h>
-#include <make_ptr.h>
-// std includes
+
+#include "tools/iterators.h"
+#include "tools/locale_helpers.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <cctype>
 #include <stack>
 #include <utility>
@@ -47,7 +49,7 @@ namespace Binary::FormatDSL
 
     Token(LexicalAnalysis::TokenType type, StringView lexeme)
       : Type(type)
-      , Value(std::move(lexeme))
+      , Value(lexeme)
     {}
   };
 
@@ -67,9 +69,7 @@ namespace Binary::FormatDSL
   class InitialStateType : public State
   {
   public:
-    InitialStateType()
-      : State()
-    {}
+    InitialStateType() = default;
 
     const State* Transition(const Token& tok, FormatTokensVisitor& visitor) const override
     {
@@ -136,9 +136,7 @@ namespace Binary::FormatDSL
   class QuantorStateType : public State
   {
   public:
-    QuantorStateType()
-      : State()
-    {}
+    QuantorStateType() = default;
 
     const State* Transition(const Token& tok, FormatTokensVisitor& visitor) const override
     {
@@ -158,9 +156,7 @@ namespace Binary::FormatDSL
   class QuantorEndType : public State
   {
   public:
-    QuantorEndType()
-      : State()
-    {}
+    QuantorEndType() = default;
 
     const State* Transition(const Token& tok, FormatTokensVisitor& /*visitor*/) const override
     {
@@ -173,9 +169,7 @@ namespace Binary::FormatDSL
   class ErrorStateType : public State
   {
   public:
-    ErrorStateType()
-      : State()
-    {}
+    ErrorStateType() = default;
 
     const State* Transition(const Token& /*token*/, FormatTokensVisitor& /*visitor*/) const override
     {
@@ -243,12 +237,10 @@ namespace Binary::FormatDSL
   public:
     Operator()
       : Val()
-      , Prec(0)
     {}
 
     explicit Operator(StringView op)
-      : Val(std::move(op))
-      , Prec(0)
+      : Val(op)
     {
       Require(!Val.empty());
       switch (Val[0])
@@ -280,19 +272,19 @@ namespace Binary::FormatDSL
       return Prec;
     }
 
-    std::size_t Parameters() const
+    static std::size_t Parameters()
     {
       return 2;
     }
 
-    bool LeftAssoc() const
+    static bool LeftAssoc()
     {
       return true;
     }
 
   private:
     const StringView Val;
-    std::size_t Prec;
+    std::size_t Prec = 0;
   };
 
   class RPNTranslation : public FormatTokensVisitor
@@ -300,7 +292,6 @@ namespace Binary::FormatDSL
   public:
     RPNTranslation(FormatTokensVisitor& delegate)
       : Delegate(delegate)
-      , LastIsMatch(false)
     {}
 
     void Match(StringView val) override
@@ -316,7 +307,7 @@ namespace Binary::FormatDSL
     void GroupStart() override
     {
       FlushOperations();
-      Ops.push(Operator(GROUP_START));
+      Ops.emplace(GROUP_START);
       Delegate.GroupStart();
       LastIsMatch = false;
     }
@@ -393,7 +384,7 @@ namespace Binary::FormatDSL
   private:
     FormatTokensVisitor& Delegate;
     std::stack<Operator> Ops;
-    bool LastIsMatch;
+    bool LastIsMatch = false;
   };
 
   class SyntaxCheck : public FormatTokensVisitor
@@ -401,7 +392,6 @@ namespace Binary::FormatDSL
   public:
     explicit SyntaxCheck(FormatTokensVisitor& delegate)
       : Delegate(delegate)
-      , Position(0)
     {}
 
     void Match(StringView val) override
@@ -420,7 +410,7 @@ namespace Binary::FormatDSL
     {
       Require(!GroupStarts.empty());
       Require(GroupStarts.top() != Position);
-      Groups.push(Group(GroupStarts.top(), Position));
+      Groups.emplace(GroupStarts.top(), Position);
       GroupStarts.pop();
       Delegate.GroupEnd();
     }
@@ -479,23 +469,20 @@ namespace Binary::FormatDSL
         , End(end)
       {}
 
-      Group()
-        : Begin()
-        , End()
-      {}
+      Group() = default;
 
       std::size_t Size() const
       {
         return End - Begin;
       }
 
-      std::size_t Begin;
-      std::size_t End;
+      std::size_t Begin = 0;
+      std::size_t End = 0;
     };
 
   private:
     FormatTokensVisitor& Delegate;
-    std::size_t Position;
+    std::size_t Position = 0;
     std::stack<std::size_t> GroupStarts;
     std::stack<Group> Groups;
   };

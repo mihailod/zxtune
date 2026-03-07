@@ -10,33 +10,27 @@
 
 #pragma once
 
-// local includes
-#include "playlist/supp/model.h"
-#include "playlist/supp/operations_search.h"
-// qt includes
+#include "apps/zxtune-qt/playlist/supp/model.h"
+#include "apps/zxtune-qt/playlist/supp/operations_search.h"
+
 #include <QtWidgets/QDialog>
 
 class QAbstractButton;
-namespace Playlist
+namespace Playlist::UI
 {
-  namespace UI
+  class PropertiesDialog : public QDialog
   {
-    class PropertiesDialog : public QDialog
-    {
-      Q_OBJECT
-    protected:
-      explicit PropertiesDialog(QWidget& parent);
+    Q_OBJECT
+  protected:
+    explicit PropertiesDialog(QWidget& parent);
 
-    public:
-      typedef std::shared_ptr<PropertiesDialog> Ptr;
+  public:
+    using Ptr = std::shared_ptr<PropertiesDialog>;
 
-      static Ptr Create(QWidget& parent, Item::Data::Ptr item);
-    private slots:
-      virtual void ButtonClicked(QAbstractButton* button) = 0;
-    signals:
-      void ResetToDefaults();
-    };
+    static Ptr Create(QWidget& parent, const Item::Data& item);
+  signals:
+    void ResetToDefaults();
+  };
 
-    void ExecutePropertiesDialog(QWidget& parent, Model::Ptr model, Playlist::Model::IndexSet::Ptr scope);
-  }  // namespace UI
-}  // namespace Playlist
+  void ExecutePropertiesDialog(QWidget& parent, Model::Ptr model, const Playlist::Model::IndexSet& scope);
+}  // namespace Playlist::UI

@@ -8,15 +8,15 @@
  *
  **/
 
-// local includes
-#include "operations.h"
-#include "operations_helpers.h"
-#include "storage.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <tools/progress_callback_helpers.h>
-// std includes
+#include "apps/zxtune-qt/playlist/supp/operations.h"
+
+#include "apps/zxtune-qt/playlist/supp/operations_helpers.h"
+#include "apps/zxtune-qt/playlist/supp/storage.h"
+
+#include "tools/progress_callback_helpers.h"
+
+#include "make_ptr.h"
+
 #include <numeric>
 
 namespace
@@ -46,7 +46,7 @@ namespace
   class VisitorAdapter : public Playlist::Item::Visitor
   {
   public:
-    typedef T (Playlist::Item::Data::*GetFunctionType)() const;
+    using GetFunctionType = T (Playlist::Item::Data::*)() const;
 
     VisitorAdapter(const GetFunctionType getter, typename PropertyModel<T>::Visitor& delegate)
       : Getter(getter)
@@ -55,7 +55,8 @@ namespace
 
     void OnItem(Playlist::Model::IndexType index, Playlist::Item::Data::Ptr data) override
     {
-      if (data->GetState())
+      data->GetModule();
+      if (data->GetState().GetIfError())
       {
         return;
       }
@@ -108,7 +109,6 @@ namespace
     PropertyModelWithProgress(const PropertyModel<T>& delegate, Log::ProgressCallback& cb)
       : Delegate(delegate)
       , Callback(cb)
-      , Done(0)
     {}
 
     std::size_t CountItems() const override
@@ -154,7 +154,7 @@ namespace
   private:
     const PropertyModel<T>& Delegate;
     Log::ProgressCallback& Callback;
-    mutable uint_t Done;
+    mutable uint_t Done = 0;
   };
 
   template<class T>
@@ -270,7 +270,7 @@ namespace
     }
 
   private:
-    typedef typename std::map<T, Playlist::Model::IndexType> PropToIndex;
+    using PropToIndex = typename std::map<T, Playlist::Model::IndexType>;
     PropToIndex Visited;
     const Playlist::Model::IndexSet::RWPtr Result;
   };
@@ -480,7 +480,7 @@ namespace
     void OnItem(Playlist::Model::IndexType index, Playlist::Item::Data::Ptr data) override
     {
       // check for the data first to define is data valid or not
-      if (data->GetState())
+      if (data->GetState().GetIfError())
       {
         Result->insert(index);
       }
@@ -498,7 +498,7 @@ namespace
   class SelectUnavailableOperation : public Playlist::Item::SelectionOperation
   {
   public:
-    SelectUnavailableOperation() {}
+    SelectUnavailableOperation() = default;
 
     explicit SelectUnavailableOperation(Playlist::Model::IndexSet::Ptr items)
       : SelectedItems(std::move(items))
@@ -516,58 +516,55 @@ namespace
   };
 }  // namespace
 
-namespace Playlist
+namespace Playlist::Item
 {
-  namespace Item
+  SelectionOperation::Ptr CreateSelectAllRipOffsOperation()
   {
-    SelectionOperation::Ptr CreateSelectAllRipOffsOperation()
-    {
-      return MakePtr<SelectAllRipOffsOperation>();
-    }
+    return MakePtr<SelectAllRipOffsOperation>();
+  }
 
-    SelectionOperation::Ptr CreateSelectRipOffsOfSelectedOperation(Playlist::Model::IndexSet::Ptr items)
-    {
-      return MakePtr<SelectRipOffsOfSelectedOperation>(items);
-    }
+  SelectionOperation::Ptr CreateSelectRipOffsOfSelectedOperation(Playlist::Model::IndexSet::Ptr items)
+  {
+    return MakePtr<SelectRipOffsOfSelectedOperation>(std::move(items));
+  }
 
-    SelectionOperation::Ptr CreateSelectRipOffsInSelectedOperation(Playlist::Model::IndexSet::Ptr items)
-    {
-      return MakePtr<SelectRipOffsInSelectedOperation>(items);
-    }
+  SelectionOperation::Ptr CreateSelectRipOffsInSelectedOperation(Playlist::Model::IndexSet::Ptr items)
+  {
+    return MakePtr<SelectRipOffsInSelectedOperation>(std::move(items));
+  }
 
-    SelectionOperation::Ptr CreateSelectAllDuplicatesOperation()
-    {
-      return MakePtr<SelectAllDupsOperation>();
-    }
+  SelectionOperation::Ptr CreateSelectAllDuplicatesOperation()
+  {
+    return MakePtr<SelectAllDupsOperation>();
+  }
 
-    SelectionOperation::Ptr CreateSelectDuplicatesOfSelectedOperation(Playlist::Model::IndexSet::Ptr items)
-    {
-      return MakePtr<SelectDupsOfSelectedOperation>(items);
-    }
+  SelectionOperation::Ptr CreateSelectDuplicatesOfSelectedOperation(Playlist::Model::IndexSet::Ptr items)
+  {
+    return MakePtr<SelectDupsOfSelectedOperation>(std::move(items));
+  }
 
-    SelectionOperation::Ptr CreateSelectDuplicatesInSelectedOperation(Playlist::Model::IndexSet::Ptr items)
-    {
-      return MakePtr<SelectDupsInSelectedOperation>(items);
-    }
+  SelectionOperation::Ptr CreateSelectDuplicatesInSelectedOperation(Playlist::Model::IndexSet::Ptr items)
+  {
+    return MakePtr<SelectDupsInSelectedOperation>(std::move(items));
+  }
 
-    SelectionOperation::Ptr CreateSelectTypesOfSelectedOperation(Playlist::Model::IndexSet::Ptr items)
-    {
-      return MakePtr<SelectTypesOfSelectedOperation>(items);
-    }
+  SelectionOperation::Ptr CreateSelectTypesOfSelectedOperation(Playlist::Model::IndexSet::Ptr items)
+  {
+    return MakePtr<SelectTypesOfSelectedOperation>(std::move(items));
+  }
 
-    SelectionOperation::Ptr CreateSelectFilesOfSelectedOperation(Playlist::Model::IndexSet::Ptr items)
-    {
-      return MakePtr<SelectFilesOfSelectedOperation>(items);
-    }
+  SelectionOperation::Ptr CreateSelectFilesOfSelectedOperation(Playlist::Model::IndexSet::Ptr items)
+  {
+    return MakePtr<SelectFilesOfSelectedOperation>(std::move(items));
+  }
 
-    SelectionOperation::Ptr CreateSelectAllUnavailableOperation()
-    {
-      return MakePtr<SelectUnavailableOperation>();
-    }
+  SelectionOperation::Ptr CreateSelectAllUnavailableOperation()
+  {
+    return MakePtr<SelectUnavailableOperation>();
+  }
 
-    SelectionOperation::Ptr CreateSelectUnavailableInSelectedOperation(Playlist::Model::IndexSet::Ptr items)
-    {
-      return MakePtr<SelectUnavailableOperation>(items);
-    }
-  }  // namespace Item
-}  // namespace Playlist
+  SelectionOperation::Ptr CreateSelectUnavailableInSelectedOperation(Playlist::Model::IndexSet::Ptr items)
+  {
+    return MakePtr<SelectUnavailableOperation>(std::move(items));
+  }
+}  // namespace Playlist::Item

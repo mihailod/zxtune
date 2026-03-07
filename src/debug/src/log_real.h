@@ -10,23 +10,24 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// std includes
+#include "strings/format.h"
+
+#include "string_view.h"
+#include "types.h"
+
 #include <cassert>
 #include <string>
-// library includes
-#include <strings/format.h>
+#include <utility>
 
 namespace Debug
 {
   //! @brief Unconditionally outputs debug message
-  void Message(const String& module, const String& msg);
+  void Message(StringView module, StringView msg);
 
   //! @brief Checks if debug logs are enabled for module
-  bool IsEnabledFor(const String& module);
+  bool IsEnabledFor(StringView module);
 
-  inline void Log(const String& module, const String& msg)
+  inline void Log(StringView module, StringView msg)
   {
     if (IsEnabledFor(module))
     {
@@ -39,13 +40,13 @@ namespace Debug
      @code
        const Debug::Stream Dbg(THIS_MODULE);
        ...
-       Dbg("message %1%", parameter);
+       Dbg("message {}", parameter);
      @endcode
   */
   class Stream
   {
   public:
-    explicit Stream(const char* module)
+    explicit Stream(StringView module)
       : Module(module)
       , Enabled(IsEnabledFor(Module))
     {}
@@ -62,12 +63,11 @@ namespace Debug
 
     //! @brief Conditionally outputs formatted debug message from specified module
     template<class... P>
-    void operator()(const char* msg, P&&... p) const
+    constexpr void operator()(Strings::FormatString<P...> msg, P&&... p) const
     {
-      assert(msg);
       if (Enabled)
       {
-        Message(Module, Strings::Format(msg, p...));
+        Message(Module, Strings::Format(msg, std::forward<P>(p)...));
       }
     }
 

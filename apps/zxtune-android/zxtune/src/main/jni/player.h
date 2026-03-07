@@ -10,12 +10,11 @@
 
 #pragma once
 
-// local includes
-#include "storage.h"
-// library includes
-#include <module/holder.h>
-#include <parameters/container.h>
-// platform includes
+#include "apps/zxtune-android/zxtune/src/main/jni/storage.h"
+
+#include "module/holder.h"
+#include "parameters/container.h"
+
 #include <jni.h>
 
 namespace Player
@@ -25,10 +24,10 @@ namespace Player
   class Control
   {
   public:
-    typedef std::shared_ptr<Control> Ptr;
+    using Ptr = std::shared_ptr<Control>;
     virtual ~Control() = default;
 
-    virtual Parameters::Modifier& GetParameters() const = 0;
+    virtual Parameters::Container& GetParameters() const = 0;
 
     virtual uint_t GetPosition() const = 0;
     virtual uint_t Analyze(uint_t maxEntries, uint8_t* levels) const = 0;
@@ -40,7 +39,7 @@ namespace Player
     virtual uint_t GetPlaybackProgress() const = 0;
   };
 
-  typedef ObjectsStorage<Control::Ptr> Storage;
+  using Storage = ObjectsStorage<Control::Ptr>;
 
   jobject Create(JNIEnv* env, const Module::Holder& module, uint_t samplerate);
 

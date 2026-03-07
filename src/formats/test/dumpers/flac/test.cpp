@@ -8,9 +8,12 @@
  *
  **/
 
-#include "../../utils.h"
-#include <formats/chiptune/music/flac.h>
-#include <strings/format.h>
+#include "formats/chiptune/music/flac.h"
+#include "formats/test/utils.h"
+
+#include "strings/format.h"
+
+#include "string_view.h"
 
 namespace
 {
@@ -44,6 +47,16 @@ namespace
       }
     }
 
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
+    }
+
+    void SetPicture(Binary::View content) override
+    {
+      std::cout << "Picture: " << content.Size() << " bytes" << std::endl;
+    }
+
     MetaBuilder& GetMetaBuilder() override
     {
       return *this;
@@ -75,7 +88,7 @@ namespace
 
     void AddFrame(std::size_t offset) override
     {
-      std::cout << Strings::Format("Frame: @%1%(0x%1$08x)\n", offset);
+      std::cout << Strings::Format("Frame: @{0}(0x{0:08x})\n", offset);
       ++FramesCount;
     }
 
@@ -103,9 +116,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Binary::Dump> rawData(new Binary::Dump());
-    Test::OpenFile(argv[1], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[1]);
     FlacBuilder builder;
     if (const auto result = Formats::Chiptune::Flac::Parse(*data, builder))
     {

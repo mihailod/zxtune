@@ -8,17 +8,14 @@
  *
  **/
 
-#include <error_tools.h>
-#include <math/numeric.h>
-#include <sound/matrix_mixer.h>
-#include <sound/mixer_parameters.h>
+#include "math/numeric.h"
+#include "sound/matrix_mixer.h"
+#include "sound/mixer_parameters.h"
+
+#include "error_tools.h"
 
 #include <iomanip>
 #include <iostream>
-
-#include <boost/range/size.hpp>
-
-#define FILE_TAG 25E829A2
 
 namespace Sound
 {
@@ -26,7 +23,7 @@ namespace Sound
 
   Gain CreateGain(double l, double r)
   {
-    return Gain(Gain::Type(l), Gain::Type(r));
+    return {Gain::Type(l), Gain::Type(r)};
   }
 
   const Gain GAINS[] = {CreateGain(0.0, 0.0), CreateGain(1.0, 1.0), CreateGain(1.0, 0.0),
@@ -88,15 +85,6 @@ namespace Sound
     return res;
   }
 
-  bool ShowIfError(const Error& e)
-  {
-    if (e)
-    {
-      std::cerr << e.ToString();
-    }
-    return e;
-  }
-
   bool Check(Sample::Type data, Sample::Type ref)
   {
     return Math::Absolute(int_t(data) - ref) <= THRESHOLD;
@@ -111,8 +99,8 @@ namespace Sound
     else
     {
       std::cout << " failed\n";
-      throw MakeFormattedError(THIS_LINE, "Value=<%1%,%2%> while expected=<%3%,%4%>", data.Left(), data.Right(),
-                               ref.Left(), ref.Right());
+      throw MakeFormattedError(THIS_LINE, "Value=<{},{}> while expected=<{},{}>", data.Left(), data.Right(), ref.Left(),
+                               ref.Right());
     }
   }
 
@@ -139,16 +127,16 @@ namespace Sound
       throw Error(THIS_LINE, str);
     }
 
-    assert(boost::size(OUTS) == boost::size(GAINS) * boost::size(INPUTS));
-    assert(boost::size(GAINS) == boost::size(GAIN_NAMES));
-    assert(boost::size(INPUTS) == boost::size(INPUT_NAMES));
+    assert(std::size(OUTS) == std::size(GAINS) * std::size(INPUTS));
+    assert(std::size(GAINS) == std::size(GAIN_NAMES));
+    assert(std::size(INPUTS) == std::size(INPUT_NAMES));
 
     const Sample* result(OUTS);
-    for (unsigned matrix = 0; matrix != boost::size(GAINS); ++matrix)
+    for (unsigned matrix = 0; matrix != std::size(GAINS); ++matrix)
     {
       std::cout << "--- Test for " << GAIN_NAMES[matrix] << " matrix ---\n";
       mixer->SetMatrix(MakeMatrix<Channels>(GAINS[matrix]));
-      for (unsigned input = 0; input != boost::size(INPUTS); ++input, ++result)
+      for (unsigned input = 0; input != std::size(INPUTS); ++input, ++result)
       {
         std::cout << "Checking for " << INPUT_NAMES[input] << " input: ";
         Check(mixer->ApplyData(MakeSample<MultichannelSample<Channels> >(INPUTS[input])), *result);

@@ -8,19 +8,20 @@
  *
  **/
 
-// local includes
 #include "core/plugins/players/multitrack_plugin.h"
+
 #include "core/plugins/archives/archived.h"
-// common includes
-#include <make_ptr.h>
-#include <xrange.h>
-// library includes
-#include <core/module_detect.h>
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/archived/multitrack/filename.h>
-#include <module/players/properties_helper.h>
-// std includes
+#include "formats/archived/multitrack/filename.h"
+#include "module/players/properties_helper.h"
+
+#include "core/module_detect.h"
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "tools/xrange.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <utility>
 
 namespace ZXTune
@@ -50,33 +51,28 @@ namespace ZXTune
 
   std::optional<std::size_t> FindTrackIndexIn(const Analysis::Path& path)
   {
-    String lastPathSegment;
-    // TODO: add method to Path
-    for (auto it = path.GetIterator(); it->IsValid(); it->Next())
-    {
-      lastPathSegment = it->Get();
-    }
-    return Filename::FindIndex(lastPathSegment);
+    const auto& elements = path.Elements();
+    return elements.empty() ? std::nullopt : Filename::FindIndex(elements.back());
   }
 
   template<class BasePluginType>
   class MultitrackBasePlugin : public BasePluginType
   {
   public:
-    MultitrackBasePlugin(StringView id, uint_t caps, Formats::Multitrack::Decoder::Ptr decoder,
+    MultitrackBasePlugin(PluginId id, uint_t caps, Formats::Multitrack::Decoder::Ptr decoder,
                          Module::MultitrackFactory::Ptr factory)
-      : Identifier(id.to_string())
+      : Identifier(id)
       , Caps(caps)
       , Decoder(std::move(decoder))
       , Factory(std::move(factory))
     {}
 
-    String Id() const override
+    PluginId Id() const override
     {
       return Identifier;
     }
 
-    String Description() const override
+    StringView Description() const override
     {
       return Decoder->GetDescription();
     }
@@ -98,7 +94,7 @@ namespace ZXTune
       auto data = inputData->GetData();
       if (auto container = Decoder->Decode(*data))
       {
-        if (Detect(params, std::move(inputData), *container, callback))
+        if (DetectModules(params, std::move(inputData), *container, callback))
         {
           return Analysis::CreateMatchedResult(container->Size());
         }
@@ -106,15 +102,15 @@ namespace ZXTune
       return Analysis::CreateUnmatchedResult(Decoder->GetFormat(), std::move(data));
     }
 
-    DataLocation::Ptr CreateSubtrackLocation(DataLocation::Ptr inputData, uint_t idx) const
+    DataLocation::Ptr CreateSubtrackLocation(DataLocation::Ptr inputData, Binary::Container::Ptr content,
+                                             uint_t idx) const
     {
-      auto blob = inputData->GetData();
-      return CreateNestedLocation(std::move(inputData), std::move(blob), Identifier, Filename::FromIndex(idx));
+      return CreateNestedLocation(std::move(inputData), std::move(content), Identifier, Filename::FromIndex(idx));
     }
 
   private:
-    bool Detect(const Parameters::Accessor& params, DataLocation::Ptr inputData,
-                const Formats::Multitrack::Container& container, Module::DetectCallback& callback) const
+    bool DetectModules(const Parameters::Accessor& params, const DataLocation::Ptr& inputData,
+                       const Formats::Multitrack::Container& container, Module::DetectCallback& callback) const
     {
       const auto tracksCount = container.TracksCount();
       if (tracksCount == 0)
@@ -123,19 +119,19 @@ namespace ZXTune
       }
       if (tracksCount == 1)
       {
-        MultistreamDbg("%1%: detect in single track container", Identifier);
+        MultistreamDbg("{}: detect in single track container", Identifier);
         return ProcessSubtrack(params, *inputData, container, callback);
       }
       else if (const auto index = FindTrackIndexIn(*inputData->GetPath()))
       {
-        MultistreamDbg("%1%: detect in specified track %2% out of %3%", Identifier, *index, tracksCount);
+        MultistreamDbg("{}: detect in specified track {} out of {}", Identifier, *index, tracksCount);
         return *index < tracksCount
                && ProcessSubtrack(params, *inputData, ChangedTrackIndexAdapter(container, *index), callback);
       }
       else
       {
-        MultistreamDbg("%1%: detect in all %2% tracks", Identifier, tracksCount);
-        return ProcessAllSubtracks(params, std::move(inputData), container, callback);
+        MultistreamDbg("{}: detect in all {} tracks", Identifier, tracksCount);
+        return ProcessAllSubtracks(params, inputData, container, callback);
       }
     }
 
@@ -155,13 +151,13 @@ namespace ZXTune
       return false;
     }
 
-    bool ProcessAllSubtracks(const Parameters::Accessor& params, DataLocation::Ptr inputData,
+    bool ProcessAllSubtracks(const Parameters::Accessor& params, const DataLocation::Ptr& inputData,
                              const Formats::Multitrack::Container& container, Module::DetectCallback& callback) const
     {
       bool result = false;
       for (auto index : xrange(container.TracksCount()))
       {
-        const auto subData = CreateSubtrackLocation(inputData, index);
+        const auto subData = CreateSubtrackLocation(inputData, inputData->GetData(), index);
         if (ProcessSubtrack(params, *subData, ChangedTrackIndexAdapter(container, index), callback))
         {
           result = true;
@@ -214,7 +210,7 @@ namespace ZXTune
     };
 
   protected:
-    const String Identifier;
+    const PluginId Identifier;
     const uint_t Caps;
     const Formats::Multitrack::Decoder::Ptr Decoder;
     const Module::MultitrackFactory::Ptr Factory;
@@ -223,7 +219,7 @@ namespace ZXTune
   class MultitrackPlayerPlugin : public MultitrackBasePlugin<PlayerPlugin>
   {
   public:
-    MultitrackPlayerPlugin(StringView id, uint_t caps, Formats::Multitrack::Decoder::Ptr decoder,
+    MultitrackPlayerPlugin(PluginId id, uint_t caps, Formats::Multitrack::Decoder::Ptr decoder,
                            Module::MultitrackFactory::Ptr factory)
       : MultitrackBasePlugin(id, caps, std::move(decoder), std::move(factory))
     {}
@@ -255,7 +251,7 @@ namespace ZXTune
     }
   };
 
-  PlayerPlugin::Ptr CreatePlayerPlugin(StringView id, uint_t caps, Formats::Multitrack::Decoder::Ptr decoder,
+  PlayerPlugin::Ptr CreatePlayerPlugin(PluginId id, uint_t caps, Formats::Multitrack::Decoder::Ptr decoder,
                                        Module::MultitrackFactory::Ptr factory)
   {
     const auto outCaps = caps | Capabilities::Category::MODULE;
@@ -265,35 +261,42 @@ namespace ZXTune
   class MultitrackArchivePlugin : public MultitrackBasePlugin<ArchivePlugin>
   {
   public:
-    MultitrackArchivePlugin(StringView id, Formats::Multitrack::Decoder::Ptr decoder,
+    MultitrackArchivePlugin(PluginId id, Formats::Multitrack::Decoder::Ptr decoder,
                             Module::MultitrackFactory::Ptr factory)
       : MultitrackBasePlugin(id, Capabilities::Container::Type::MULTITRACK | Capabilities::Category::CONTAINER,
                              std::move(decoder), std::move(factory))
+      , Descr("Multitrack "s + Decoder->GetDescription())
     {}
 
-    String Description() const override
+    StringView Description() const override
     {
-      return "Multitrack " + Decoder->GetDescription();
+      return Descr;
     }
 
     Analysis::Result::Ptr Detect(const Parameters::Accessor& params, DataLocation::Ptr inputData,
                                  ArchiveCallback& callback) const override
     {
-      return DetectModules(params, inputData, callback);
+      return DetectModules(params, std::move(inputData), callback);
     }
 
-    DataLocation::Ptr TryOpen(const Parameters::Accessor& params, DataLocation::Ptr inputData,
+    DataLocation::Ptr TryOpen(const Parameters::Accessor& /*params*/, DataLocation::Ptr inputData,
                               const Analysis::Path& pathToOpen) const override
     {
       if (const auto index = Filename::FindIndex(pathToOpen.AsString()))
       {
-        return CreateSubtrackLocation(std::move(inputData), *index);
+        if (auto container = Decoder->Decode(*inputData->GetData()))
+        {
+          return CreateSubtrackLocation(std::move(inputData), std::move(container), *index);
+        }
       }
       return {};
     }
+
+  private:
+    const String Descr;
   };
 
-  ArchivePlugin::Ptr CreateArchivePlugin(StringView id, Formats::Multitrack::Decoder::Ptr decoder,
+  ArchivePlugin::Ptr CreateArchivePlugin(PluginId id, Formats::Multitrack::Decoder::Ptr decoder,
                                          Module::MultitrackFactory::Ptr factory)
   {
     return MakePtr<MultitrackArchivePlugin>(id, std::move(decoder), std::move(factory));

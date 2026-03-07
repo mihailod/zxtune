@@ -8,17 +8,17 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/protracker2.h"
 #include "formats/chiptune/metainfo.h"
 #include "formats/packed/container.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+
+#include <algorithm>
 #include <array>
 
 namespace Formats::Packed
@@ -55,7 +55,7 @@ namespace Formats::Packed
 
     const uint8_t POS_END_MARKER = 0xff;
 
-    const Char DESCRIPTION[] = "Pro Tracker v2.40 Phantom Family player";
+    const auto DESCRIPTION = "Pro Tracker v2.40 Phantom Family player"sv;
 
     const auto FORMAT =
         "21??"  // ld hl,xxxx
@@ -76,7 +76,7 @@ namespace Formats::Packed
         "22??"  // ld (xxxx),hl
         "19"    // add hl,de
         "19"    // add hl,de
-        ""_sv;
+        ""sv;
 
     uint_t GetPatternsCount(const RawHeader& hdr, std::size_t maxSize)
     {
@@ -100,7 +100,7 @@ namespace Formats::Packed
       , Decoder(Formats::Chiptune::CreateProTracker2Decoder())
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return CompiledPT24::DESCRIPTION;
     }
@@ -116,14 +116,14 @@ namespace Formats::Packed
       const Binary::View data(rawData);
       if (!Player->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       const auto& rawPlayer = *data.As<RawPlayer>();
       const uint_t dataAddr = rawPlayer.DataAddr;
       if (dataAddr < PLAYER_SIZE)
       {
         Dbg("Invalid compile addr");
-        return Container::Ptr();
+        return {};
       }
       const auto modData = data.SubView(PLAYER_SIZE, MAX_MODULE_SIZE);
       const auto& rawHeader = *modData.As<RawHeader>();
@@ -131,10 +131,10 @@ namespace Formats::Packed
       if (!patternsCount)
       {
         Dbg("Invalid patterns count");
-        return Container::Ptr();
+        return {};
       }
       const uint_t compileAddr = dataAddr - PLAYER_SIZE;
-      Dbg("Detected player compiled at %1% (#%1$04x) with %2% patterns", compileAddr, patternsCount);
+      Dbg("Detected player compiled at #{:04x} with {} patterns", compileAddr, patternsCount);
       const auto builder = Formats::Chiptune::PatchedDataBuilder::Create(modData);
       // fix samples/ornaments offsets
       for (uint_t idx = offsetof(RawHeader, SamplesOffsets); idx != offsetof(RawHeader, PatternsOffset); idx += 2)
@@ -153,7 +153,7 @@ namespace Formats::Packed
         return CreateContainer(std::move(fixedParsed), totalSize);
       }
       Dbg("Failed to parse fixed module");
-      return Container::Ptr();
+      return {};
     }
 
   private:

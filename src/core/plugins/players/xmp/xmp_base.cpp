@@ -8,31 +8,28 @@
  *
  **/
 
-// local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <core/core_parameters.h>
-#include <core/plugin_attrs.h>
-#include <formats/chiptune/container.h>
-#include <module/players/properties_helper.h>
-#include <module/track_information.h>
-#include <module/track_state.h>
-#include <parameters/tracking_helper.h>
-#include <sound/loop.h>
-#include <strings/encoding.h>
-#include <strings/trim.h>
-#include <time/duration.h>
-// std includes
+#include "formats/chiptune/container.h"
+#include "module/players/properties_helper.h"
+
+#include "binary/format_factories.h"
+#include "core/core_parameters.h"
+#include "core/plugin_attrs.h"
+#include "module/track_information.h"
+#include "module/track_state.h"
+#include "parameters/tracking_helper.h"
+#include "strings/sanitize.h"
+#include "time/duration.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include "3rdparty/xmp/include/xmp.h"
+#include "3rdparty/xmp/src/xmp_private.h"
+
 #include <utility>
-// 3rdparty includes
-#define BUILDING_STATIC
-#include <3rdparty/xmp/include/xmp.h>
-#include <3rdparty/xmp/src/xmp_private.h>
 
 namespace Module::Xmp
 {
@@ -47,6 +44,9 @@ namespace Module::Xmp
     {
       ::xmp_free_context(Data);
     }
+
+    BaseContext(const BaseContext& rh) = delete;
+    BaseContext& operator=(const BaseContext& rh) = delete;
 
     void Call(void (*func)(xmp_context))
     {
@@ -83,9 +83,6 @@ namespace Module::Xmp
     }
 
   private:
-    BaseContext(const BaseContext& rh);
-    void operator=(const BaseContext& rh);
-
     static void CheckError(int code)
     {
       // TODO
@@ -99,7 +96,7 @@ namespace Module::Xmp
   class Context : public BaseContext
   {
   public:
-    typedef std::shared_ptr<Context> Ptr;
+    using Ptr = std::shared_ptr<Context>;
 
     Context(const Binary::Container& rawData, const struct format_loader* loader)
     {
@@ -118,10 +115,10 @@ namespace Module::Xmp
   class Information : public Module::TrackInformation
   {
   public:
-    typedef std::shared_ptr<const Information> Ptr;
+    using Ptr = std::shared_ptr<const Information>;
 
     Information(xmp_module module, DurationType duration)
-      : Info(std::move(module))
+      : Info(module)
       , TotalDuration(duration)
     {}
 
@@ -155,7 +152,7 @@ namespace Module::Xmp
     const DurationType TotalDuration;
   };
 
-  typedef std::shared_ptr<xmp_frame_info> StatePtr;
+  using StatePtr = std::shared_ptr<xmp_frame_info>;
 
   class TrackState : public Module::TrackState
   {
@@ -229,7 +226,7 @@ namespace Module::Xmp
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(uint_t channels, Context::Ptr ctx, uint_t samplerate, Parameters::Accessor::Ptr params)
+    Renderer(uint_t /*channels*/, Context::Ptr ctx, uint_t samplerate, Parameters::Accessor::Ptr params)
       : Ctx(std::move(ctx))
       , State(new xmp_frame_info())
       , Params(std::move(params))
@@ -250,14 +247,14 @@ namespace Module::Xmp
       return Track;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
       static_assert(Sound::Sample::CHANNELS == 2, "Incompatible sound channels count");
       static_assert(Sound::Sample::BITS == 16, "Incompatible sound bits count");
       static_assert(Sound::Sample::MID == 0, "Incompatible sound sample type");
       static_assert(sizeof(Sound::Sample) == 4, "Incompatible sound sample size");
 
-      if (State->loop_count == 0 || looped(State->loop_count))
+      for (;;)
       {
         ApplyParameters();
         Ctx->Call(&::xmp_play_frame);
@@ -292,10 +289,9 @@ namespace Module::Xmp
     {
       if (Params.IsChanged())
       {
-        Parameters::IntType val = Parameters::ZXTune::Core::DAC::INTERPOLATION_DEFAULT;
-        Params->FindValue(Parameters::ZXTune::Core::DAC::INTERPOLATION, val);
-        const int interpolation = val != Parameters::ZXTune::Core::DAC::INTERPOLATION_NO ? XMP_INTERP_SPLINE
-                                                                                         : XMP_INTERP_LINEAR;
+        using namespace Parameters::ZXTune::Core::DAC;
+        const auto val = Parameters::GetInteger(*Params, INTERPOLATION, INTERPOLATION_DEFAULT);
+        const int interpolation = val != INTERPOLATION_NO ? XMP_INTERP_SPLINE : XMP_INTERP_LINEAR;
         Ctx->Call(&::xmp_set_player, int(XMP_PLAYER_INTERP), interpolation);
       }
     }
@@ -340,7 +336,7 @@ namespace Module::Xmp
 
   struct PluginDescription
   {
-    const char* const Id;
+    const ZXTune::PluginId Id;
     const StringView Format;
     const struct format_loader* const Loader;
   };
@@ -353,7 +349,7 @@ namespace Module::Xmp
       , Fmt(Binary::CreateMatchOnlyFormat(Desc.Format))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return xmp_get_loader_name(Desc.Loader);
     }
@@ -384,21 +380,16 @@ namespace Module::Xmp
     const Binary::Format::Ptr Fmt;
   };
 
-  String DecodeString(StringView str)
-  {
-    return Strings::ToAutoUtf8(Strings::TrimSpaces(str));
-  }
-
   void ParseStrings(const xmp_module& mod, PropertiesHelper& props)
   {
     Strings::Array strings;
     for (int idx = 0; idx < mod.smp; ++idx)
     {
-      strings.push_back(DecodeString(mod.xxs[idx].name));
+      strings.emplace_back(Strings::SanitizeKeepPadding(mod.xxs[idx].name));
     }
     for (int idx = 0; idx < mod.ins; ++idx)
     {
-      strings.push_back(DecodeString(mod.xxi[idx].name));
+      strings.emplace_back(Strings::SanitizeKeepPadding(mod.xxi[idx].name));
     }
     props.SetStrings(strings);
   }
@@ -423,12 +414,12 @@ namespace Module::Xmp
         ctx->Call(&::xmp_get_frame_info, &frmInfo);
 
         PropertiesHelper props(*properties);
-        props.SetTitle(DecodeString(modInfo.mod->name));
-        props.SetAuthor(DecodeString(modInfo.mod->author));
-        props.SetProgram(DecodeString(modInfo.mod->type));
+        props.SetTitle(Strings::Sanitize(modInfo.mod->name));
+        props.SetAuthor(Strings::Sanitize(modInfo.mod->author));
+        props.SetProgram(Strings::Sanitize(modInfo.mod->type));
         if (const char* comment = modInfo.comment)
         {
-          props.SetComment(DecodeString(comment));
+          props.SetComment(Strings::SanitizeMultiline(comment));
         }
         ParseStrings(*modInfo.mod, props);
         auto info = MakePtr<Information>(*modInfo.mod, DurationType(frmInfo.total_time));
@@ -443,56 +434,58 @@ namespace Module::Xmp
     const PluginDescription& Desc;
   };
 
+  using ZXTune::operator""_id;
+
   // clang-format off
   const PluginDescription PLUGINS[] =
   {
-    //{"ARCH", &arch_loader},
-    //{"COCO", &coco_loader},
+    //{"ARCH"_id, &arch_loader},
+    //{"COCO"_id, &coco_loader},
     //Desktop Tracker
     {
-      "DTT"
+      "DTT"_id
       ,
-      "'D's'k'T"_sv
+      "'D's'k'T"sv
       ,
       &dtt_loader
     },
     //Quadra Composer
     {
-      "EMOD"
+      "EMOD"_id
       ,
       "'F'O'R'M"
       "????"
       "'E'M'O'D"
-      ""_sv
+      ""sv
       ,
       &emod_loader
     },
     //Funktracker
     {
-      "FNK"
+      "FNK"_id
       ,
       "'F'u'n'k"
       "?"
       "14-ff"     //(year-1980)*2
       "00-79"     //cpu and card (really separate)
       "?"
-      ""_sv
+      ""sv
       ,
       &fnk_loader
     },
     //Graoumf Tracker
     {
-      "GTK"
+      "GTK"_id
       ,
       "'G'T'K"
       "00-03"
-      ""_sv
+      ""sv
       ,
       &gtk_loader
     },
     //Images Music System
     {
-      "IMS"
+      "IMS"_id
       ,
       "?{20}"
       "("                  //instruments
@@ -508,76 +501,76 @@ namespace Module::Xmp
       "00-01"   //zero
       "?{128}"  //orders
       "???3c"   //magic
-      ""_sv
+      ""sv
       ,
       &ims_loader
     },
     //Liquid Tracker
     {
-      "LIQ"
+      "LIQ"_id
       ,
       "'L'i'q'u'i'd' 'M'o'd'u'l'e':"
-      ""_sv
+      ""sv
       ,
       &liq_loader
     },
     //MED 1.12 MED2
     {
-      "MED"
+      "MED"_id
       ,
       "'M'E'D"
       "02"
-      ""_sv
+      ""sv
       ,
       &med2_loader
     },
     //MED 2.00 MED3
     {
-      "MED"
+      "MED"_id
       ,
       "'M'E'D"
       "03"
-      ""_sv
+      ""sv
       ,
       &med3_loader
     },
     {
-      "MED"
+      "MED"_id
       ,
       "'M'E'D"
       "04"
-      ""_sv
+      ""sv
       ,
       &med4_loader
     },
-    //{"MFP", &mfp_loader},//requires additional files
-    //{"MGT", &mgt_loader},experimental
+    //{"MFP"_id, &mfp_loader},//requires additional files
+    //{"MGT"_id, &mgt_loader},experimental
     //Liquid Tracker NO
     {
-      "LIQ"
+      "LIQ"_id
       ,
       "'N'O"
       "0000"
-      ""_sv
+      ""sv
       ,
       &no_loader
     },
-    //{"MOD", &polly_loader},//rle packed, too weak structure
-    //{"MOD", &pw_loader},//requires depacking
+    //{"MOD"_id, &polly_loader},//rle packed, too weak structure
+    //{"MOD"_id, &pw_loader},//requires depacking
     //Real Tracker
     {
-      "RTM"
+      "RTM"_id
       ,
       "'R'T'M'M"
       "20"
-      ""_sv
+      ""sv
       ,
       &rtm_loader
     },
-    //{"MTP", &mtp_loader},//experimental
+    //{"MTP"_id, &mtp_loader},//experimental
     //Slamtilt
     {
-      "STIM"
+      "STIM"_id
       ,
       "'S'T'I'M"         //signature
       "00???"            //BE samples offsets (assume 16Mb is enough)
@@ -585,13 +578,13 @@ namespace Module::Xmp
       "00?"              //BE number of samples (assume 255 is enough)
       "0001-80"          //BE count of positions (1-128)
       "0001-80"          //BE count of saved patterns (1-128)
-      ""_sv
+      ""sv
       ,
       &stim_loader
     },
     //STMIK 0.2
     {
-      "STX"
+      "STX"_id
       ,
       "?{20}"
       "('!|'B)"
@@ -606,17 +599,17 @@ namespace Module::Xmp
       "?{32}"
       //+60
       "'S'C'R'M"
-      ""_sv
+      ""sv
       ,
       &stx_loader
     },
-    //{"SYM", &sym_loader},
+    //{"SYM"_id, &sym_loader},
     //TCB Tracker
     {
-      "TCB"
+      "TCB"_id
       ,
       "'A'N' 'C'O'O'L('.|'!)"
-      ""_sv
+      ""sv
       ,
       &tcb_loader
     },

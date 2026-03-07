@@ -11,15 +11,16 @@
 #ifndef _WIN32
 #  error Invalid platform specified
 #endif
-
-// local includes
-#include "console.h"
-// platform-dependent includes
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+
+#include "apps/zxtune123/console.h"
+
+#include "string_view.h"
+
 #include <conio.h>
 #include <windows.h>
-// std includes
+
 #include <cctype>
 #include <vector>
 
@@ -30,7 +31,9 @@ namespace
   public:
     WindowsConsole()
       : Handle(::GetStdHandle(STD_OUTPUT_HANDLE))
-    {}
+    {
+      ::SetConsoleOutputCP(65001);
+    }
 
     SizeType GetSize() const override
     {
@@ -88,15 +91,9 @@ namespace
       {}
     }
 
-    void Write(const String& str) const override
+    void Write(StringView str) const override
     {
-      std::vector<wchar_t> wide(str.size());
-      const auto wideSize = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), str.size(), wide.data(), wide.size());
-      std::vector<char> narrow(str.size());
-      const auto narrowSize =
-          ::WideCharToMultiByte(CP_OEMCP, 0, wide.data(), wideSize, narrow.data(), narrow.size(), 0, 0);
-      DWORD realSize = 0;
-      ::WriteFile(Handle, narrow.data(), narrowSize, &realSize, NULL);
+      ::WriteFile(Handle, str.data(), str.size(), NULL, NULL);
     }
 
   private:

@@ -8,28 +8,30 @@
  *
  **/
 
-// local includes
-#include "setup_conversion.h"
-#include "filename_template.h"
-#include "flac_settings.h"
-#include "mp3_settings.h"
-#include "ogg_settings.h"
+#include "apps/zxtune-qt/ui/conversion/setup_conversion.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/conversion/backend_settings.h"
+#include "apps/zxtune-qt/ui/conversion/filename_template.h"
+#include "apps/zxtune-qt/ui/conversion/flac_settings.h"
+#include "apps/zxtune-qt/ui/conversion/mp3_settings.h"
+#include "apps/zxtune-qt/ui/conversion/ogg_settings.h"
+#include "apps/zxtune-qt/ui/conversion/supported_formats.h"
+#include "apps/zxtune-qt/ui/state.h"
+#include "apps/zxtune-qt/ui/tools/filedialog.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "setup_conversion.ui.h"
-#include "supp/options.h"
-#include "supported_formats.h"
-#include "ui/state.h"
-#include "ui/tools/filedialog.h"
-#include "ui/tools/parameters_helpers.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <io/api.h>
-#include <io/providers_parameters.h>
-#include <parameters/merged_accessor.h>
-#include <sound/backends_parameters.h>
-// qt includes
+
+#include "io/api.h"
+#include "io/providers_parameters.h"
+#include "parameters/merged_accessor.h"
+#include "sound/backends_parameters.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <QtCore/QThread>
 #include <QtGui/QCloseEvent>
 #include <QtWidgets/QPushButton>
@@ -50,10 +52,10 @@ namespace
     return QThread::idealThreadCount() > 1;
   }
 
-  Playlist::Item::Conversion::Options::Ptr CreateOptions(const String& type, const QString& filenameTemplate,
+  Playlist::Item::Conversion::Options::Ptr CreateOptions(StringView type, const QString& filenameTemplate,
                                                          Parameters::Accessor::Ptr params)
   {
-    return MakePtr<Playlist::Item::Conversion::Options>(type, FromQString(filenameTemplate), params);
+    return MakePtr<Playlist::Item::Conversion::Options>(String{type}, FromQString(filenameTemplate), std::move(params));
   }
 
   class SetupConversionDialogImpl
@@ -77,11 +79,13 @@ namespace
       AddBackendSettingsWidget(&UI::CreateOGGSettingsWidget);
       AddBackendSettingsWidget(&UI::CreateFLACSettingsWidget);
 
-      Require(connect(TargetTemplate, SIGNAL(SettingsChanged()), SLOT(UpdateDescriptions())));
-      Require(connect(TargetFormat, SIGNAL(SettingsChanged()), SLOT(UpdateDescriptions())));
+      Require(connect(TargetTemplate, &UI::FilenameTemplateWidget::SettingsChanged, this,
+                      &SetupConversionDialogImpl::UpdateDescriptions));
+      Require(connect(TargetFormat, &UI::SupportedFormatsWidget::SettingsChanged, this,
+                      &SetupConversionDialogImpl::UpdateDescriptions));
 
-      Require(connect(buttonBox, SIGNAL(accepted()), SLOT(accept())));
-      Require(connect(buttonBox, SIGNAL(rejected()), SLOT(reject())));
+      Require(connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept));
+      Require(connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject));
 
       toolBox->setCurrentIndex(TEMPLATE_PAGE);
       useMultithreading->setEnabled(HasMultithreadEnvironment());
@@ -101,15 +105,8 @@ namespace
       }
       else
       {
-        return Playlist::Item::Conversion::Options::Ptr();
+        return {};
       }
-    }
-
-    void UpdateDescriptions() override
-    {
-      UpdateTargetDescription();
-      UpdateFormatDescription();
-      UpdateSettingsDescription();
     }
 
     // QWidgets virtuals
@@ -120,12 +117,20 @@ namespace
     }
 
   private:
+    void UpdateDescriptions()
+    {
+      UpdateTargetDescription();
+      UpdateFormatDescription();
+      UpdateSettingsDescription();
+    }
+
     void AddBackendSettingsWidget(UI::BackendSettingsWidget* factory(QWidget&))
     {
       QWidget* const settingsWidget = toolBox->widget(SETTINGS_PAGE);
       UI::BackendSettingsWidget* const result = factory(*settingsWidget);
       formatSettingsLayout->addWidget(result);
-      Require(connect(result, SIGNAL(SettingsChanged()), SLOT(UpdateDescriptions())));
+      Require(connect(result, &UI::BackendSettingsWidget::SettingsChanged, this,
+                      &SetupConversionDialogImpl::UpdateDescriptions));
       BackendSettings[result->GetBackendId()] = result;
     }
 
@@ -146,7 +151,7 @@ namespace
 
     void UpdateSettingsDescription()
     {
-      const String type = TargetFormat->GetSelectedId();
+      const auto type = TargetFormat->GetSelectedId();
       for (auto& wid : BackendSettings)
       {
         wid.second->setVisible(false);
@@ -170,14 +175,14 @@ namespace
     UI::State::Ptr State;
     UI::FilenameTemplateWidget* const TargetTemplate;
     UI::SupportedFormatsWidget* const TargetFormat;
-    typedef std::map<String, UI::BackendSettingsWidget*> BackendIdToSettings;
+    using BackendIdToSettings = std::map<StringView, UI::BackendSettingsWidget*>;
     BackendIdToSettings BackendSettings;
   };
 
-  QString GetDefaultFilename(Playlist::Item::Data::Ptr item)
+  QString GetDefaultFilename(const Playlist::Item::Data& item)
   {
-    const String& filePath = item->GetFilePath();
-    const IO::Identifier::Ptr id = IO::ResolveUri(filePath);
+    const auto& filePath = item.GetFilePath();
+    const auto id = IO::ResolveUri(filePath);
     return ToQString(id->Filename());
   }
 
@@ -216,7 +221,7 @@ namespace
   private:
     void AddRawType(const QString& type)
     {
-      Types.push_back("");
+      Types.emplace_back("");
       Filters << MakeFilter(type);
     }
 
@@ -272,7 +277,7 @@ namespace UI
     }
     else
     {
-      return Playlist::Item::Conversion::Options::Ptr();
+      return {};
     }
   }
 
@@ -282,13 +287,14 @@ namespace UI
     return dialog->Execute();
   }
 
-  Playlist::Item::Conversion::Options::Ptr GetSaveAsParameters(Playlist::Item::Data::Ptr item)
+  Playlist::Item::Conversion::Options::Ptr GetSaveAsParameters(const Playlist::Item::Data& item)
   {
-    if (item->GetState())
+    const auto& state = item.GetState();
+    if (!state.IsReady() || state.GetIfError())
     {
-      return Playlist::Item::Conversion::Options::Ptr();
+      return {};
     }
-    const QString type = ToQString(item->GetType()).toLower();
+    const QString type = ToQString(item.GetType()).toLower();
     const Formats formats(type);
     // QFileDialog automatically change extension only when filter is selected
     QString filename = FixExtension(GetDefaultFilename(item), type);
@@ -299,7 +305,7 @@ namespace UI
     }
     else
     {
-      return Playlist::Item::Conversion::Options::Ptr();
+      return {};
     }
   }
 }  // namespace UI

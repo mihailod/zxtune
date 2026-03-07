@@ -8,18 +8,17 @@
  *
  **/
 
-// local includes
 #include "module/players/aym/ayc.h"
+
+#include "formats/chiptune/aym/ayc.h"
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_stream.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <core/core_parameters.h>
-#include <formats/chiptune/aym/ayc.h>
-#include <module/players/platforms.h>
-#include <module/players/properties_helper.h>
+#include "module/players/aym/aym_properties_helper.h"
+#include "module/players/platforms.h"
+#include "module/players/properties_helper.h"
+
+#include "contract.h"
+#include "make_ptr.h"
 
 namespace Module::AYC
 {
@@ -27,9 +26,7 @@ namespace Module::AYC
   {
   public:
     DataBuilder()
-      : Register(Devices::AYM::Registers::TOTAL)
-      , Frame(0)
-      , Data(MakePtr<AYM::MutableStreamModel>())
+      : Data(MakePtr<AYM::MutableStreamModel>())
     {}
 
     void SetFrames(std::size_t count) override
@@ -44,11 +41,13 @@ namespace Module::AYC
       Frame = 0;
     }
 
-    void AddValues(const Binary::Dump& values) override
+    void AddValues(Binary::View values) override
     {
       Require(Register < Devices::AYM::Registers::TOTAL);
-      for (auto val : values)
+      const auto* reg = values.As<uint8_t>();
+      for (uint_t idx = 0, lim = values.Size(); idx != lim; ++idx)
       {
+        const auto val = reg[idx];
         if (Register != Devices::AYM::Registers::ENV || val != 0xff)
         {
           Data->Frame(Frame++)[Register] = val;
@@ -62,12 +61,12 @@ namespace Module::AYC
 
     AYM::StreamModel::Ptr CaptureResult() const
     {
-      return Data->IsEmpty() ? AYM::StreamModel::Ptr() : AYM::StreamModel::Ptr(std::move(Data));
+      return Data->IsEmpty() ? AYM::StreamModel::Ptr() : AYM::StreamModel::Ptr(Data);
     }
 
   private:
-    Devices::AYM::Registers::Index Register;
-    uint_t Frame;
+    Devices::AYM::Registers::Index Register = Devices::AYM::Registers::TOTAL;
+    uint_t Frame = 0;
     AYM::MutableStreamModel::Ptr Data;
   };
 
@@ -82,10 +81,10 @@ namespace Module::AYC
       {
         if (auto data = dataBuilder.CaptureResult())
         {
-          PropertiesHelper props(*properties);
+          AYM::PropertiesHelper props(*properties);
           props.SetSource(*container);
           props.SetPlatform(Platforms::AMSTRAD_CPC);
-          properties->SetValue(Parameters::ZXTune::Core::AYM::CLOCKRATE, 1000000);
+          props.SetChipFrequency(1000000);
           return AYM::CreateStreamedChiptune(AYM::BASE_FRAME_DURATION, std::move(data), std::move(properties));
         }
       }

@@ -8,16 +8,17 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/soundtrackerpro.h"
 #include "formats/packed/container.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <algorithm>
 #include <array>
 #include <cstring>
 
@@ -29,6 +30,8 @@ namespace Formats::Packed
 
     const std::size_t MAX_MODULE_SIZE = 0x2800;
     const std::size_t MAX_PLAYER_SIZE = 2000;
+
+    using RawInformation = std::array<uint8_t, 53>;
 
     struct Version1
     {
@@ -45,7 +48,7 @@ namespace Formats::Packed
         le_uint16_t PlayAddr;
         uint8_t Padding4[8];
         //+17
-        std::array<uint8_t, 53> Information;
+        RawInformation Information;
         uint8_t Padding5[8];
         //+78
         uint8_t Initialization;
@@ -57,9 +60,9 @@ namespace Formats::Packed
           return DataAddr - compileAddr;
         }
 
-        Binary::Dump GetInfo() const
+        RawInformation GetInfo() const
         {
-          return Binary::Dump(Information.begin(), Information.end());
+          return Information;
         }
       };
     };
@@ -90,9 +93,9 @@ namespace Formats::Packed
           return DataAddr - compileAddr;
         }
 
-        Binary::Dump GetInfo() const
+        RawInformation GetInfo() const
         {
-          Binary::Dump result(53);
+          RawInformation result;
           const uint8_t* const src = Information;
           uint8_t* const dst = result.data();
           std::memcpy(dst, src, 24);
@@ -108,8 +111,8 @@ namespace Formats::Packed
     static_assert(offsetof(Version2::RawPlayer, Information) == 8, "Invalid layout");
     static_assert(offsetof(Version2::RawPlayer, Initialization) == 72, "Invalid layout");
 
-    const StringView Version1::DESCRIPTION = "Sound Tracker Pro v1.x player"_sv;
-    const StringView Version2::DESCRIPTION = "Sound Tracker Pro v2.x player"_sv;
+    const StringView Version1::DESCRIPTION = "Sound Tracker Pro v1.x player"sv;
+    const StringView Version2::DESCRIPTION = "Sound Tracker Pro v2.x player"sv;
 
     const StringView Version1::FORMAT =
         "21??"    // ld hl,ModuleAddr
@@ -130,7 +133,7 @@ namespace Formats::Packed
         "7e"    // ld a,(hl)
         "23"    // inc hl
         "32??"  // ld (xxxx),a
-        ""_sv;
+        ""sv;
 
     const StringView Version2::FORMAT =
         "c3??"  // jp InitAddr
@@ -150,17 +153,14 @@ namespace Formats::Packed
         "7e"    // ld a,(hl)
         "23"    // inc hl
         "32??"  // ld (xxxx),a
-        ""_sv;
+        ""sv;
 
-    bool IsInfoEmpty(Binary::View info)
+    bool IsInfoEmpty(const RawInformation& info)
     {
-      assert(info.Size() == 53);
       // 28 is fixed
       // 25 is title
-      const auto start = info.As<Char>();
-      const auto end = start + info.Size();
-      const auto titleStart = start + 28;
-      return std::none_of(titleStart, end, [](auto b) { return b > ' '; });
+      const auto* const titleStart = info.begin() + 28;
+      return std::none_of(titleStart, info.end(), [](auto b) { return b > ' '; });
     }
   }  // namespace CompiledSTP
 
@@ -172,9 +172,9 @@ namespace Formats::Packed
       : Player(Binary::CreateFormat(Version::FORMAT, sizeof(typename Version::RawPlayer)))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Version::DESCRIPTION.to_string();
+      return Version::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -188,16 +188,16 @@ namespace Formats::Packed
       const Binary::View data(rawData);
       if (!Player->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       const auto& rawPlayer = *data.As<typename Version::RawPlayer>();
       const auto playerSize = rawPlayer.GetSize();
       if (playerSize >= std::min(data.Size(), CompiledSTP::MAX_PLAYER_SIZE))
       {
         Dbg("Invalid player");
-        return Container::Ptr();
+        return {};
       }
-      Dbg("Detected player in first %1% bytes", playerSize);
+      Dbg("Detected player in first {} bytes", playerSize);
       const auto modData = rawData.GetSubcontainer(playerSize, CompiledSTP::MAX_MODULE_SIZE);
       const auto metainfo = rawPlayer.GetInfo();
       auto& stub = Formats::Chiptune::SoundTrackerPro::GetStubBuilder();
@@ -220,7 +220,7 @@ namespace Formats::Packed
         Dbg("Failed to parse fixed module");
       }
       Dbg("Failed to find module after player");
-      return Container::Ptr();
+      return {};
     }
 
   private:

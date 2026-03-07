@@ -10,9 +10,9 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// std includes
+#include "string_type.h"
+#include "string_view.h"
+
 #include <memory>
 
 namespace IO
@@ -24,7 +24,7 @@ namespace IO
   class Identifier
   {
   public:
-    typedef std::shared_ptr<const Identifier> Ptr;
+    using Ptr = std::shared_ptr<const Identifier>;
 
     virtual ~Identifier() = default;
 
@@ -43,6 +43,6 @@ namespace IO
     virtual String Subpath() const = 0;
 
     //! Builders
-    virtual Ptr WithSubpath(const String& subpath) const = 0;
+    virtual Ptr WithSubpath(StringView subpath) const = 0;
   };
 }  // namespace IO

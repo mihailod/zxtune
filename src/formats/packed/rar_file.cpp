@@ -8,26 +8,24 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
 #include "formats/packed/rar_supp.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <binary/container_factories.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <debug/log.h>
-#include <formats/packed.h>
-#include <math/numeric.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+#include "formats/packed.h"
+#include "math/numeric.h"
+
+#include "make_ptr.h"
+
+#include "3rdparty/unrar/rar.hpp"
+
 #include <array>
 #include <cassert>
 #include <limits>
 #include <memory>
-// thirdparty
-#include <3rdparty/unrar/rar.hpp>
 
 #undef min
 #undef max
@@ -38,12 +36,12 @@ namespace Formats::Packed
   {
     const Debug::Stream Dbg("Formats::Packed::Rar");
 
-    const Char DESCRIPTION[] = "RAR";
+    const auto DESCRIPTION = "RAR"sv;
     const auto HEADER_PATTERN =
         "??"          // uint16_t CRC;
         "74"          // uint8_t Type;
         "?%1xxxxxxx"  // uint16_t Flags;
-        ""_sv;
+        ""sv;
 
     class Container
     {
@@ -54,7 +52,7 @@ namespace Formats::Packed
 
       bool FastCheck() const
       {
-        if (std::size_t usedSize = GetUsedSize())
+        if (const auto usedSize = GetUsedSize())
         {
           return usedSize <= Data.Size();
         }
@@ -115,7 +113,7 @@ namespace Formats::Packed
     class CompressedFile
     {
     public:
-      typedef std::unique_ptr<const CompressedFile> Ptr;
+      using Ptr = std::unique_ptr<const CompressedFile>;
       virtual ~CompressedFile() = default;
 
       virtual Binary::Container::Ptr Decompress(const Container& container) const = 0;
@@ -133,7 +131,7 @@ namespace Formats::Packed
         if (data->Size() != outSize)
         {
           Dbg("Stored file sizes mismatch");
-          return Binary::Container::Ptr();
+          return {};
         }
         else
         {
@@ -161,7 +159,7 @@ namespace Formats::Packed
         const bool isSolid = header.IsSolid();
         const auto data = container.GetData();
         const auto size = data->Size();
-        Dbg("Depack %1% -> %2% (solid %3%)", size, outSize, isSolid);
+        Dbg("Depack {} -> {} (solid {})", size, outSize, isSolid);
         // Old format starts from 52 45 7e 5e
         const bool oldFormat = false;
         Stream.SetUnpackFromMemory(static_cast<const uint8_t*>(data->Start()), size, oldFormat);
@@ -175,20 +173,20 @@ namespace Formats::Packed
       {
         try
         {
-          std::unique_ptr<Binary::Dump> result(new Binary::Dump(outSize));
-          Stream.SetUnpackToMemory(result->data(), outSize);
+          Binary::DataBuilder result(outSize);
+          Stream.SetUnpackToMemory(static_cast<byte*>(result.Allocate(outSize)), outSize);
           Decoder.SetDestSize(outSize);
           Decoder.DoUnpack(method, isSolid);
           if (crc != Stream.GetUnpackedCrc())
           {
-            Dbg("Crc mismatch: stored 0x%1$08x, calculated 0x%2$08x", crc, Stream.GetUnpackedCrc());
+            Dbg("Crc mismatch: stored 0x{:08x}, calculated 0x{:08x}", crc, Stream.GetUnpackedCrc());
           }
-          return Binary::CreateContainer(std::move(result));
+          return result.CaptureResult();
         }
         catch (const std::exception& e)
         {
-          Dbg("Failed to decode: %1%", e.what());
-          return Binary::Container::Ptr();
+          Dbg("Failed to decode: {}", e.what());
+          return {};
         }
       }
 
@@ -225,9 +223,14 @@ namespace Formats::Packed
 
     String FileBlockHeader::GetName() const
     {
-      const uint8_t* const self = safe_ptr_cast<const uint8_t*>(this);
-      const uint8_t* const filename = self + (IsBigFile() ? sizeof(BigFileBlockHeader) : sizeof(FileBlockHeader));
-      return String(filename, filename + NameSize);
+      const auto* const self = safe_ptr_cast<const uint8_t*>(this);
+      const auto* const filename = self + (IsBigFile() ? sizeof(BigFileBlockHeader) : sizeof(FileBlockHeader));
+      auto* end = filename + NameSize;
+      if (Extended.Block.Flags & FileBlockHeader::FLAG_UNICODE_FILENAME)
+      {
+        end = std::find(filename, end, '\0');
+      }
+      return {filename, end};
     }
 
     bool FileBlockHeader::IsValid() const
@@ -280,7 +283,7 @@ namespace Formats::Packed
       , Decoder(MakePtr<Rar::DispatchedCompressedFile>())
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Rar::DESCRIPTION;
     }
@@ -295,7 +298,7 @@ namespace Formats::Packed
       const Rar::Container container(rawData);
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       return CreateContainer(Decoder->Decompress(container), container.GetUsedSize());
     }

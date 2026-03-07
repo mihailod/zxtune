@@ -21,6 +21,7 @@ import android.net.Uri
  * 8) amp:/Group
  * 9) amp:/Group/${group_name}?group=${group_id}
  * 10) amp:/Group/${group_name}/${author_name}?author=${author_id}&group=${group_id}
+ * OBSOLETE 11) amp:/Image/Author/${author_name}?author=${author_id}
  */
 object Identifier {
     private const val SCHEME = "amp"
@@ -67,9 +68,9 @@ object Identifier {
 
     // Countries
     @JvmStatic
-    fun forCountry(country: Country): Uri.Builder = forCategory(CATEGORY_COUNTRY)
-        .appendPath(country.name)
-        .appendQueryParameter(PARAM_COUNTRY, country.id.toString())
+    fun forCountry(country: Country): Uri.Builder =
+        forCategory(CATEGORY_COUNTRY).appendPath(country.name)
+            .appendQueryParameter(PARAM_COUNTRY, country.id.toString())
 
     @JvmStatic
     fun findCountry(uri: Uri, path: List<String>) = path.getOrNull(POS_COUNTRY_NAME)?.let { name ->
@@ -80,8 +81,7 @@ object Identifier {
 
     // Groups
     @JvmStatic
-    fun forGroup(group: Group): Uri.Builder = forCategory(CATEGORY_GROUP)
-        .appendPath(group.name)
+    fun forGroup(group: Group): Uri.Builder = forCategory(CATEGORY_GROUP).appendPath(group.name)
         .appendQueryParameter(PARAM_GROUP, group.id.toString())
 
     @JvmStatic
@@ -94,8 +94,7 @@ object Identifier {
     // Authors
     @JvmStatic
     fun forAuthor(parent: Uri.Builder, author: Author): Uri.Builder =
-        parent.appendPath(author.handle)
-            .appendQueryParameter(PARAM_AUTHOR, author.id.toString())
+        parent.appendPath(author.handle).appendQueryParameter(PARAM_AUTHOR, author.id.toString())
 
     @JvmStatic
     fun findAuthor(uri: Uri, path: List<String>) = path.getOrNull(POS_AUTHOR_NAME)?.let { name ->
@@ -106,8 +105,8 @@ object Identifier {
 
     // Tracks
     @JvmStatic
-    fun forTrack(parent: Uri.Builder, track: Track): Uri.Builder = parent.appendPath(track.filename)
-        .appendQueryParameter(PARAM_TRACK, track.id.toString())
+    fun forTrack(parent: Uri.Builder, track: Track): Uri.Builder =
+        parent.appendPath(track.filename).appendQueryParameter(PARAM_TRACK, track.id.toString())
 
     @JvmStatic
     fun findTrack(uri: Uri, path: List<String>) =

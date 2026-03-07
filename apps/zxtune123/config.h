@@ -10,9 +10,10 @@
 
 #pragma once
 
-// library includes
-#include <parameters/modifier.h>
+#include "parameters/modifier.h"
 
-void ParseConfigFile(const String& filename, Parameters::Modifier& result);
+#include "string_view.h"
+
+void ParseConfigFile(StringView filename, Parameters::Modifier& result);
 // result will be overwritten
-void ParseParametersString(Parameters::Identifier prefix, const String& str, Parameters::Modifier& result);
+void ParseParametersString(Parameters::Identifier prefix, StringView str, Parameters::Modifier& result);

@@ -69,12 +69,8 @@ public final class VfsArchive {
     return !id.getSubPath().isEmpty();
   }
 
-  /*
-   * @return
-   *
-   * VfsDir - browsable archive
-   * VfsFile - single file to play (or no files to play)
-   * null - unknown status
+  /**
+   * @return VfsDir (browsable archive), VfsFile (single file to play or no files to play), null (unknown status)
    */
   @Nullable
   static VfsObject browseCached(VfsFile file) {
@@ -106,12 +102,8 @@ public final class VfsArchive {
     return new ArchiveRoot(file);
   }
 
-  /*
-   * @return
-   *
-   * VfsDir - browsable archive
-   * VfsFile - single file to play
-   * null - nothing to play
+  /**
+   * @return VfsDir (browsable archive), VfsFile (single file to play), null (nothing to play)
    */
   @Nullable
   public static VfsObject browse(VfsFile file) {
@@ -190,24 +182,16 @@ public final class VfsArchive {
   }
 
   private void listArchive(final VfsObject parent, final Visitor visitor) {
-    service.listDir(parent.getUri(), new ArchivesService.ListingCallback() {
-      @Override
-      public void onItemsCount(int hint) {
-        visitor.onItemsCount(hint);
-      }
-
-      @Override
-      public void onEntry(Entry entry) {
-        if (entry.track != null) {
-          visitor.onFile(new ArchiveFile(parent, entry.dirEntry, entry.track));
-        } else {
-          visitor.onDir(new ArchiveDir(parent, entry.dirEntry));
-        }
+    service.listDir(parent.getUri(), (entry) -> {
+      if (entry.track != null) {
+        visitor.onFile(new ArchiveFile(parent, entry.dirEntry, entry.track));
+      } else {
+        visitor.onDir(new ArchiveDir(parent, entry.dirEntry));
       }
     });
   }
 
-  private class ArchiveRoot extends StubObject implements VfsDir {
+  private class ArchiveRoot implements VfsDir, VfsFile {
 
     private final VfsFile file;
 
@@ -226,8 +210,23 @@ public final class VfsArchive {
     }
 
     @Override
+    public String getDescription() {
+      return file.getDescription();
+    }
+
+    @Override
     public VfsObject getParent() {
       return file.getParent();
+    }
+
+    @Override
+    public Object getExtension(String id) {
+      return file.getExtension(id);
+    }
+
+    @Override
+    public String getSize() {
+      return file.getSize();
     }
 
     @Override

@@ -8,34 +8,35 @@
  *
  **/
 
-// local includes
-#include "config.h"
-// common includes
-#include <error_tools.h>
-// library includes
-#include <parameters/serialize.h>
-#include <strings/map.h>
-// std includes
+#include "apps/zxtune123/config.h"
+
+#include "parameters/serialize.h"
+#include "strings/map.h"
+
+#include "error_tools.h"
+#include "string_view.h"
+
+#include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <fstream>
-
-#define FILE_TAG 0DBA1FA8
+#include <memory>
 
 namespace
 {
-  static const Char PARAMETERS_DELIMITER = ',';
+  const auto PARAMETERS_DELIMITER = ',';
 
-  static const Char CONFIG_FILENAME[] = "zxtune.conf";
+  const auto CONFIG_FILENAME = "zxtune.conf"sv;
 
   // try to search config in homedir, if defined
   String GetDefaultConfigFile()
   {
 #ifdef _WIN32
-    static const Char ENV_HOMEDIR[] = "APPDATA";
-    static const Char PATH[] = "\\zxtune\\";
+    static const char ENV_HOMEDIR[] = "APPDATA";
+    const auto PATH = "\\zxtune\\"sv;
 #else
-    static const Char ENV_HOMEDIR[] = "HOME";
-    static const Char PATH[] = "/.zxtune/";
+    static const char ENV_HOMEDIR[] = "HOME";
+    const auto PATH = "/.zxtune/"sv;
 #endif
     String dir;
     if (const auto* homeDir = ::getenv(ENV_HOMEDIR))
@@ -45,7 +46,7 @@ namespace
     return dir + CONFIG_FILENAME;
   }
 
-  void ParseParametersString(Parameters::Identifier prefix, const String& str, Strings::Map& result)
+  void ParseParametersString(Parameters::Identifier prefix, StringView str, Strings::Map& result)
   {
     Strings::Map res;
 
@@ -64,11 +65,12 @@ namespace
       value ::= [^,]*
       name is prepended with prefix before insert to result
     */
-    String paramName, paramValue;
-    for (String::const_iterator it = str.begin(), lim = str.end(); it != lim; ++it)
+    String paramName;
+    String paramValue;
+    for (auto it = str.begin(), lim = str.end(); it != lim; ++it)
     {
       bool doApply = false;
-      const Char sym(*it);
+      const auto sym(*it);
       switch (mode)
       {
       case IN_NOWHERE:
@@ -88,7 +90,7 @@ namespace
         }
         else
         {
-          throw MakeFormattedError(THIS_LINE, "Invalid parameter format '%1%'.", str);
+          throw MakeFormattedError(THIS_LINE, "Invalid parameter format '{}'.", str);
         }
         break;
       case IN_VALUE:
@@ -133,16 +135,16 @@ namespace
     }
     else if (IN_NOWHERE != mode)
     {
-      throw MakeFormattedError(THIS_LINE, "Invalid parameter format '%1%'.", str);
+      throw MakeFormattedError(THIS_LINE, "Invalid parameter format '{}'.", str);
     }
     result.swap(res);
   }
 
-  void ParseConfigFile(const String& filename, String& params)
+  void ParseConfigFile(StringView filename, String& params)
   {
     const String configName(filename.empty() ? CONFIG_FILENAME : filename);
 
-    typedef std::basic_ifstream<Char> FileStream;
+    using FileStream = std::ifstream;
     std::unique_ptr<FileStream> configFile(new FileStream(configName.c_str()));
     if (!*configFile)
     {
@@ -150,7 +152,7 @@ namespace
       {
         throw Error(THIS_LINE, "Failed to open configuration file " + configName);
       }
-      configFile.reset(new FileStream(GetDefaultConfigFile().c_str()));
+      configFile = std::make_unique<FileStream>(GetDefaultConfigFile().c_str());
     }
     if (!*configFile)
     {
@@ -159,16 +161,15 @@ namespace
     }
 
     String lines;
-    std::vector<Char> buffer(1024);
+    std::string buffer(1024, '\0');
     for (;;)
     {
-      configFile->getline(&buffer[0], buffer.size());
+      configFile->getline(buffer.data(), buffer.size());
       if (const std::streamsize lineSize = configFile->gcount())
       {
-        std::vector<Char>::const_iterator endof(buffer.begin() + lineSize - 1);
-        auto beginof = std::find_if<std::vector<Char>::const_iterator>(buffer.begin(), endof,
-                                                                       [](Char c) { return !std::isspace(c); });
-        if (beginof != endof && *beginof != Char('#'))
+        const auto endof = buffer.cbegin() + lineSize - 1;
+        const auto beginof = std::find_if(buffer.cbegin(), endof, [](auto c) { return !std::isspace(c); });
+        if (beginof != endof && *beginof != '#')
         {
           if (!lines.empty())
           {
@@ -186,7 +187,7 @@ namespace
   }
 }  // namespace
 
-void ParseConfigFile(const String& filename, Parameters::Modifier& result)
+void ParseConfigFile(StringView filename, Parameters::Modifier& result)
 {
   String strVal;
   ParseConfigFile(filename, strVal);
@@ -196,9 +197,9 @@ void ParseConfigFile(const String& filename, Parameters::Modifier& result)
   }
 }
 
-void ParseParametersString(Parameters::Identifier pfx, const String& str, Parameters::Modifier& result)
+void ParseParametersString(Parameters::Identifier prefix, StringView str, Parameters::Modifier& result)
 {
   Strings::Map strMap;
-  ParseParametersString(pfx, str, strMap);
+  ParseParametersString(prefix, str, strMap);
   Parameters::Convert(strMap, result);
 }

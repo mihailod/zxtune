@@ -8,14 +8,13 @@
  *
  **/
 
-// local includes
+#include "devices/turbosound.h"
+
 #include "devices/aym/src/psg.h"
 #include "devices/aym/src/soundchip.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <devices/turbosound.h>
-// std includes
+
+#include "make_ptr.h"
+
 #include <utility>
 
 namespace Devices::TurboSound
@@ -32,6 +31,12 @@ namespace Devices::TurboSound
     {
       Chip0.SetDutyCycle(value, mask);
       Chip1.SetDutyCycle(value, mask);
+    }
+
+    void SetMuteMask(uint_t mask)
+    {
+      Chip0.SetMuteMask(mask);
+      Chip1.SetMuteMask(mask >> AYM::VOICES);
     }
 
     void Reset()
@@ -67,9 +72,9 @@ namespace Devices::TurboSound
 
   struct Traits
   {
-    typedef DataChunk DataChunkType;
-    typedef PSG PSGType;
-    typedef Chip ChipBaseType;
+    using DataChunkType = DataChunk;
+    using PSGType = PSG;
+    using ChipBaseType = Chip;
     static const uint_t VOICES = TurboSound::VOICES;
   };
 
@@ -84,7 +89,7 @@ namespace Devices::TurboSound
     Sound::Sample ApplyData(const MixerType::InDataType& in) const override
     {
       const Sound::Sample out = DelegateRef.ApplyData(in);
-      return Sound::Sample(out.Left() / 2, out.Right() / 2);
+      return {out.Left() / 2, out.Right() / 2};
     }
 
   private:
@@ -94,7 +99,7 @@ namespace Devices::TurboSound
 
   Chip::Ptr CreateChip(ChipParameters::Ptr params, MixerType::Ptr mixer)
   {
-    auto halfMixer = MakePtr<HalfLevelMixer>(mixer);
+    auto halfMixer = MakePtr<HalfLevelMixer>(std::move(mixer));
     return MakePtr<AYM::SoundChip<Traits> >(std::move(params), std::move(halfMixer));
   }
 }  // namespace Devices::TurboSound

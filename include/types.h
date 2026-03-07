@@ -10,13 +10,7 @@
 
 #pragma once
 
-// common includes
-#include <char_type.h>
-#include <string_view.h>
-// std includes
 #include <cstdint>
-#include <cstring>
-#include <string>
 
 //@{
 //! @brief Integer types
@@ -30,17 +24,10 @@ using std::int64_t;
 using std::uint64_t;
 
 /// Unsigned integer type
-typedef unsigned int uint_t;
+using uint_t = unsigned int;
 /// Signed integer type
-typedef signed int int_t;
+using int_t = signed int;
 //@}
-
-/// String-related types
-
-//! @brief %String type
-typedef std::basic_string<Char> String;
-
-typedef basic_string_view<Char> StringView;
 
 // assertions
 static_assert(sizeof(uint_t) >= sizeof(uint32_t), "Invalid uint_t type");

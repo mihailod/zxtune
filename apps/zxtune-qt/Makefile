@@ -3,7 +3,6 @@ dirs.root := ../..
 include $(dirs.root)/make/default.mak
 
 source_dirs = . supp
-includes.dirs += .
 
 source_files.windows = res/zxtune-qt.rc
 source_files.mingw = $(source_files.windows)
@@ -23,18 +22,16 @@ libraries.common = analysis async \
                   devices_aym devices_aym_dumper devices_beeper devices_dac devices_fm devices_saa devices_z80 \
                   formats_archived formats_archived_multitrack formats_chiptune formats_packed formats_multitrack \
                   io \
-                  module module_conversion module_players module_properties \
+                  module_conversion module_players module_properties \
                   parameters platform platform_application platform_version \
                   resource \
                   sound sound_backends strings \
                   tools
-libraries.3rdparty = asap atrac9 ffmpeg FLAC gme he ht hvl lazyusf2 lhasa lzma mgba mpg123 ogg openmpt sidplayfp snesspc sseqplayer unrar v2m vgm vgmstream vio2sf vorbis xmp z80ex zlib
+libraries.3rdparty = asap atrac9 ffmpeg FLAC gme he ht hvl lazyusf2 lhasa lzma mgba mpg123 ogg openmpt opus sidplayfp snesspc sseqplayer unrar v2m vgm vgmstream vio2sf vorbis xmp z80ex zlib
 
 #ui
 libraries += playlist_ui playlist_supp playlist_io ui_common
 depends += $(addprefix apps/zxtune-qt/,playlist/supp playlist/ui playlist/io ui)
-
-libraries.boost = filesystem system
 
 libraries.qt = Gui Core Network Widgets
 

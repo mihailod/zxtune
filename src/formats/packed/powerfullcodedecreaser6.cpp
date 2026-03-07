@@ -10,18 +10,18 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/hrust1_bitstream.h"
 #include "formats/packed/pack_utils.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+#include "string_view.h"
+
 #include <algorithm>
 #include <iterator>
 
@@ -124,7 +124,7 @@ namespace Formats::Packed
       static const std::size_t MIN_SIZE = sizeof(RawHeader);
     };
 
-    const StringView Version61::DESCRIPTION = "Powerfull Code Decreaser v6.1"_sv;
+    const StringView Version61::DESCRIPTION = "Powerfull Code Decreaser v6.1"sv;
     const StringView Version61::DEPACKER_PATTERN =
         "?"       // di/nop
         "21??"    // ld hl,xxxx 0xc017   depacker src
@@ -161,9 +161,9 @@ namespace Formats::Packed
         "12"      // ld (de),a
         "13"      // inc de
         "18f1"    // jr ...
-        ""_sv;
+        ""sv;
 
-    const StringView Version61i::DESCRIPTION = "Powerfull Code Decreaser v6.1i"_sv;
+    const StringView Version61i::DESCRIPTION = "Powerfull Code Decreaser v6.1i"sv;
     const StringView Version61i::DEPACKER_PATTERN =
         "?"       // di/nop
         "21??"    // ld hl,xxxx 0x7017   depacker src
@@ -194,9 +194,9 @@ namespace Formats::Packed
         "12"      // ld (de),a
         "13"      // inc de
         "18f1"    // jr ...
-        ""_sv;
+        ""sv;
 
-    const StringView Version62::DESCRIPTION = "Powerfull Code Decreaser v6.2"_sv;
+    const StringView Version62::DESCRIPTION = "Powerfull Code Decreaser v6.2"sv;
     const StringView Version62::DEPACKER_PATTERN =
         "?"       // di/nop
         "21??"    // ld hl,xxxx 0x6026   depacker src
@@ -227,7 +227,7 @@ namespace Formats::Packed
         "12"      // ld (de),a
         "13"      // inc de
         "18f1"    // jr ...
-        ""_sv;
+        ""sv;
 
     template<class Version>
     class Container
@@ -245,11 +245,7 @@ namespace Formats::Packed
           return false;
         }
         const typename Version::RawHeader& header = GetHeader();
-        if (header.SizeOfPacked <= sizeof(header.LastBytes))
-        {
-          return false;
-        }
-        return true;
+        return header.SizeOfPacked > sizeof(header.LastBytes);
       }
 
       const typename Version::RawHeader& GetHeader() const
@@ -273,8 +269,6 @@ namespace Formats::Packed
     public:
       Bitstream(const uint8_t* data, std::size_t size)
         : ByteStream(data, size)
-        , Bits()
-        , Mask(0)
       {}
 
       uint_t GetBit()
@@ -298,8 +292,8 @@ namespace Formats::Packed
       }
 
     private:
-      uint_t Bits;
-      uint_t Mask;
+      uint_t Bits = 0;
+      uint_t Mask = 0;
     };
 
     class BitstreamDecoder
@@ -307,15 +301,13 @@ namespace Formats::Packed
     public:
       BitstreamDecoder(const uint8_t* data, std::size_t size)
         : Stream(data, size)
-        , Result(new Binary::Dump())
-        , Decoded(*Result)
       {
         assert(!Stream.Eof());
       }
 
       bool DecodeMainData()
       {
-        while (GetSingleBytes() && Decoded.size() < MAX_DECODED_SIZE)
+        while (GetSingleBytes() && Decoded.Size() < MAX_DECODED_SIZE)
         {
           const uint_t index = GetIndex();
           uint_t offset = 0;
@@ -355,7 +347,7 @@ namespace Formats::Packed
       {
         while (Stream.GetBit())
         {
-          Decoded.push_back(Stream.GetByte());
+          Decoded.AddByte(Stream.GetByte());
         }
         return !Stream.Eof();
       }
@@ -410,8 +402,7 @@ namespace Formats::Packed
 
     protected:
       Bitstream Stream;
-      std::unique_ptr<Binary::Dump> Result;
-      Binary::Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
 
     template<class Version>
@@ -430,9 +421,9 @@ namespace Formats::Packed
         }
       }
 
-      std::unique_ptr<Binary::Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid ? std::move(Result) : std::unique_ptr<Binary::Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
 
       std::size_t GetUsedSize() const
@@ -443,13 +434,13 @@ namespace Formats::Packed
     private:
       bool DecodeData()
       {
-        Decoded.reserve(2 * Header.SizeOfPacked);
+        Decoded = Binary::DataBuilder(2 * Header.SizeOfPacked);
 
         if (!DecodeMainData())
         {
           return false;
         }
-        std::copy(Header.LastBytes, std::end(Header.LastBytes), std::back_inserter(Decoded));
+        Decoded.Add(Header.LastBytes);
         return true;
       }
 
@@ -467,9 +458,9 @@ namespace Formats::Packed
       : Depacker(Binary::CreateFormat(Version::DEPACKER_PATTERN, Version::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
-      return Version::DESCRIPTION.to_string();
+      return Version::DESCRIPTION;
     }
 
     Binary::Format::Ptr GetFormat() const override
@@ -481,12 +472,12 @@ namespace Formats::Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const PowerfullCodeDecreaser6::Container<Version> container(rawData.Start(), rawData.Size());
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       PowerfullCodeDecreaser6::DataDecoder<Version> decoder(container);
       return CreateContainer(decoder.GetResult(), decoder.GetUsedSize());

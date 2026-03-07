@@ -44,7 +44,7 @@ class DatabaseTest {
     }
 
     @Test
-    fun `test empty database`() = testVisitor<Catalog.GroupsVisitor> { visitor ->
+    fun `test empty database`() = testVisitor<Catalog.Visitor<Group>> { visitor ->
         Database.Tables.LIST.forEach {
             assertFalse(underTest.queryGroups(it, "", visitor))
         }
@@ -56,30 +56,27 @@ class DatabaseTest {
         val nonletter = Group(1, "0", 1).also { underTest.addGroup(category, it) }
         val groups = (2..10).map { makeGroup(it) }.onEach { underTest.addGroup(category, it) }
 
-        testVisitor<Catalog.GroupsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Group>> { visitor ->
             assertTrue(underTest.queryGroups(category, "", visitor))
 
             inOrder(visitor).run {
-                verify(visitor).setCountHint(10)
                 verify(visitor).accept(nonletter)
                 groups.forEach { verify(visitor).accept(it) }
             }
         }
 
-        testVisitor<Catalog.GroupsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Group>> { visitor ->
             assertTrue(underTest.queryGroups(category, "#", visitor))
 
             inOrder(visitor).run {
-                verify(visitor).setCountHint(1)
                 verify(visitor).accept(nonletter)
             }
         }
 
-        testVisitor<Catalog.GroupsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Group>> { visitor ->
             assertTrue(underTest.queryGroups(category, "gr", visitor))
 
             inOrder(visitor).run {
-                verify(visitor).setCountHint(9)
                 groups.forEach { verify(visitor).accept(it) }
             }
         }
@@ -92,12 +89,11 @@ class DatabaseTest {
     @Test
     fun `test queryTracks`() {
         val category = Database.Tables.Collections.NAME
-        testCheckObjectGrouping<Catalog.TracksVisitor, Group, Track>(
+        testCheckObjectGrouping<Catalog.Visitor<Track>, Group, Track>(
             addObject = ::addTrack,
             addGroup = ::makeGroup,
             addObjectToGroup = { group, track -> underTest.addGroupTrack(category, group.id, track) },
             queryObjects = { group, visitor -> underTest.queryTracks(category, group.id, visitor) },
-            checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
             checkAccept = { visitor, track -> visitor.accept(track) }
         )
     }

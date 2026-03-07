@@ -10,7 +10,6 @@
 
 #pragma once
 
-// local includes
 #include "sound/backends/backend_impl.h"
 
 namespace Sound
@@ -21,11 +20,10 @@ namespace Sound
     virtual ~BackendsStorage() = default;
 
     // Functional
-    virtual void Register(const String& id, const char* description, uint_t caps,
-                          BackendWorkerFactory::Ptr factory) = 0;
+    virtual void Register(BackendId id, const char* description, uint_t caps, BackendWorkerFactory::Ptr factory) = 0;
     // Disabled due to error
-    virtual void Register(const String& id, const char* description, uint_t caps, const Error& status) = 0;
+    virtual void Register(BackendId id, const char* description, uint_t caps, const Error& status) = 0;
     // Disabled due to configuration
-    virtual void Register(const String& id, const char* description, uint_t caps) = 0;
+    virtual void Register(BackendId id, const char* description, uint_t caps) = 0;
   };
 }  // namespace Sound

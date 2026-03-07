@@ -10,11 +10,8 @@
 
 #pragma once
 
-// library includes
-#include <parameters/accessor.h>
-#include <parameters/modifier.h>
-#include <sound/loop.h>
-#include <time/duration.h>
+#include "module/loop.h"
+#include "parameters/accessor.h"
 
 namespace Sound
 {
@@ -22,7 +19,7 @@ namespace Sound
   class RenderParameters
   {
   public:
-    typedef std::shared_ptr<const RenderParameters> Ptr;
+    using Ptr = std::shared_ptr<const RenderParameters>;
 
     virtual ~RenderParameters() = default;
 
@@ -30,12 +27,10 @@ namespace Sound
 
     //! Rendering sound frequency
     virtual uint_t SoundFreq() const = 0;
-    //! Loop mode
-    virtual LoopParameters Looped() const = 0;
 
     static Ptr Create(Parameters::Accessor::Ptr soundParameters);
   };
 
-  LoopParameters GetLoopParameters(const Parameters::Accessor& params);
+  Module::LoopParameters GetLoopParameters(const Parameters::Accessor& params);
   uint_t GetSoundFrequency(const Parameters::Accessor& params);
 }  // namespace Sound

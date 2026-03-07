@@ -8,21 +8,22 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/soundtracker_detail.h"
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <iterator.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <strings/optimize.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "strings/optimize.h"
+#include "tools/iterators.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <algorithm>
 #include <array>
 
 namespace Formats::Chiptune
@@ -31,7 +32,7 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::SoundTrackerCompiled");
 
-    const Char PROGRAM[] = "Sound Tracker v1.x";
+    const auto PROGRAM = "Sound Tracker v1.x"sv;
 
     using namespace SoundTracker;
 
@@ -136,32 +137,15 @@ namespace Formats::Chiptune
     static_assert(sizeof(RawOrnament) * alignof(RawOrnament) == 33, "Invalid layout");
     static_assert(sizeof(RawSample) * alignof(RawSample) == 99, "Invalid layout");
 
-    bool Starts(const StringView& str, const char* pat)
-    {
-      for (auto it1 = str.begin(), it2 = pat, lim = str.end(); it1 != lim && *it2; ++it1, ++it2)
-      {
-        if (*it1 != *it2)
-        {
-          return false;
-        }
-      }
-      return true;
-    }
-
     bool IsProgramName(StringView name)
     {
-      static const char* STANDARD_PROGRAMS_PREFIXES[] = {
-          "SONG BY ST COMPIL", "SONG BY MB COMPIL", "SONG BY ST-COMPIL", "SONG BY S.T.COMP",  "SONG ST BY COMPILE",
-          "SOUND TRACKER",     "S.T.FULL EDITION",  "S.W.COMPILE V2.0",  "STU SONG COMPILER",
+      static const std::array STANDARD_PROGRAMS_PREFIXES = {
+          "SONG BY ST COMPIL"sv, "SONG BY MB COMPIL"sv,  "SONG BY ST-COMPIL"sv,
+          "SONG BY S.T.COMP"sv,  "SONG ST BY COMPILE"sv, "SOUND TRACKER"sv,
+          "S.T.FULL EDITION"sv,  "S.W.COMPILE V2.0"sv,   "STU SONG COMPILER"sv,
       };
-      for (const auto& prefix : STANDARD_PROGRAMS_PREFIXES)
-      {
-        if (Starts(name, prefix))
-        {
-          return true;
-        }
-      }
-      return false;
+      return std::any_of(STANDARD_PROGRAMS_PREFIXES.begin(), STANDARD_PROGRAMS_PREFIXES.end(),
+                         [name](auto prefix) { return name.starts_with(prefix); });
     }
 
     class Format
@@ -180,7 +164,7 @@ namespace Formats::Chiptune
       {
         builder.SetInitialTempo(Source.Tempo);
         MetaBuilder& meta = builder.GetMetaBuilder();
-        const StringView id(Source.Identifier);
+        const auto id = MakeStringView(Source.Identifier);
         if (IsProgramName(id))
         {
           meta.SetProgram(Strings::OptimizeAscii(id));
@@ -204,7 +188,7 @@ namespace Formats::Chiptune
           dst.Transposition = src.Transposition;
           positions.Lines.push_back(dst);
         }
-        Dbg("Positions: %1% entries", positions.GetSize());
+        Dbg("Positions: {} entries", positions.GetSize());
         builder.SetPositions(std::move(positions));
       }
 
@@ -224,7 +208,7 @@ namespace Formats::Chiptune
             continue;
           }
           donePats.Insert(patIndex);
-          Dbg("Parse pattern %1%", patIndex);
+          Dbg("Parse pattern {}", patIndex);
           ParsePattern(src, builder);
           if (pats.Count() == donePats.Count())
           {
@@ -237,7 +221,7 @@ namespace Formats::Chiptune
           const uint_t idx = *it;
           if (!donePats.Contain(idx))
           {
-            Dbg("Fill stub pattern %1%", idx);
+            Dbg("Fill stub pattern {}", idx);
             builder.StartPattern(idx);
           }
         }
@@ -255,7 +239,7 @@ namespace Formats::Chiptune
             continue;
           }
           doneSams.Insert(samIdx);
-          Dbg("Parse sample %1%", samIdx);
+          Dbg("Parse sample {}", samIdx);
           builder.SetSample(samIdx, ParseSample(src));
           if (doneSams.Count() == samples.Count())
           {
@@ -267,7 +251,7 @@ namespace Formats::Chiptune
           const uint_t idx = *it;
           if (!doneSams.Contain(idx))
           {
-            Dbg("Fill stub sample %1%", idx);
+            Dbg("Fill stub sample {}", idx);
             builder.SetSample(idx, Sample());
           }
         }
@@ -290,7 +274,7 @@ namespace Formats::Chiptune
             continue;
           }
           doneOrns.Insert(ornIdx);
-          Dbg("Parse ornament %1%", ornIdx);
+          Dbg("Parse ornament {}", ornIdx);
           builder.SetOrnament(ornIdx, ParseOrnament(src));
           if (doneOrns.Count() == ornaments.Count())
           {
@@ -302,7 +286,7 @@ namespace Formats::Chiptune
           const uint_t idx = *it;
           if (!doneOrns.Contain(idx))
           {
-            Dbg("Fill stub ornament %1%", idx);
+            Dbg("Fill stub ornament {}", idx);
             builder.SetOrnament(idx, Ornament());
           }
         }
@@ -328,7 +312,7 @@ namespace Formats::Chiptune
         AddRange(offset, sizeof(*positions) + (length - 1) * sizeof(RawPositions::PosEntry));
         const RawPositions::PosEntry* const firstEntry = positions->Data;
         const RawPositions::PosEntry* const lastEntry = firstEntry + length;
-        return RangeIterator<const RawPositions::PosEntry*>(firstEntry, lastEntry);
+        return {firstEntry, lastEntry};
       }
 
       const RawPattern& GetPattern(uint_t index) const
@@ -381,15 +365,11 @@ namespace Formats::Chiptune
       {
         struct ChannelState
         {
-          std::size_t Offset;
-          uint_t Period;
-          uint_t Counter;
+          std::size_t Offset = 0;
+          uint_t Period = 0;
+          uint_t Counter = 0;
 
-          ChannelState()
-            : Offset()
-            , Period()
-            , Counter()
-          {}
+          ChannelState() = default;
 
           void Skip(uint_t toSkip)
           {
@@ -405,7 +385,6 @@ namespace Formats::Chiptune
         std::array<ChannelState, 3> Channels;
 
         explicit ParserState(const DataCursors& src)
-          : Channels()
         {
           for (std::size_t idx = 0; idx != src.size(); ++idx)
           {
@@ -455,12 +434,12 @@ namespace Formats::Chiptune
           const std::size_t start = rangesStarts[chanNum];
           if (start >= Data.Size())
           {
-            Dbg("Invalid offset (%1%)", start);
+            Dbg("Invalid offset ({})", start);
           }
           else
           {
             const std::size_t stop = std::min(Data.Size(), state.Channels[chanNum].Offset + 1);
-            Dbg("Affected ranges %1%..%2%", start, stop);
+            Dbg("Affected ranges {}..{}", start, stop);
             AddFixedRange(start, stop - start);
           }
         }
@@ -475,11 +454,7 @@ namespace Formats::Chiptune
           {
             continue;
           }
-          if (state.Offset >= Data.Size())
-          {
-            return false;
-          }
-          else if (0 == chan && 0xff == PeekByte(state.Offset))
+          if (state.Offset >= Data.Size() || (0 == chan && 0xff == PeekByte(state.Offset)))
           {
             return false;
           }
@@ -706,7 +681,7 @@ namespace Formats::Chiptune
                                      areas.GetAreaAddress(PATTERNS) + sizeof(RawPattern));
     }
 
-    const Char DESCRIPTION[] = "Sound Tracker v1.x Compiled";
+    const auto DESCRIPTION = "Sound Tracker v1.x Compiled"sv;
     // Statistic-based format based on 6k+ files
     const auto FORMAT =
         "01-20"   // uint8_t Tempo; 1..50
@@ -715,7 +690,7 @@ namespace Formats::Chiptune
         "?00-08"  // uint16_t PatternsOffset;
         "?{20}"   // Id+Size
         "00-0f"   // first sample index
-        ""_sv;
+        ""sv;
 
     Formats::Chiptune::Container::Ptr ParseCompiled(const Binary::Container& rawData, Builder& target)
     {
@@ -762,7 +737,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -797,16 +772,13 @@ namespace Formats::Chiptune
     };
   }  // namespace SoundTrackerCompiled
 
-  namespace SoundTracker
+  namespace SoundTracker::Ver1
   {
-    namespace Ver1
+    Decoder::Ptr CreateCompiledDecoder()
     {
-      Decoder::Ptr CreateCompiledDecoder()
-      {
-        return MakePtr<SoundTrackerCompiled::Decoder>();
-      }
-    }  // namespace Ver1
-  }    // namespace SoundTracker
+      return MakePtr<SoundTrackerCompiled::Decoder>();
+    }
+  }  // namespace SoundTracker::Ver1
 
   Formats::Chiptune::Decoder::Ptr CreateSoundTrackerCompiledDecoder()
   {

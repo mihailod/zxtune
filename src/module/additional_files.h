@@ -10,9 +10,10 @@
 
 #pragma once
 
-// library includes
-#include <binary/container.h>
-#include <strings/array.h>
+#include "binary/container.h"
+#include "strings/array.h"
+
+#include "string_view.h"
 
 namespace Module
 {
@@ -20,6 +21,6 @@ namespace Module
   {
   public:
     virtual Strings::Array Enumerate() const = 0;
-    virtual void Resolve(const String& name, Binary::Container::Ptr data) = 0;
+    virtual void Resolve(StringView name, Binary::Container::Ptr data) = 0;
   };
 }  // namespace Module

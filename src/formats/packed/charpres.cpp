@@ -8,17 +8,16 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <algorithm>
 #include <iterator>
 
@@ -29,7 +28,7 @@ namespace Formats::Packed
     const std::size_t MIN_SIZE = 0x20;  // TODO
     const std::size_t MAX_DECODED_SIZE = 0xc000;
 
-    const Char DESCRIPTION[] = "CharPres";
+    const auto DESCRIPTION = "CharPres"sv;
     const auto DEPACKER_PATTERN =
         "21??"  // ld hl,xxxx depacker body src
         "11??"  // ld de,xxxx depacker body dst
@@ -50,7 +49,7 @@ namespace Formats::Packed
         "d6?"   // sub 0x1d
         "20?"   // jr nz,xx
         "2b"    // dec hl
-        ""_sv;
+        ""sv;
 
     struct RawHeader
     {
@@ -115,11 +114,7 @@ namespace Formats::Packed
           return false;
         }
         const uint_t usedSize = GetUsedSize();
-        if (usedSize > Size)
-        {
-          return false;
-        }
-        return true;
+        return usedSize <= Size;
       }
 
       uint_t GetUsedSize() const
@@ -182,8 +177,7 @@ namespace Formats::Packed
         : IsValid(container.FastCheck())
         , Header(container.GetHeader())
         , Stream(container.GetPackedData(), container.GetPackedSize())
-        , Result(new Binary::Dump())
-        , Decoded(*Result)
+        , Decoded(MAX_DECODED_SIZE)
       {
         if (IsValid && !Stream.Eof())
         {
@@ -191,21 +185,21 @@ namespace Formats::Packed
         }
       }
 
-      std::unique_ptr<Binary::Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid ? std::move(Result) : std::unique_ptr<Binary::Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
 
     private:
       bool DecodeData()
       {
         // assume that first byte always exists due to header format
-        while (!Stream.Eof() && Decoded.size() < MAX_DECODED_SIZE)
+        while (!Stream.Eof() && Decoded.Size() < MAX_DECODED_SIZE)
         {
           const uint_t data = Stream.GetByte();
           if (data != Header.Marker)
           {
-            Decoded.push_back(data);
+            Decoded.AddByte(data);
           }
           else
           {
@@ -220,11 +214,11 @@ namespace Formats::Packed
             }
             else
             {
-              Decoded.push_back(data);
+              Decoded.AddByte(data);
             }
           }
         }
-        std::reverse(Decoded.begin(), Decoded.end());
+        Reverse(Decoded);
         return true;
       }
 
@@ -232,8 +226,7 @@ namespace Formats::Packed
       bool IsValid;
       const RawHeader& Header;
       ReverseByteStream Stream;
-      std::unique_ptr<Binary::Dump> Result;
-      Binary::Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
   }  // namespace CharPres
 
@@ -244,7 +237,7 @@ namespace Formats::Packed
       : Depacker(Binary::CreateFormat(CharPres::DEPACKER_PATTERN, CharPres::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return CharPres::DESCRIPTION;
     }
@@ -258,12 +251,12 @@ namespace Formats::Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const CharPres::Container container(rawData.Start(), rawData.Size());
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       CharPres::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), container.GetUsedSize());

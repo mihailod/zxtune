@@ -8,15 +8,14 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/emulation/playstationsoundformat.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <debug/log.h>
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
 
 /*
 http://patpend.net/technical/psx/exeheader.txt
@@ -73,7 +72,7 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::PSF");
 
-    const Char DESCRIPTION[] = "Playstation Sound Format";
+    const auto DESCRIPTION = "Playstation Sound Format"sv;
 
     const std::size_t HEADER_SIZE = 2048;
 
@@ -106,7 +105,7 @@ namespace Formats::Chiptune
         Stream.Seek(0x10);
         const uint32_t pc = Stream.Read<le_uint32_t>();
         const uint32_t gp = Stream.Read<le_uint32_t>();
-        Dbg("PC=0x%08x GP=0x%08x", pc, gp);
+        Dbg("PC=0x{:08x} GP=0x{:08x}", pc, gp);
         target.SetRegisters(pc, gp);
       }
 
@@ -115,7 +114,7 @@ namespace Formats::Chiptune
         Stream.Seek(0x18);
         const uint32_t startAddress = Stream.Read<le_uint32_t>();
         const std::size_t size = Stream.Read<le_uint32_t>();
-        Dbg("Text section %u (%u in header) bytes at 0x%08x", Stream.GetRestSize(), size, startAddress);
+        Dbg("Text section {} ({} in header) bytes at 0x{:08x}", Stream.GetRestSize(), size, startAddress);
         if (size)
         {
           Stream.Seek(HEADER_SIZE);
@@ -128,15 +127,15 @@ namespace Formats::Chiptune
         Stream.Seek(0x30);
         const uint32_t stackHead = Stream.Read<le_uint32_t>();
         const uint32_t stackSize = Stream.Read<le_uint32_t>();
-        Dbg("Stack %u bytes at 0x%08x", stackSize, stackHead);
+        Dbg("Stack {} bytes at 0x{:08x}", stackSize, stackHead);
         target.SetStackRegion(stackHead, stackSize);
       }
 
       void ParseRegion(Builder& target)
       {
-        static const auto MARKER_NORTH_AMERICA = "Sony Computer Entertainment Inc. for North America area"_sv;
-        static const auto MARKER_JAPAN = "Sony Computer Entertainment Inc. for Japan area"_sv;
-        static const auto MARKER_EUROPE = "Sony Computer Entertainment Inc. for Europe area"_sv;
+        static const auto MARKER_NORTH_AMERICA = "Sony Computer Entertainment Inc. for North America area"sv;
+        static const auto MARKER_JAPAN = "Sony Computer Entertainment Inc. for Japan area"sv;
+        static const auto MARKER_EUROPE = "Sony Computer Entertainment Inc. for Europe area"sv;
         Stream.Seek(0x4c);
         const auto marker = Stream.ReadCString(60);
         if (marker == MARKER_NORTH_AMERICA)
@@ -153,9 +152,9 @@ namespace Formats::Chiptune
         }
         else
         {
-          target.SetRegion(marker.to_string(), 0);
+          target.SetRegion(marker, 0);
         }
-        Dbg("Marker: %s", marker);
+        Dbg("Marker: {}", marker);
       }
 
     private:
@@ -170,7 +169,7 @@ namespace Formats::Chiptune
     const auto FORMAT =
         "'P'S'F"
         "01"
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -179,7 +178,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -196,7 +195,7 @@ namespace Formats::Chiptune
 
       Formats::Chiptune::Container::Ptr Decode(const Binary::Container& /*rawData*/) const override
       {
-        return Formats::Chiptune::Container::Ptr();  // TODO
+        return {};  // TODO
       }
 
     private:

@@ -10,22 +10,19 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
+#include "string_type.h"
+#include "string_view.h"
 
-namespace Platform
+namespace Platform::Version
 {
-  namespace Version
-  {
-    // Should be defined in app
-    extern const Char PROGRAM_NAME[];
+  // Should be defined in app
+  extern const StringView PROGRAM_NAME;
 
-    String GetProgramTitle();
-    String GetProgramVersion();
-    String GetBuildDate();
-    String GetBuildPlatform();
-    String GetBuildArchitecture();
-    String GetBuildArchitectureVersion();
-    String GetProgramVersionString();
-  }  // namespace Version
-}  // namespace Platform
+  String GetProgramTitle();
+  String GetProgramVersion();
+  String GetBuildDate();
+  String GetBuildPlatform();
+  String GetBuildArchitecture();
+  String GetBuildArchitectureVersion();
+  String GetProgramVersionString();
+}  // namespace Platform::Version

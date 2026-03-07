@@ -8,16 +8,15 @@
  *
  **/
 
-// local includes
 #include "formats/archived/trdos_catalogue.h"
 #include "formats/archived/trdos_utils.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <formats/packed/decoders.h>
-// std includes
+#include "formats/packed/decoders.h"
+
+#include "binary/format_factories.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -27,14 +26,14 @@ namespace Formats::Archived
 {
   namespace Hrip
   {
-    const Char DESCRIPTION[] = "Hrip (Hrust RiP archiver)";
+    const auto DESCRIPTION = "Hrip (Hrust RiP archiver)"sv;
     const auto FORMAT =
         "'H'R'i"     // uint8_t ID[3];//'HRi'
         "01-ff"      // uint8_t FilesCount;
         "?"          // uint8_t UsedInLastSector;
         "??"         // uint16_t ArchiveSectors;
         "%0000000x"  // uint8_t Catalogue;
-        ""_sv;
+        ""sv;
 
     const std::size_t MAX_MODULE_SIZE = 655360;
 
@@ -107,7 +106,7 @@ namespace Formats::Archived
       }
       const auto* const hripHeader = safe_ptr_cast<const Header*>(data);
       if (0 != std::memcmp(hripHeader->ID, HRIP_ID, sizeof(HRIP_ID))
-          || !(0 == hripHeader->Catalogue || 1 == hripHeader->Catalogue) || !hripHeader->ArchiveSectors
+          || (0 != hripHeader->Catalogue && 1 != hripHeader->Catalogue) || !hripHeader->ArchiveSectors
           || !hripHeader->FilesCount)
       {
         return false;
@@ -134,8 +133,8 @@ namespace Formats::Archived
       else
       {
         assert(!"Hrip file without name");
-        static const Char DEFAULT_HRIP_FILENAME[] = {'N', 'O', 'N', 'A', 'M', 'E', 0};
-        return DEFAULT_HRIP_FILENAME;
+        const auto DEFAULT_HRIP_FILENAME = "NONAME"sv;
+        return String{DEFAULT_HRIP_FILENAME};
       }
     }
 
@@ -146,7 +145,7 @@ namespace Formats::Archived
       std::size_t archiveSize = 0;
       if (!FastCheck(data.Start(), availSize, files, archiveSize))
       {
-        return Container::Ptr();
+        return {};
       }
       const TRDos::CatalogueBuilder::Ptr builder = TRDos::CatalogueBuilder::CreateGeneric();
       const Formats::Packed::Decoder::Ptr decoder = Packed::CreateHrust23Decoder();
@@ -182,7 +181,7 @@ namespace Formats::Archived
       : Format(Binary::CreateFormat(Hrip::FORMAT))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Hrip::DESCRIPTION;
     }

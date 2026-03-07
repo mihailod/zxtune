@@ -10,21 +10,17 @@
 
 #pragma once
 
-// common includes
-#include <math/fixedpoint.h>
+#include "math/fixedpoint.h"
 
 namespace Sound
 {
   struct Gain
   {
   public:
-    typedef Math::FixedPoint<int_t, 256> Type;
+    using Type = Math::FixedPoint<int_t, 256>;
     static const uint_t CHANNELS = 2;
 
-    Gain()
-      : LeftVal()
-      , RightVal()
-    {}
+    Gain() = default;
 
     Gain(Type l, Type r)
       : LeftVal(l)

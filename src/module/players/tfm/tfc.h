@@ -10,13 +10,9 @@
 
 #pragma once
 
-// local includes
 #include "module/players/tfm/tfm_factory.h"
 
-namespace Module
+namespace Module::TFC
 {
-  namespace TFC
-  {
-    TFM::Factory::Ptr CreateFactory();
-  }
-}  // namespace Module
+  TFM::Factory::Ptr CreateFactory();
+}  // namespace Module::TFC

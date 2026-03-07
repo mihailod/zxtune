@@ -8,13 +8,10 @@
  *
  **/
 
-// local includes
 #include "module/players/tfm/tfm_base.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <sound/loop.h>
-// std includes
+
+#include "make_ptr.h"
+
 #include <utility>
 
 namespace Module
@@ -33,14 +30,10 @@ namespace Module
       return Iterator->GetStateObserver();
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!Iterator->IsValid())
-      {
-        return {};
-      }
       TransferChunk();
-      Iterator->NextFrame(looped);
+      Iterator->NextFrame();
       LastChunk.TimeStamp += FrameDuration;
       return Device->RenderTill(LastChunk.TimeStamp);
     }
@@ -61,10 +54,10 @@ namespace Module
         Device->Reset();
         LastChunk.TimeStamp = {};
       }
-      while (state->At() < request && Iterator->IsValid())
+      while (state->At() < request)
       {
         TransferChunk();
-        Iterator->NextFrame({});
+        Iterator->NextFrame();
       }
     }
 
@@ -83,14 +76,11 @@ namespace Module
   };
 }  // namespace Module
 
-namespace Module
+namespace Module::TFM
 {
-  namespace TFM
+  Renderer::Ptr CreateRenderer(Time::Microseconds frameDuration, DataIterator::Ptr iterator,
+                               Devices::TFM::Chip::Ptr device)
   {
-    Renderer::Ptr CreateRenderer(Time::Microseconds frameDuration, DataIterator::Ptr iterator,
-                                 Devices::TFM::Chip::Ptr device)
-    {
-      return MakePtr<TFMRenderer>(frameDuration, std::move(iterator), std::move(device));
-    }
-  }  // namespace TFM
-}  // namespace Module
+    return MakePtr<TFMRenderer>(frameDuration, std::move(iterator), std::move(device));
+  }
+}  // namespace Module::TFM

@@ -8,20 +8,22 @@
  *
  **/
 
-// local includes
-#include "singlemode.h"
-#include "app_parameters.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <debug/log.h>
-#include <platform/version/api.h>
-// qt includes
+#include "apps/zxtune-qt/singlemode.h"
+
+#include "apps/zxtune-qt/app_parameters.h"
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "debug/log.h"
+#include "platform/version/api.h"
+
+#include "contract.h"
+
 #include <QtCore/QDataStream>
 #include <QtCore/QDir>
 #include <QtNetwork/QLocalServer>
 #include <QtNetwork/QLocalSocket>
+
+#include <memory>
 
 namespace
 {
@@ -30,7 +32,7 @@ namespace
 
 namespace
 {
-  const QString SERVER_NAME(Platform::Version::PROGRAM_NAME);
+  const QString SERVER_NAME = ToQString(Platform::Version::PROGRAM_NAME);
 
   const QDataStream::Version STREAM_VERSION = QDataStream::Qt_4_6;  // compatible with up to 4.9
 
@@ -40,7 +42,7 @@ namespace
     template<class It>
     StubModeDispatcher(It cmdBegin, It cmdEnd)
     {
-      QDir curDir;
+      const QDir curDir;
       for (auto it = cmdBegin; it != cmdEnd; ++it)
       {
         const auto arg = ToQString(*it);
@@ -66,9 +68,6 @@ namespace
     }
 
   protected:
-    void SlaveStarted() override {}
-
-  protected:
     QStringList Cmdline;
   };
 
@@ -86,7 +85,7 @@ namespace
       socket.connectToServer(SERVER_NAME, QLocalSocket::WriteOnly);
       if (socket.waitForConnected(500))
       {
-        Dbg("Connected to existing server. Sending cmdline with %1% args", Cmdline.size());
+        Dbg("Connected to existing server. Sending cmdline with {} args", Cmdline.size());
         SendDataTo(socket);
         return false;
       }
@@ -98,14 +97,14 @@ namespace
     }
 
   private:
-    void SlaveStarted() override
+    void SlaveStarted()
     {
       while (QLocalSocket* conn = Server->nextPendingConnection())
       {
         const std::unique_ptr<QLocalSocket> holder(conn);
         QStringList cmdline;
         ReadDataFrom(*holder, cmdline);
-        Dbg("Slave passed cmdline '%1%'", FromQString(cmdline.join(" ")));
+        Dbg("Slave passed cmdline '{}'", FromQString(cmdline.join(" ")));
         emit OnSlaveStarted(cmdline);
       }
     }
@@ -198,8 +197,9 @@ namespace
 
     void StartLocalServer()
     {
-      Server.reset(new QLocalServer(this));
-      Require(connect(Server.get(), SIGNAL(newConnection()), SLOT(SlaveStarted())));
+      Server = std::make_unique<QLocalServer>(this);
+      Require(
+          connect(Server.get(), &QLocalServer::newConnection, this, &SocketBasedSingleModeDispatcher::SlaveStarted));
       while (!Server->listen(SERVER_NAME))
       {
         if (Server->serverError() == QAbstractSocket::AddressInUseError && QLocalServer::removeServer(SERVER_NAME))
@@ -220,14 +220,13 @@ namespace
   };
 }  // namespace
 
-SingleModeDispatcher::Ptr SingleModeDispatcher::Create(Parameters::Accessor::Ptr params, Strings::Array argv)
+SingleModeDispatcher::Ptr SingleModeDispatcher::Create(const Parameters::Accessor& params, Strings::Array argv)
 {
-  Parameters::IntType val = Parameters::ZXTuneQT::SINGLE_INSTANCE_DEFAULT;
-  params->FindValue(Parameters::ZXTuneQT::SINGLE_INSTANCE, val);
   auto cmdBegin = argv.begin();
   ++cmdBegin;
   const auto cmdEnd = argv.end();
-  if (val != 0)
+  using namespace Parameters::ZXTuneQT;
+  if (0 != Parameters::GetInteger(params, SINGLE_INSTANCE, SINGLE_INSTANCE_DEFAULT))
   {
     Dbg("Working in single instance mode");
     return new SocketBasedSingleModeDispatcher(cmdBegin, cmdEnd);

@@ -10,12 +10,11 @@
 
 #pragma once
 
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <async/queue.h>
-// std includes
+#include "async/queue.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -96,7 +95,7 @@ namespace Async
     mutable std::mutex Locker;
     std::condition_variable CanPutDataEvent;
     std::condition_variable CanGetDataEvent;
-    typedef std::deque<T> ContainerType;
+    using ContainerType = std::deque<T>;
     ContainerType Container;
   };
 }  // namespace Async

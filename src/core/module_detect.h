@@ -10,12 +10,12 @@
 
 #pragma once
 
-// library includes
-#include <binary/container.h>
-#include <module/holder.h>
-#include <parameters/container.h>
+#include "binary/container.h"
+#include "module/holder.h"
+#include "parameters/container.h"
 
-// forward declarations
+#include "string_view.h"
+
 namespace Log
 {
   class ProgressCallback;
@@ -35,7 +35,7 @@ namespace Module
   public:
     virtual ~DetectCallback() = default;
 
-    virtual Parameters::Container::Ptr CreateInitialProperties(const String& subpath) const = 0;
+    virtual Parameters::Container::Ptr CreateInitialProperties(StringView subpath) const = 0;
     //! @brief Process module
     virtual void ProcessModule(const ZXTune::DataLocation& location, const ZXTune::Plugin& decoder,
                                Module::Holder::Ptr holder) = 0;

@@ -8,21 +8,22 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/ym.h"
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <debug/log.h>
-#include <formats/packed/lha_supp.h>
-#include <math/numeric.h>
-#include <strings/optimize.h>
-// std includes
+#include "formats/packed/lha_supp.h"
+
+#include "binary/dump.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "strings/optimize.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <array>
 #include <cstring>
 
@@ -32,8 +33,8 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::YM");
 
-    typedef std::array<uint8_t, 14> RegistersDump;
-    typedef std::array<uint8_t, 4> IdentifierType;
+    using RegistersDump = std::array<uint8_t, 14>;
+    using IdentifierType = std::array<uint8_t, 4>;
 
     const uint_t CLOCKRATE_MIN = 100000;    // 100kHz
     const uint_t CLOCKRATE_MAX = 10000000;  // 10MHz
@@ -125,8 +126,8 @@ namespace Formats::Chiptune
     {
       const uint8_t ID[] = {'Y', 'M', '5', '!', 'L', 'e', 'O', 'n', 'A', 'r', 'D', '!'};
 
-      typedef std::array<uint8_t, 16> RegistersDump;
-      typedef std::array<uint8_t, 4> Footer;
+      using RegistersDump = std::array<uint8_t, 16>;
+      using Footer = std::array<uint8_t, 4>;
 
       struct RawHeader
       {
@@ -203,7 +204,7 @@ namespace Formats::Chiptune
 
       bool FastCheck(Binary::View data)
       {
-        if (const auto hdr = data.As<RawHeader>())
+        if (const auto* const hdr = data.As<RawHeader>())
         {
           const std::size_t hdrLen = hdr->GetDataOffset();
           if (hdrLen + hdr->PackedSize + FOOTER_SIZE > data.Size())
@@ -232,21 +233,22 @@ namespace Formats::Chiptune
     class StubBuilder : public Builder
     {
     public:
-      void SetVersion(const String& /*version*/) override {}
+      MetaBuilder& GetMetaBuilder() override
+      {
+        return GetStubMetaBuilder();
+      }
+
+      void SetVersion(StringView /*version*/) override {}
       void SetChipType(bool /*ym*/) override {}
       void SetStereoMode(uint_t /*mode*/) override {}
       void SetLoop(uint_t /*loop*/) override {}
-      void SetDigitalSample(uint_t /*idx*/, const Binary::Dump& /*data*/) override {}
+      void SetDigitalSample(uint_t /*idx*/, Binary::View /*data*/) override {}
       void SetClockrate(uint64_t /*freq*/) override {}
       void SetIntFreq(uint_t /*freq*/) override {}
-      void SetTitle(const String& /*title*/) override {}
-      void SetAuthor(const String& /*author*/) override {}
-      void SetComment(const String& /*comment*/) override {}
       void SetYear(uint_t /*year*/) override {}
-      void SetProgram(const String& /*program*/) override {}
-      void SetEditor(const String& /*editor*/) override {}
+      void SetEditor(StringView /*editor*/) override {}
 
-      void AddData(const Binary::Dump& /*registers*/) override {}
+      void AddData(Binary::View /*registers*/) override {}
     };
 
     bool FastCheck(const Binary::Container& rawData)
@@ -260,7 +262,7 @@ namespace Formats::Chiptune
     void ParseTransponedMatrix(Binary::View input, std::size_t rows, std::size_t columns, Builder& target)
     {
       Require(rows != 0);
-      const auto data = input.As<uint8_t>();
+      const auto* data = input.As<uint8_t>();
       for (std::size_t row = 0; row != rows; ++row)
       {
         Binary::Dump registers(columns);
@@ -274,23 +276,19 @@ namespace Formats::Chiptune
 
     void ParseMatrix(Binary::View input, std::size_t rows, std::size_t columns, Builder& target)
     {
+      static const uint8_t ZEROES[sizeof(Ver5::RegistersDump)] = {0};
       Require(rows != 0);
-      const auto *cursor = input.As<uint8_t>(), *limit = cursor + input.Size();
-      for (std::size_t row = 0; row != rows; ++row)
+      for (std::size_t row = 0, offset = 0; row != rows; ++row, offset += columns)
       {
-        const uint8_t* const nextCursor = cursor + columns;
-        if (nextCursor <= limit)
+        const auto line = input.SubView(offset, columns);
+        if (line.Size() == columns)
         {
-          const Binary::Dump registers(cursor, nextCursor);
-          target.AddData(registers);
+          target.AddData(line);
         }
         else
         {
-          Binary::Dump registers = cursor < limit ? Binary::Dump(cursor, limit) : Binary::Dump();
-          registers.resize(columns);
-          target.AddData(registers);
+          target.AddData({ZEROES, columns});
         }
-        cursor = nextCursor;
       }
     }
 
@@ -315,8 +313,8 @@ namespace Formats::Chiptune
           ParseTransponedMatrix(src, lines, columns, target);
           if (Ver3b::FastCheck(data, size))
           {
-            const uint_t loop = stream.Read<be_uint32_t>();
-            target.SetLoop(loop);
+            const uint32_t loop = stream.Read<be_uint32_t>();
+            target.SetLoop(std::min(loop, swapBytes(loop)));
           }
           return CreateCalculatingCrcContainer(stream.GetReadContainer(), dumpOffset, matrixSize);
         }
@@ -333,20 +331,21 @@ namespace Formats::Chiptune
           target.SetClockrate(header.Clockrate);
           target.SetIntFreq(header.IntFreq);
           target.SetLoop(header.Loop);
-          target.SetTitle(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
-          target.SetAuthor(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
-          target.SetComment(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
+          auto& meta = target.GetMetaBuilder();
+          meta.SetTitle(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
+          meta.SetAuthor(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
+          meta.SetComment(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
 
           const std::size_t dumpOffset = stream.GetPosition();
           const std::size_t dumpSize = size - sizeof(Ver5::Footer) - dumpOffset;
           const std::size_t lines = header.Frames;
-          Dbg("ymver5: dump started at %1%, size %2%, vtbls %3%", dumpOffset, dumpSize, lines);
+          Dbg("ymver5: dump started at {}, size {}, vtbls {}", dumpOffset, dumpSize, lines);
           const std::size_t columns = sizeof(Ver5::RegistersDump);
           const std::size_t matrixSize = dumpSize;
           const std::size_t availLines = dumpSize / columns;
           if (availLines != lines)
           {
-            Dbg("available only %1% lines", availLines);
+            Dbg("available only {} lines", availLines);
           }
           const auto src = stream.ReadData(matrixSize);
           if (header.Interleaved())
@@ -367,12 +366,12 @@ namespace Formats::Chiptune
       return {};
     }
 
-    const Char DESCRIPTION[] = "YM (ST-Sound Project)";
+    const auto DESCRIPTION = "YM (ST-Sound Project)"sv;
     const auto FORMAT =
         "'Y'M"
         "'2-'6"
         "'!|'b"
-        ""_sv;
+        ""sv;
 
     Formats::Chiptune::Container::Ptr ParsePacked(const Binary::Container& rawData, Builder& target)
     {
@@ -398,7 +397,7 @@ namespace Formats::Chiptune
       return {};
     }
 
-    const Char PACKED_DESCRIPTION[] = "YM (ST-Sound Project) Packed";
+    const auto PACKED_DESCRIPTION = "YM (ST-Sound Project) Packed"sv;
     const auto PACKED_FORMAT =
         "16-ff"       // header size
         "?"           // header sum
@@ -408,7 +407,7 @@ namespace Formats::Chiptune
         "????"        // time+date
         "%00x00xxx"   // attribute
         "00"          // level
-        ""_sv;
+        ""sv;
 
     class YMDecoder : public Formats::Chiptune::YM::Decoder
     {
@@ -418,7 +417,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -459,7 +458,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(PACKED_FORMAT))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return PACKED_DESCRIPTION;
       }
@@ -606,17 +605,18 @@ namespace Formats::Chiptune
           target.SetYear(stream.Read<le_uint16_t>());
         }
         const uint_t unpackedSize = stream.Read<le_uint32_t>();
-        target.SetTitle(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
-        target.SetAuthor(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
+        auto& meta = target.GetMetaBuilder();
+        meta.SetTitle(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
+        meta.SetAuthor(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
         if (newVersion)
         {
-          target.SetProgram(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
+          meta.SetProgram(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
           target.SetEditor(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
-          target.SetComment(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
+          meta.SetComment(Strings::OptimizeAscii(stream.ReadCString(MAX_STRING_SIZE)));
         }
 
         const std::size_t packedOffset = stream.GetPosition();
-        Dbg("Packed data at %1%", packedOffset);
+        Dbg("Packed data at {}", packedOffset);
         const auto packed = stream.ReadRestContainer();
         if (const auto unpacked = Packed::Lha::DecodeRawData(*packed, "-lh5-", unpackedSize))
         {
@@ -638,14 +638,14 @@ namespace Formats::Chiptune
       return {};
     }
 
-    const Char DESCRIPTION[] = "VTX (Vortex Project)";
+    const auto DESCRIPTION = "VTX (Vortex Project)"sv;
     const auto FORMAT =
         "('a|'A|'y|'Y)('y|'Y|'m|'M)"  // type
         "00-06"                       // layout
         "??"                          // loop
         "??01-9800"                   // clockrate
         "19-64"                       // intfreq, 25..100Hz
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::YM::Decoder
     {
@@ -654,7 +654,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }

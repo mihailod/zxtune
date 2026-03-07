@@ -8,21 +8,21 @@
  *
  **/
 
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/container_base.h>
-#include <binary/crc.h>
-#include <binary/data_builder.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <formats/multitrack.h>
-#include <strings/array.h>
-#include <strings/conversion.h>
-// std includes
+#include "binary/container_base.h"
+#include "binary/crc.h"
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "formats/multitrack.h"
+#include "strings/array.h"
+#include "strings/conversion.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+#include "string_view.h"
+
 #include <array>
 #include <map>
 #include <utility>
@@ -41,17 +41,17 @@ namespace Formats::Multitrack
         "'T|'M|'T|'N|'F|'E|'S|'P|'S|'I|'S|'A|'V|'M"
         "'H|'E|'E|'G|'S|'R|'C|'E|'T|'T|'I|'Y|'O|'E"
         "'O|' |' |'S|'O|'E|' |' |'P|' |'C|'E|'X|' "
-        ""_sv;
+        ""sv;
 
-    const Char DESCRIPTION[] = "Slight Atari Player Sound Format";
+    const auto DESCRIPTION = "Slight Atari Player Sound Format"sv;
 
-    typedef std::array<uint8_t, 5> TextSignatureType;
+    using TextSignatureType = std::array<uint8_t, 5>;
 
     const TextSignatureType TEXT_SIGNATURE = {{'S', 'A', 'P', 0x0d, 0x0a}};
-    const auto SONGS = "SONGS"_sv;
-    const auto DEFSONG = "DEFSONG"_sv;
+    const auto SONGS = "SONGS"sv;
+    const auto DEFSONG = "DEFSONG"sv;
 
-    typedef std::array<uint8_t, 2> BinarySignatureType;
+    using BinarySignatureType = std::array<uint8_t, 2>;
     const BinarySignatureType BINARY_SIGNATURE = {{0xff, 0xff}};
 
     const std::size_t MIN_SIZE = 256;
@@ -62,19 +62,16 @@ namespace Formats::Multitrack
       virtual ~Builder() = default;
 
       virtual void SetProperty(StringView name, StringView value) = 0;
-      virtual void SetBlock(const uint_t start, Binary::View data) = 0;
+      virtual void SetBlock(uint_t start, Binary::View data) = 0;
     };
 
     class DataBuilder : public Builder
     {
     public:
-      typedef std::shared_ptr<const DataBuilder> Ptr;
-      typedef std::shared_ptr<DataBuilder> RWPtr;
+      using Ptr = std::shared_ptr<const DataBuilder>;
+      using RWPtr = std::shared_ptr<DataBuilder>;
 
-      DataBuilder()
-        : TracksCount(1)
-        , DefaultTrack(0)
-      {}
+      DataBuilder() = default;
 
       void SetProperty(StringView name, StringView value) override
       {
@@ -89,11 +86,12 @@ namespace Formats::Multitrack
         }
         if (value.empty())
         {
-          Lines.push_back(name.to_string());
+          Lines.emplace_back(String{name});
         }
         else
         {
-          Lines.emplace_back(name.to_string() + " " + value.to_string());
+          // TODO: Concat(StringView...)
+          Lines.emplace_back(name + " "s + value);
         }
       }
 
@@ -124,8 +122,8 @@ namespace Formats::Multitrack
 
     private:
       Strings::Array Lines;
-      uint_t TracksCount;
-      uint_t DefaultTrack;
+      uint_t TracksCount = 1;
+      uint_t DefaultTrack = 0;
       std::map<uint_t, Binary::View> Blocks;
     };
 
@@ -166,7 +164,7 @@ namespace Formats::Multitrack
         : Format(Binary::CreateMatchOnlyFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -219,7 +217,8 @@ namespace Formats::Multitrack
             break;
           }
           stream.Seek(pos);
-          StringView name, value;
+          StringView name;
+          StringView value;
           const auto line = stream.ReadString();
           auto spacePos = line.find(' ');
           if (spacePos != line.npos)
@@ -235,7 +234,7 @@ namespace Formats::Multitrack
           {
             name = line;
           }
-          builder.SetProperty(name.to_string(), value.to_string());
+          builder.SetProperty(name, value);
         }
       }
 

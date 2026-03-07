@@ -8,19 +8,20 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/multidevice/multitrackcontainer.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/data_builder.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <formats/chiptune/container.h>
-#include <math/numeric.h>
-#include <strings/encoding.h>
-// std includes
+
+#include "formats/chiptune/container.h"
+
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "math/numeric.h"
+#include "strings/sanitize.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <array>
 #include <utility>
 
@@ -28,7 +29,7 @@ namespace IFF
 {
   namespace Identifier
   {
-    typedef std::array<uint8_t, 4> Type;
+    using Type = std::array<uint8_t, 4>;
 
     // Generic
     const Type AUTHOR = {{'A', 'U', 'T', 'H'}};
@@ -86,25 +87,29 @@ namespace IFF
   class ChunkSource
   {
   public:
-    typedef std::shared_ptr<const ChunkSource> Ptr;
+    using Ptr = std::shared_ptr<const ChunkSource>;
     virtual ~ChunkSource() = default;
 
     virtual std::size_t GetSize() const = 0;
     virtual void GetResult(Binary::DataBuilder& builder) const = 0;
   };
 
+  StringView GetStringView(Binary::View data)
+  {
+    return StringView(data.As<char>(), data.Size());
+  }
+
   // Store in plain string, possibly UTF-8
   String GetString(Binary::View data)
   {
-    const StringView str(data.As<char>(), data.Size());
-    return Strings::ToAutoUtf8(str);
+    return Strings::Sanitize(GetStringView(data));
   }
 
   class BlobChunkSourceBase : public ChunkSource
   {
   public:
     explicit BlobChunkSourceBase(Identifier::Type id)
-      : Id(std::move(id))
+      : Id(id)
     {}
 
     std::size_t GetSize() const override
@@ -115,7 +120,7 @@ namespace IFF
     void GetResult(Binary::DataBuilder& builder) const override
     {
       const std::size_t size = Size();
-      ChunkHeader& hdr = builder.Add<ChunkHeader>();
+      auto& hdr = builder.Add<ChunkHeader>();
       hdr.Id = Id;
       hdr.DataSize = size;
       if (size)
@@ -136,7 +141,7 @@ namespace IFF
   {
   public:
     DataChunkSource(Identifier::Type id, Binary::Data::Ptr data)
-      : BlobChunkSourceBase(std::move(id))
+      : BlobChunkSourceBase(id)
       , Data(std::move(data))
     {}
 
@@ -158,9 +163,9 @@ namespace IFF
   class StringChunkSource : public BlobChunkSourceBase
   {
   public:
-    StringChunkSource(Identifier::Type id, String str)
-      : BlobChunkSourceBase(std::move(id))
-      , Data(std::move(str))
+    StringChunkSource(Identifier::Type id, StringView str)
+      : BlobChunkSourceBase(id)
+      , Data(str)
     {}
 
   protected:
@@ -182,14 +187,13 @@ namespace IFF
   {
   public:
     explicit CompositeChunkSource(Identifier::Type id)
-      : Id(std::move(id))
-      , TotalSize()
+      : Id(id)
     {}
 
     void AddSubSource(ChunkSource::Ptr src)
     {
-      Sources.push_back(src);
       const std::size_t subSize = src->GetSize();
+      Sources.emplace_back(std::move(src));
       Require(0 == subSize % ALIGNMENT);
       TotalSize += subSize;
     }
@@ -201,7 +205,7 @@ namespace IFF
 
     void GetResult(Binary::DataBuilder& builder) const override
     {
-      ChunkHeader& hdr = builder.Add<ChunkHeader>();
+      auto& hdr = builder.Add<ChunkHeader>();
       hdr.Id = Id;
       hdr.DataSize = TotalSize;
       for (const auto& src : Sources)
@@ -213,7 +217,7 @@ namespace IFF
   private:
     const Identifier::Type Id;
     std::vector<ChunkSource::Ptr> Sources;
-    std::size_t TotalSize;
+    std::size_t TotalSize = 0;
   };
 
   class DataBuilder
@@ -221,7 +225,7 @@ namespace IFF
     , public CompositeChunkSource
   {
   public:
-    typedef std::shared_ptr<DataBuilder> Ptr;
+    using Ptr = std::shared_ptr<DataBuilder>;
 
     explicit DataBuilder(const Identifier::Type& id)
       : CompositeChunkSource(id)
@@ -229,7 +233,7 @@ namespace IFF
 
     void OnString(const Identifier::Type& id, StringView str)
     {
-      AddSubSource(MakePtr<StringChunkSource>(id, str.to_string()));
+      AddSubSource(MakePtr<StringChunkSource>(id, str));
     }
 
     void OnChunk(const Identifier::Type& id, Binary::Container::Ptr content) override
@@ -243,7 +247,7 @@ namespace Formats::Chiptune
 {
   namespace MultiTrackContainer
   {
-    const Char DESCRIPTION[] = "Multitrack Container";
+    const auto DESCRIPTION = "Multitrack Container"sv;
 
     class StubBuilder : public Builder
     {
@@ -268,9 +272,9 @@ namespace Formats::Chiptune
     const auto FORMAT =
         "'M'T'C'1"
         "00 00-10 ? ?"  // max 1Mb
-        ""_sv;
+        ""sv;
 
-    const String::value_type PROPERTY_DELIMITER = '=';
+    const auto PROPERTY_DELIMITER = "="sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -279,7 +283,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -341,7 +345,8 @@ namespace Formats::Chiptune
         Require(name.npos == name.find_first_of(PROPERTY_DELIMITER));
         if (!value.empty())
         {
-          Context->OnString(IFF::Identifier::PROPERTY, name.to_string() + PROPERTY_DELIMITER + value.to_string());
+          // TODO: make Concat(StringView str...)
+          Context->OnString(IFF::Identifier::PROPERTY, String{name} + PROPERTY_DELIMITER + value);
         }
         else
         {
@@ -419,8 +424,7 @@ namespace Formats::Chiptune
         }
         else if (id == IFF::Identifier::PROPERTY)
         {
-          const auto propertyStr = IFF::GetString(*content);
-          const auto property = StringView(propertyStr);
+          const auto property = IFF::GetStringView(*content);
           const auto eqPos = property.find_first_of(PROPERTY_DELIMITER);
           const auto name = property.substr(0, eqPos);
           const auto value = eqPos != String::npos ? property.substr(eqPos + 1) : StringView();
@@ -464,7 +468,6 @@ namespace Formats::Chiptune
       explicit TuneParser(Builder& delegate)
         : Delegate(delegate)
         , Metadata(delegate)
-        , CurTrack()
       {}
 
       void OnChunk(const IFF::Identifier::Type& id, Binary::Container::Ptr content) override
@@ -491,7 +494,7 @@ namespace Formats::Chiptune
     private:
       Builder& Delegate;
       MetadataParser Metadata;
-      uint_t CurTrack;
+      uint_t CurTrack = 0;
     };
 
     class FileParser : public IFF::Visitor
@@ -499,7 +502,6 @@ namespace Formats::Chiptune
     public:
       explicit FileParser(Builder& delegate)
         : Delegate(delegate)
-        , CurTune()
       {}
 
       void OnChunk(const IFF::Identifier::Type& id, Binary::Container::Ptr content) override
@@ -520,14 +522,14 @@ namespace Formats::Chiptune
 
     private:
       Builder& Delegate;
-      uint_t CurTune;
+      uint_t CurTune = 0;
     };
 
     Formats::Chiptune::Container::Ptr Parse(const Binary::Container& data, Builder& target)
     {
       if (!FastCheck(data))
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
       try
       {
@@ -540,7 +542,7 @@ namespace Formats::Chiptune
       }
       catch (const std::exception& /*e*/)
       {}
-      return Formats::Chiptune::Container::Ptr();
+      return {};
     }
 
     Builder& GetStubBuilder()

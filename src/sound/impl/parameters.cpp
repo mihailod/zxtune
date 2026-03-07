@@ -8,11 +8,10 @@
  *
  **/
 
-// library includes
-#include <sound/backends_parameters.h>
-#include <sound/gain.h>
-#include <sound/mixer_parameters.h>
-#include <sound/sound_parameters.h>
+#include "sound/backends_parameters.h"
+#include "sound/gain.h"
+#include "sound/mixer_parameters.h"
+#include "sound/sound_parameters.h"
 
 namespace
 {
@@ -53,25 +52,16 @@ namespace
   };
 }  // namespace
 
-namespace Parameters
+namespace Parameters::ZXTune::Sound::Mixer
 {
-  namespace ZXTune
+  Identifier LEVEL(uint_t totalChannels, uint_t inChannel, uint_t outChannel)
   {
-    namespace Sound
-    {
-      namespace Mixer
-      {
-        Identifier LEVEL(uint_t totalChannels, uint_t inChannel, uint_t outChannel)
-        {
-          return MIXERS[totalChannels - 1][inChannel][outChannel].Name;
-        }
+    return MIXERS[totalChannels - 1][inChannel][outChannel].Name;
+  }
 
-        //! @brief Function to get defaul percent-based level
-        IntType LEVEL_DEFAULT(uint_t totalChannels, uint_t inChannel, uint_t outChannel)
-        {
-          return MIXERS[totalChannels - 1][inChannel][outChannel].DefVal;
-        }
-      }  // namespace Mixer
-    }    // namespace Sound
-  }      // namespace ZXTune
-}  // namespace Parameters
+  //! @brief Function to get defaul percent-based level
+  IntType LEVEL_DEFAULT(uint_t totalChannels, uint_t inChannel, uint_t outChannel)
+  {
+    return MIXERS[totalChannels - 1][inChannel][outChannel].DefVal;
+  }
+}  // namespace Parameters::ZXTune::Sound::Mixer

@@ -8,18 +8,18 @@
  *
  **/
 
-// local includes
-#include "sound_oss.h"
+#include "apps/zxtune-qt/ui/preferences/sound_oss.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
 #include "sound_oss.ui.h"
-#include "supp/options.h"
-#include "ui/tools/parameters_helpers.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <sound/backends_parameters.h>
-// qt includes
+
+#include "sound/backends_parameters.h"
+
+#include "contract.h"
+
 #include <QtWidgets/QFileDialog>
-// std includes
+
 #include <utility>
 
 namespace
@@ -36,41 +36,22 @@ namespace
       // setup self
       setupUi(this);
 
-      Require(connect(selectDevice, SIGNAL(clicked()), SLOT(DeviceSelected())));
-      Require(connect(selectMixer, SIGNAL(clicked()), SLOT(MixerSelected())));
+      Require(connect(selectDevice, &QToolButton::clicked, this, &OssOptionsWidget::DeviceSelected));
+      Require(connect(selectMixer, &QToolButton::clicked, this, &OssOptionsWidget::MixerSelected));
 
       using namespace Parameters::ZXTune::Sound::Backends::Oss;
       Parameters::StringValue::Bind(*device, *Options, DEVICE, DEVICE_DEFAULT);
       Parameters::StringValue::Bind(*mixer, *Options, MIXER, MIXER_DEFAULT);
     }
 
-    String GetBackendId() const override
+    StringView GetBackendId() const override
     {
-      static const Char ID[] = {'o', 's', 's', '\0'};
-      return ID;
+      return "oss"sv;
     }
 
     QString GetDescription() const override
     {
       return nameGroup->title();
-    }
-
-    void DeviceSelected() override
-    {
-      QString devFile = device->text();
-      if (OpenFileDialog(UI::OssSettingsWidget::tr("Select device"), devFile))
-      {
-        device->setText(devFile);
-      }
-    }
-
-    void MixerSelected() override
-    {
-      QString mixFile = mixer->text();
-      if (OpenFileDialog(UI::OssSettingsWidget::tr("Select mixer"), mixFile))
-      {
-        mixer->setText(mixFile);
-      }
     }
 
     // QWidget
@@ -84,12 +65,30 @@ namespace
     }
 
   private:
+    void DeviceSelected()
+    {
+      QString devFile = device->text();
+      if (OpenFileDialog(UI::OssSettingsWidget::tr("Select device"), devFile))
+      {
+        device->setText(devFile);
+      }
+    }
+
+    void MixerSelected()
+    {
+      QString mixFile = mixer->text();
+      if (OpenFileDialog(UI::OssSettingsWidget::tr("Select mixer"), mixFile))
+      {
+        mixer->setText(mixFile);
+      }
+    }
+
     bool OpenFileDialog(const QString& title, QString& filename)
     {
       // do not use UI::OpenSingleFileDialog for keeping global settings intact
       QFileDialog dialog(this, title, filename, QLatin1String("*"));
       dialog.setFileMode(QFileDialog::ExistingFile);
-      dialog.setReadOnly(true);
+      dialog.setOption(QFileDialog::ReadOnly, true);
       dialog.setOption(QFileDialog::DontUseNativeDialog, true);
       dialog.setOption(QFileDialog::HideNameFilterDetails, true);
       if (QDialog::Accepted == dialog.exec())

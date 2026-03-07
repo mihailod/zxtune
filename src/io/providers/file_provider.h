@@ -10,9 +10,10 @@
 
 #pragma once
 
-// library includes
-#include <binary/data.h>
-#include <binary/output_stream.h>
+#include "binary/data.h"
+#include "binary/output_stream.h"
+
+#include "string_view.h"
 
 namespace Parameters
 {
@@ -21,9 +22,9 @@ namespace Parameters
 
 namespace IO
 {
-  Binary::Data::Ptr OpenLocalFile(const String& path, std::size_t mmapThreshold);
+  Binary::Data::Ptr OpenLocalFile(StringView path, std::size_t mmapThreshold);
 
-  enum OverwriteMode
+  enum class OverwriteMode
   {
     STOP_IF_EXISTS,
     OVERWRITE_EXISTING,
@@ -40,5 +41,5 @@ namespace IO
     virtual bool SanitizeNames() const = 0;
   };
 
-  Binary::SeekableOutputStream::Ptr CreateLocalFile(const String& path, const FileCreatingParameters& params);
+  Binary::SeekableOutputStream::Ptr CreateLocalFile(StringView path, const FileCreatingParameters& params);
 }  // namespace IO

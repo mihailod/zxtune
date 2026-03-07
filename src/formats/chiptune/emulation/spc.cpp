@@ -8,23 +8,26 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/emulation/spc.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <debug/log.h>
-#include <formats/chiptune.h>
-#include <math/numeric.h>
-#include <strings/format.h>
-#include <strings/optimize.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+#include "formats/chiptune.h"
+#include "math/numeric.h"
+#include "strings/conversion.h"
+#include "strings/format.h"
+#include "strings/sanitize.h"
+#include "strings/trim.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+#include "string_view.h"
+
 #include <array>
 
 namespace Formats::Chiptune
@@ -33,27 +36,16 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::SPC");
 
-    const Char DESCRIPTION[] = "SNES SPC700";
+    const auto DESCRIPTION = "SNES SPC700"sv;
 
-    typedef std::array<uint8_t, 28> SignatureType;
+    using SignatureType = std::array<uint8_t, 28>;
     const SignatureType SIGNATURE = {{'S', 'N', 'E', 'S', '-', 'S', 'P', 'C', '7', '0', '0', ' ', 'S', 'o',
                                       'u', 'n', 'd', ' ', 'F', 'i', 'l', 'e', ' ', 'D', 'a', 't', 'a', ' '}};
 
-    inline StringView GetTrimmed(const char* begin, const char* end)
+    template<class Str>
+    inline auto GetTrimmed(const Str& str)
     {
-      return StringView(begin, std::find(begin, end, '\0'));
-    }
-
-    template<std::size_t D>
-    inline StringView GetTrimmed(const std::array<char, D>& str)
-    {
-      return GetTrimmed(str.begin(), str.end());
-    }
-
-    template<std::size_t D>
-    inline StringView GetRaw(const std::array<char, D>& str)
-    {
-      return {str};
+      return Strings::TrimSpaces(MakeStringView(str));
     }
 
     inline bool IsValidString(StringView str)
@@ -98,7 +90,7 @@ namespace Formats::Chiptune
       }
       else if (IsValidDigitsString(str))
       {
-        return std::stoul(str.to_string());
+        return Strings::ConvertTo<uint_t>(str);
       }
       else
       {
@@ -147,27 +139,27 @@ namespace Formats::Chiptune
 
       bool IsValid() const
       {
-        return IsValidString(GetRaw(DumpDate)) && IsValidDigitsString(GetRaw(FadeTimeSec))
-               && IsValidDigitsString(GetRaw(FadeDurationMs));
+        return IsValidString(MakeStringView(DumpDate)) && IsValidDigitsString(MakeStringView(FadeTimeSec))
+               && IsValidDigitsString(MakeStringView(FadeDurationMs));
       }
 
       String GetDumpDate() const
       {
-        return GetTrimmed(DumpDate).to_string();
+        return String{GetTrimmed(DumpDate)};
       }
 
       Time::Seconds GetFadeTime() const
       {
         const auto str = GetTrimmed(FadeTimeSec);
         const auto val = ToInt(str);
-        return Time::Seconds(val);
+        return Time::Seconds{val};
       }
 
       Time::Milliseconds GetFadeDuration() const
       {
         const auto str = GetTrimmed(FadeDurationMs);
         const auto val = ToInt(str);
-        return Time::Milliseconds(val);
+        return Time::Milliseconds{val};
       }
     };
 
@@ -190,8 +182,9 @@ namespace Formats::Chiptune
 
       String ToString() const
       {
-        return (IsEmpty() || !IsValid()) ? String()
-                                         : Strings::Format("%02u/%02u/%04u", uint_t(Month), uint_t(Day), uint_t(Year));
+        return (IsEmpty() || !IsValid())
+                   ? String()
+                   : Strings::Format("{:02}/{:02}/{:04}", uint_t(Month), uint_t(Day), uint_t(Year));
       }
     };
 
@@ -221,7 +214,7 @@ namespace Formats::Chiptune
 
       bool IsValid() const
       {
-        return (DumpDate.IsEmpty() || DumpDate.IsValid()) && IsValidString(Artist);
+        return (DumpDate.IsEmpty() || DumpDate.IsValid()) && IsValidString(MakeStringView(Artist));
       }
 
       String GetDumpDate() const
@@ -232,12 +225,12 @@ namespace Formats::Chiptune
       Time::Seconds GetFadeTime() const
       {
         const uint_t val = uint_t(FadeTimeSec[0]) | (uint_t(FadeTimeSec[1]) << 8) | (uint_t(FadeTimeSec[2]) << 16);
-        return Time::Seconds(val);
+        return Time::Seconds{val};
       }
 
       Time::Milliseconds GetFadeDuration() const
       {
-        return Time::Milliseconds(FadeDurationMs);
+        return Time::Milliseconds{FadeDurationMs};
       }
     };
 
@@ -268,7 +261,7 @@ namespace Formats::Chiptune
       uint8_t DSPRegisters[128];
     };
 
-    typedef std::array<uint8_t, 4> IFFId;
+    using IFFId = std::array<uint8_t, 4>;
     const IFFId XID6 = {{'x', 'i', 'd', '6'}};
 
     struct IFFChunkHeader
@@ -363,14 +356,12 @@ namespace Formats::Chiptune
         if (Type == Asciiz)
         {
           const char* const start = safe_ptr_cast<const char*>(this + 1);
-          const char* const end = start + DataSize;
-          const StringView val = end[-1] ? StringView(start, end) : StringView(start);
-          return Strings::OptimizeAscii(val);
+          return Strings::Sanitize({start, DataSize});
         }
         else
         {
           // assert(!"Invalid subchunk type");
-          return String();
+          return {};
         }
       }
     };
@@ -389,15 +380,15 @@ namespace Formats::Chiptune
       void SetRegisters(uint16_t /*pc*/, uint8_t /*a*/, uint8_t /*x*/, uint8_t /*y*/, uint8_t /*psw*/,
                         uint8_t /*sp*/) override
       {}
-      void SetTitle(String /*title*/) override {}
-      void SetGame(String /*game*/) override {}
-      void SetDumper(String /*dumper*/) override {}
-      void SetComment(String /*comment*/) override {}
-      void SetDumpDate(String /*date*/) override {}
+      MetaBuilder& GetMetaBuilder() override
+      {
+        return GetStubMetaBuilder();
+      }
+      void SetDumper(StringView /*dumper*/) override {}
+      void SetDumpDate(StringView /*date*/) override {}
       void SetIntro(Time::Milliseconds /*duration*/) override {}
       void SetLoop(Time::Milliseconds /*duration*/) override {}
       void SetFade(Time::Milliseconds /*duration*/) override {}
-      void SetArtist(String /*artist*/) override {}
 
       void SetRAM(Binary::View /*data*/) override {}
       void SetDSPRegisters(Binary::View /*data*/) override {}
@@ -417,7 +408,7 @@ namespace Formats::Chiptune
         "1a     |00"
         "1a|1b  |00"  // has ID666
         "0a-1e  |00"  // version minor
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -426,7 +417,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, sizeof(RawHeader)))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -516,7 +507,7 @@ namespace Formats::Chiptune
           }
           else
           {
-            Dbg("Invalid IFFF chunk stored (id=%s, size=%u)", String(hdr.ID.begin(), hdr.ID.end()), size);
+            Dbg("Invalid IFFF chunk stored (id={}, size={})", String(hdr.ID.begin(), hdr.ID.end()), size);
             // TODO: fix used size instead
             Stream.ReadRestData();
           }
@@ -550,14 +541,15 @@ namespace Formats::Chiptune
 
       static void ParseID666(Tag& tag, Builder& target)
       {
-        target.SetTitle(tag.Song.to_string());
-        target.SetGame(tag.Game.to_string());
-        target.SetDumper(tag.Dumper.to_string());
-        target.SetComment(tag.Comments.to_string());
-        target.SetDumpDate(std::move(tag.DumpDate));
+        auto& meta = target.GetMetaBuilder();
+        meta.SetTitle(Strings::Sanitize(tag.Song));
+        meta.SetProgram(Strings::Sanitize(tag.Game));
+        target.SetDumper(Strings::Sanitize(tag.Dumper));
+        meta.SetComment(Strings::SanitizeMultiline(tag.Comments));
+        target.SetDumpDate(Strings::Sanitize(tag.DumpDate));
         target.SetLoop(tag.FadeTime);
         target.SetFade(tag.FadeDuration);
-        target.SetArtist(tag.Artist.to_string());
+        meta.SetAuthor(Strings::Sanitize(tag.Artist));
       }
 
       static void ParseSubchunks(Binary::View data, Builder& target)
@@ -575,7 +567,7 @@ namespace Formats::Chiptune
             }
             else
             {
-              Dbg("ParseSubchunk id=%u, type=%u, size=%u", uint_t(hdr->ID), uint_t(hdr->Type), uint_t(hdr->DataSize));
+              Dbg("ParseSubchunk id={}, type={}, size={}", uint_t(hdr->ID), uint_t(hdr->Type), uint_t(hdr->DataSize));
               stream.Skip(sizeof(*hdr) + hdr->GetDataSize());
               ParseSubchunk(*hdr, target);
             }
@@ -592,13 +584,13 @@ namespace Formats::Chiptune
         switch (hdr.ID)
         {
         case SubChunkHeader::SongName:
-          target.SetTitle(hdr.GetString());
+          target.GetMetaBuilder().SetTitle(hdr.GetString());
           break;
         case SubChunkHeader::GameName:
-          target.SetGame(hdr.GetString());
+          target.GetMetaBuilder().SetProgram(hdr.GetString());
           break;
         case SubChunkHeader::ArtistName:
-          target.SetArtist(hdr.GetString());
+          target.GetMetaBuilder().SetAuthor(hdr.GetString());
           break;
         case SubChunkHeader::DumperName:
           target.SetDumper(hdr.GetString());
@@ -607,7 +599,7 @@ namespace Formats::Chiptune
           target.SetDumpDate(hdr.GetDate().ToString());
           break;
         case SubChunkHeader::Comments:
-          target.SetComment(hdr.GetString());
+          target.GetMetaBuilder().SetComment(hdr.GetString());
           break;
         case SubChunkHeader::IntroductionLength:
           target.SetIntro(hdr.GetTicks());

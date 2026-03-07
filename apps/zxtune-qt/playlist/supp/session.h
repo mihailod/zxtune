@@ -10,15 +10,14 @@
 
 #pragma once
 
-// local includes
-#include "container.h"
+#include "apps/zxtune-qt/playlist/supp/container.h"
 
 namespace Playlist
 {
   class Session
   {
   public:
-    typedef std::shared_ptr<Session> Ptr;
+    using Ptr = std::shared_ptr<Session>;
 
     virtual ~Session() = default;
 

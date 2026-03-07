@@ -6,30 +6,14 @@
 package app.zxtune.fs.zxart
 
 import android.content.Context
+import androidx.core.util.Consumer
 import app.zxtune.fs.http.MultisourceHttpProvider
 import java.io.IOException
 
 interface Catalog {
-    interface WithCountHint {
-        fun setCountHint(count: Int) {}
-    }
+    fun interface Visitor<T> : Consumer<T>
 
-    fun interface AuthorsVisitor : WithCountHint {
-        override fun setCountHint(count: Int) {} // TODO: remove after KT-41670 fix
-        fun accept(obj: Author)
-    }
-
-    fun interface PartiesVisitor : WithCountHint {
-        override fun setCountHint(count: Int) {} // TODO: remove after KT-41670 fix
-        fun accept(obj: Party)
-    }
-
-    fun interface TracksVisitor : WithCountHint {
-        override fun setCountHint(count: Int) {} // TODO: remove after KT-41670 fix
-        fun accept(obj: Track)
-    }
-
-    fun interface FoundTracksVisitor : WithCountHint {
+    fun interface FoundTracksVisitor {
         fun accept(author: Author, track: Track)
     }
 
@@ -38,7 +22,7 @@ interface Catalog {
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryAuthors(visitor: AuthorsVisitor)
+    fun queryAuthors(visitor: Visitor<Author>)
 
     /**
      * Query tracks objects
@@ -46,14 +30,14 @@ interface Catalog {
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryAuthorTracks(author: Author, visitor: TracksVisitor)
+    fun queryAuthorTracks(author: Author, visitor: Visitor<Track>)
 
     /**
      * Query parties object
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryParties(visitor: PartiesVisitor)
+    fun queryParties(visitor: Visitor<Party>)
 
     /**
      * Query tracks objects
@@ -61,7 +45,7 @@ interface Catalog {
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryPartyTracks(party: Party, visitor: TracksVisitor)
+    fun queryPartyTracks(party: Party, visitor: Visitor<Track>)
 
     /**
      * Query top tracks (not cached
@@ -69,7 +53,7 @@ interface Catalog {
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryTopTracks(limit: Int, visitor: TracksVisitor)
+    fun queryTopTracks(limit: Int, visitor: Visitor<Track>)
 
     /**
      * Find tracks by query substring

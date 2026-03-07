@@ -8,29 +8,27 @@
  *
  **/
 
-// local includes
+#include "module/conversion/api.h"
+#include "module/conversion/parameters.h"
 #include "sound/backends/aylpt.h"
 #include "sound/backends/backend_impl.h"
 #include "sound/backends/l10n.h"
 #include "sound/backends/storage.h"
-// common includes
-#include <byteorder.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <debug/log.h>
-#include <devices/aym.h>
-#include <module/conversion/api.h>
-#include <module/conversion/types.h>
-#include <platform/shared_library.h>
-#include <sound/backend_attrs.h>
-#include <sound/backends_parameters.h>
-// std includes
+
+#include "debug/log.h"
+#include "devices/aym.h"
+#include "platform/shared_library.h"
+#include "sound/backends_parameters.h"
+
+#include "byteorder.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <algorithm>
 #include <cstring>
 #include <thread>
-
-#define FILE_TAG F1936398
+#include <utility>
 
 namespace Sound::AyLpt
 {
@@ -70,8 +68,8 @@ namespace Sound::AyLpt
   class LptPort
   {
   public:
-    typedef std::shared_ptr<LptPort> Ptr;
-    virtual ~LptPort() {}
+    using Ptr = std::shared_ptr<LptPort>;
+    virtual ~LptPort() = default;
 
     virtual void Control(uint_t val) = 0;
     virtual void Data(uint_t val) = 0;
@@ -81,18 +79,18 @@ namespace Sound::AyLpt
   {
   public:
     BackendWorker(Binary::Data::Ptr data, LptPort::Ptr port)
-      : Data(data)
-      , Port(port)
+      : Data(std::move(data))
+      , Port(std::move(port))
     {}
 
-    virtual ~BackendWorker() {}
+    ~BackendWorker() override = default;
 
-    virtual VolumeControl::Ptr GetVolumeControl() const
+    VolumeControl::Ptr GetVolumeControl() const override
     {
       return VolumeControl::Ptr();
     }
 
-    virtual void Startup()
+    void Startup() override
     {
       Reset();
       Dbg("Successfull start");
@@ -100,20 +98,20 @@ namespace Sound::AyLpt
       FrameDuration = std::chrono::microseconds(20000);  // TODO
     }
 
-    virtual void Shutdown()
+    void Shutdown() override
     {
       Reset();
       Dbg("Successfull shut down");
     }
 
-    virtual void Pause()
+    void Pause() override
     {
       Reset();
     }
 
-    virtual void Resume() {}
+    void Resume() override {}
 
-    virtual void FrameStart(const Module::State& state)
+    void FrameStart(const Module::State& state) override
     {
       WaitForNextFrame();
       const auto frame = state.At().CastTo<Time::Microsecond>().Get() / FrameDuration.count();
@@ -121,7 +119,7 @@ namespace Sound::AyLpt
       WriteRegisters(regs);
     }
 
-    virtual void FrameFinish(Chunk /*buffer*/)
+    void FrameFinish(Chunk /*buffer*/) override
     {
       NextFrameTime += FrameDuration;
     }
@@ -184,16 +182,16 @@ namespace Sound::AyLpt
   {
   public:
     explicit DlPortIO(Platform::SharedLibrary::Ptr lib)
-      : Lib(lib)
+      : Lib(std::move(lib))
       , WriteByte(reinterpret_cast<WriteFunctionType>(Lib->GetSymbol("DlPortWritePortUchar")))
     {}
 
-    virtual void Control(uint_t val)
+    void Control(uint_t val) override
     {
       WriteByte(CONTROL_PORT, val);
     }
 
-    virtual void Data(uint_t val)
+    void Data(uint_t val) override
     {
       WriteByte(DATA_PORT, val);
     }
@@ -207,38 +205,37 @@ namespace Sound::AyLpt
   class DllName : public Platform::SharedLibrary::Name
   {
   public:
-    virtual String Base() const
+    StringView Base() const override
     {
-      return "dlportio";
+      return "dlportio"sv;
     }
 
-    virtual std::vector<String> PosixAlternatives() const
+    std::vector<StringView> PosixAlternatives() const override
     {
-      return std::vector<String>();
+      return {};
     }
 
-    virtual std::vector<String> WindowsAlternatives() const
+    std::vector<StringView> WindowsAlternatives() const override
     {
-      static const String ALTERNATIVES[] = {"inpout32.dll", "inpoutx64.dll"};
-      return std::vector<String>(ALTERNATIVES, std::end(ALTERNATIVES));
+      return {"inpout32.dll"sv, "inpoutx64.dll"sv};
     }
   };
 
   LptPort::Ptr LoadLptLibrary()
   {
     static const DllName NAME;
-    const Platform::SharedLibrary::Ptr lib = Platform::SharedLibrary::Load(NAME);
-    return MakePtr<DlPortIO>(lib);
+    auto lib = Platform::SharedLibrary::Load(NAME);
+    return MakePtr<DlPortIO>(std::move(lib));
   }
 
   class BackendWorkerFactory : public Sound::BackendWorkerFactory
   {
   public:
     explicit BackendWorkerFactory(LptPort::Ptr port)
-      : Port(port)
+      : Port(std::move(port))
     {}
 
-    virtual BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr holder) const
+    BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr holder) const override
     {
       static const Module::Conversion::AYDumpConvertParam spec;
       if (const Binary::Data::Ptr data = Module::Convert(*holder, spec, params))
@@ -259,9 +256,9 @@ namespace Sound
   {
     try
     {
-      const AyLpt::LptPort::Ptr port = AyLpt::LoadLptLibrary();
-      const BackendWorkerFactory::Ptr factory = MakePtr<AyLpt::BackendWorkerFactory>(port);
-      storage.Register(AyLpt::BACKEND_ID, AyLpt::BACKEND_DESCRIPTION, AyLpt::CAPABILITIES, factory);
+      auto port = AyLpt::LoadLptLibrary();
+      auto factory = MakePtr<AyLpt::BackendWorkerFactory>(std::move(port));
+      storage.Register(AyLpt::BACKEND_ID, AyLpt::BACKEND_DESCRIPTION, AyLpt::CAPABILITIES, std::move(factory));
     }
     catch (const Error& e)
     {
@@ -269,5 +266,3 @@ namespace Sound
     }
   }
 }  // namespace Sound
-
-#undef FILE_TAG

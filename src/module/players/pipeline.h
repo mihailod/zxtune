@@ -10,15 +10,15 @@
 
 #pragma once
 
-// library includes
-#include <module/renderer.h>
-#include <parameters/accessor.h>
+#include "module/renderer.h"
+#include "parameters/accessor.h"
 
 namespace Module
 {
   class Holder;
 
   /* Creates wrapper that applies:
+   - loop control
    - gain
    - fadein/fadeout
    - silence detection

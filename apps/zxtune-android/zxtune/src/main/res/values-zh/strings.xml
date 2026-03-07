@@ -13,6 +13,8 @@
     <string name="send">发送</string>
     <string name="share">分享</string>
     <string name="sort">排序</string>
+    <string name="properties">属性</string>
+    <string name="sound_controls">声音控制</string>
     <string name="delete_all_items_query">删除所有项目?</string>
     <string name="delete_selected_items_query">删除选定的项目?</string>
     <!-- information-related -->
@@ -42,4 +44,10 @@
     <!-- notifications -->
     <string name="notification_channel_name_events">事件</string>
     <string name="notification_channel_name_services">服务</string>
+    <!-- problems -->
+    <string name="problems">检测到的问题</string>
+    <string name="problem_power_management">
+        优化应用程序的电池使用可能会导致后台模式播放的自发停止。
+    </string>
+    <string name="problem_power_management_fixit">设置优化</string>
 </resources>

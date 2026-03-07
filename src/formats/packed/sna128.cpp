@@ -8,16 +8,16 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-// std includes
+
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <array>
 #include <numeric>
 
@@ -25,7 +25,7 @@ namespace Formats::Packed
 {
   namespace Sna128
   {
-    typedef std::array<uint8_t, 16384> PageData;
+    using PageData = std::array<uint8_t, 16384>;
 
     struct Header
     {
@@ -60,7 +60,7 @@ namespace Formats::Packed
     };
 
     // 5,2,0,1,3,4,6,7
-    typedef std::array<PageData, 8> ResultData;
+    using ResultData = std::array<PageData, 8>;
 
     static_assert(sizeof(Header) * alignof(Header) == 131103, "Invalid layout");
 
@@ -101,9 +101,9 @@ namespace Formats::Packed
     {
       static const uint_t PAGE_NUM_TO_INDEX[] = {2, 3, 1, 4, 5, 0, 6, 7};
 
-      std::unique_ptr<Binary::Dump> result(new Binary::Dump(sizeof(ResultData)));
+      Binary::DataBuilder result(sizeof(ResultData));
       const Header& src = *data.As<Header>();
-      ResultData& dst = *safe_ptr_cast<ResultData*>(result->data());
+      auto& dst = result.Add<ResultData>();
       const uint_t curPage = src.Port7FFD & 7;
       dst[PAGE_NUM_TO_INDEX[5]] = src.Page5;
       dst[PAGE_NUM_TO_INDEX[2]] = src.Page2;
@@ -122,10 +122,10 @@ namespace Formats::Packed
         ++idx;
       }
       const std::size_t origSize = pageDuped ? sizeof(src) + sizeof(PageData) : sizeof(src);
-      return CreateContainer(std::move(result), origSize);
+      return CreateContainer(result.CaptureResult(), origSize);
     }
 
-    const Char DESCRIPTION[] = "SNA 128k";
+    const auto DESCRIPTION = "SNA 128k"sv;
     const auto FORMAT =
         "?{19}"
         "00|01|02|03|04|ff"  // iff. US saves 0x00/0x04/0xff instead of normal 0x00..0x03 flags
@@ -133,7 +133,7 @@ namespace Formats::Packed
         "? 40-ff"  // sp
         "00-02"    // im mode
         "00-07"    // border
-        ""_sv;
+        ""sv;
   }  // namespace Sna128
 
   class Sna128Decoder : public Decoder
@@ -143,7 +143,7 @@ namespace Formats::Packed
       : Format(Binary::CreateFormat(Sna128::FORMAT, Sna128::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Sna128::DESCRIPTION;
     }
@@ -158,11 +158,11 @@ namespace Formats::Packed
       const Binary::View data(rawData);
       if (!Format->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       if (!Sna128::Check(data))
       {
-        return Container::Ptr();
+        return {};
       }
       return Sna128::Decode(data);
     }

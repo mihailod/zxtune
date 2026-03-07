@@ -15,16 +15,16 @@ libraries.common = analysis async \
                   formats_archived formats_archived_multitrack formats_chiptune formats_packed formats_multitrack \
                   io \
                   l10n_stub \
-                  module module_conversion module_players module_properties \
+                  module_conversion module_players module_properties \
                   parameters platform platform_application platform_version \
                   sound sound_backends strings \
                   tools
-libraries.3rdparty = asap atrac9 ffmpeg FLAC gme he ht hvl lazyusf2 lhasa lzma mgba mpg123 ogg openmpt sidplayfp snesspc sseqplayer unrar v2m vio2sf vgm vgmstream vorbis xmp z80ex zlib
+libraries.3rdparty = asap atrac9 ffmpeg FLAC gme he ht hvl lazyusf2 lhasa lzma mgba mpg123 ogg openmpt opus sidplayfp snesspc sseqplayer unrar v2m vio2sf vgm vgmstream vorbis xmp z80ex zlib
 
 #platform
 libraries.windows = advapi32 ole32 oldnames shell32 user32
 libraries.mingw = ole32
-libraries.boost = filesystem program_options system
+libraries.boost = program_options
 
 manual_format := txt
 manual_file = $(binary_name)_$(pkg_lang).$(manual_format)

@@ -10,13 +10,9 @@
 
 #pragma once
 
-// local includes
 #include "module/players/aym/aym_factory.h"
 
-namespace Module
+namespace Module::GlobalTracker
 {
-  namespace GlobalTracker
-  {
-    AYM::Factory::Ptr CreateFactory();
-  }
-}  // namespace Module
+  AYM::Factory::Ptr CreateFactory();
+}  // namespace Module::GlobalTracker

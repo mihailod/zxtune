@@ -10,21 +10,21 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// library includes
-#include <binary/container.h>
+#include "binary/container.h"
+
+#include "string_view.h"
+#include "types.h"
 
 namespace Resource
 {
-  Binary::Container::Ptr Load(const String& name);
+  Binary::Container::Ptr Load(StringView name);
 
   class Visitor
   {
   public:
     virtual ~Visitor() = default;
 
-    virtual void OnResource(const String& name) = 0;
+    virtual void OnResource(StringView name) = 0;
   };
 
   void Enumerate(Visitor& visitor);

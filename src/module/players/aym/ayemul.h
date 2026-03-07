@@ -10,13 +10,9 @@
 
 #pragma once
 
-// library includes
-#include <module/players/factory.h>
+#include "module/players/factory.h"
 
-namespace Module
+namespace Module::AYEMUL
 {
-  namespace AYEMUL
-  {
-    Factory::Ptr CreateFactory();
-  }
-}  // namespace Module
+  Factory::Ptr CreateFactory();
+}  // namespace Module::AYEMUL

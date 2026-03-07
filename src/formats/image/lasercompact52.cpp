@@ -8,15 +8,16 @@
  *
  **/
 
-// local includes
 #include "formats/image/container.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <formats/image.h>
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "formats/image.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
+#include <memory>
 
 namespace Formats::Image
 {
@@ -49,8 +50,6 @@ namespace Formats::Image
     public:
       explicit BitStream(Binary::View data)
         : Stream(data)
-        , Bits()
-        , Mask()
       {}
 
       uint8_t GetByte()
@@ -108,8 +107,8 @@ namespace Formats::Image
 
     private:
       Binary::DataInputStream Stream;
-      uint_t Bits;
-      uint_t Mask;
+      uint_t Bits = 0;
+      uint_t Mask = 0;
     };
 
     class Container
@@ -141,7 +140,7 @@ namespace Formats::Image
         {
           return Data.SubView(sizeof(*hdr) + hdr->AdditionalSize);
         }
-        return Binary::View(nullptr, 0);
+        return {nullptr, 0};
       }
 
     private:
@@ -249,7 +248,7 @@ namespace Formats::Image
               } while (--len > 0);
             }
           }
-          Result.reset(new Binary::Dump());
+          Result = std::make_unique<Binary::Dump>();
           if (target <= PIXELS_SIZE)
           {
             decoded.resize(PIXELS_SIZE);
@@ -269,11 +268,11 @@ namespace Formats::Image
       std::unique_ptr<Binary::Dump> Result;
     };
 
-    const Char DESCRIPTION[] = "LaserCompact 5.2";
+    const auto DESCRIPTION = "LaserCompact 5.2"sv;
     const auto FORMAT =
         // Signature
         "'L'C'M'P'5"
-        ""_sv;
+        ""sv;
   }  // namespace LaserCompact52
 
   class LaserCompact52Decoder : public Decoder
@@ -283,7 +282,7 @@ namespace Formats::Image
       : Format(Binary::CreateFormat(LaserCompact52::FORMAT, LaserCompact52::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return LaserCompact52::DESCRIPTION;
     }
@@ -297,12 +296,12 @@ namespace Formats::Image
     {
       if (!Format->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const LaserCompact52::Container container(rawData);
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       LaserCompact52::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), decoder.GetUsedSize());

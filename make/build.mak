@@ -81,6 +81,13 @@ endif
 #main target
 all: $(target)
 
+# Support using the most generic prefixes with clarification for particular conditions:
+# platform.arch.execprefix > platform.execprefix > execprefix
+$(platform).execprefix ?= $(execprefix)
+$(platform).$(arch).execprefix ?= $($(platform).execprefix)
+
+dir.sysroot ?= $(firstword $($(platform).$(arch).crossroot) $($(platform).crossroot) $(crossroot))
+
 #set compiler-specific parameters
 include $(dirs.root)/make/compilers/$(compiler).mak
 
@@ -90,6 +97,9 @@ source_dirs += $(source_dirs.$(platform))
 ifdef source_dirs
 source_files += $(foreach suffix,$(suffix.src),$(foreach dir,$(source_dirs),$(wildcard $(dir)/*$(suffix))))
 endif
+
+ifeq ($(findstring 3rdparty,$(CURDIR)),)
+defines += SOURCES_ROOT=\"$(abspath $(dirs.root))\"
 
 #process qt if required
 ifdef use_qt
@@ -105,6 +115,7 @@ include $(dirs.root)/make/l10n.mak
 ifdef jumbo.name
 include $(dirs.root)/make/jumbo.mak
 endif
+endif
 
 ifdef objects_flat_names
 SRC2OBJ = $(objects_dir)/$(call makeobj_name,$(subst /,_,$(1)))
@@ -113,6 +124,11 @@ SRC2OBJ = $(objects_dir)/$(call makeobj_name,$(notdir $(1)))
 endif
 
 #calculate object files from sources
+# TODO: separate defines for 3rdparty libraries - remove android defines
+DEFINES = $(defines) $(defines.$(platform)) $(defines.$(platform).$(arch)) $(defines.$(notdir $1))
+INCLUDES_DIRS = $(foreach i,$(sort $(includes.dirs) $(includes.dirs.$(platform)) $(includes.dirs.$(notdir $1))),$(abspath $(i)))
+INCLUDES_FILES = $(foreach f,$(includes.files) $(includes.files.$(platform)) $(includes.files.$(notdir $1)),$(abspath $(f)))
+
 SOURCES = $(source_files) $(generated_sources)
 OBJECTS = $(foreach src,$(SOURCES),$(call SRC2OBJ,$(src)))
 TRANSLATIONS = $(mo_files) $(qm_files)
@@ -132,7 +148,7 @@ ifdef library_name
 $(target): $(OBJECTS) | $(output_dir) $(TRANSLATIONS)
 	$(call build_lib_cmd,$^,$@)
 
-.PHONY: deps
+deps: $(target)
 else
 #libraries helpers
 include $(dirs.root)/libraries.mak
@@ -145,9 +161,9 @@ $(target): $(OBJECTS) $(LIBS) $(embedded_files) | $(output_dir) $(TRANSLATIONS)
 	$(postlink_cmd)
 	$(if $(embedded_files),$(embed_file_cmd),)
 
-$(LIBS): deps
+deps: $(OBJECTS) $(LIBS) $(embedded_files) $(TRANSLATIONS)
 
-deps: $(depends) $($(platform)_depends)
+$(LIBS): $(depends) $($(platform)_depends)
 
 $(depends) $($(platform)_depends):
 	$(MAKE) pic=$(pic) static_runtime=$(static_runtime) -C $(addprefix $(dirs.root)/,$@) $(MAKECMDGOALS)

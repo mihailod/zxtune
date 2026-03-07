@@ -10,14 +10,8 @@
 
 #pragma once
 
-// library includes
-#include <module/state.h>
-#include <sound/chunk.h>
-
-namespace Sound
-{
-  struct LoopParameters;
-}
+#include "module/state.h"
+#include "sound/chunk.h"
 
 namespace Module
 {
@@ -26,7 +20,7 @@ namespace Module
   {
   public:
     //! @brief Generic pointer type
-    typedef std::shared_ptr<Renderer> Ptr;
+    using Ptr = std::shared_ptr<Renderer>;
 
     virtual ~Renderer() = default;
 
@@ -35,7 +29,7 @@ namespace Module
 
     //! @brief Rendering single frame and modifying internal state
     //! @return empty chunk if there's no more data to render
-    virtual Sound::Chunk Render(const Sound::LoopParameters& looped) = 0;
+    virtual Sound::Chunk Render() = 0;
 
     //! @brief Performing reset to initial state
     virtual void Reset() = 0;

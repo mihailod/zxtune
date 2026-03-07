@@ -8,9 +8,12 @@
  *
  **/
 
-#include "../../utils.h"
-#include <formats/chiptune/multidevice/sound98.h>
-#include <time/serialize.h>
+#include "formats/chiptune/multidevice/sound98.h"
+#include "formats/test/utils.h"
+
+#include "time/serialize.h"
+
+#include "string_view.h"
 
 namespace
 {
@@ -44,12 +47,17 @@ namespace
       }
     }
 
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
+    }
+
     MetaBuilder& GetMetaBuilder() override
     {
       return *this;
     }
 
-    void SetTimings(Time::Milliseconds total, Time::Milliseconds loop)
+    void SetTimings(Time::Milliseconds total, Time::Milliseconds loop) override
     {
       std::cout << "Duration: " << Time::ToString(total) << "\nLoop: " << Time::ToString(loop) << std::endl;
     }
@@ -64,9 +72,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Binary::Dump> rawData(new Binary::Dump());
-    Test::OpenFile(argv[1], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[1]);
     S98Builder builder;
     if (const auto result = Formats::Chiptune::Sound98::Parse(*data, builder))
     {

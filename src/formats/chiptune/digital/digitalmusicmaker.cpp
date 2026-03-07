@@ -8,21 +8,21 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/digital/digitalmusicmaker.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <indices.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <strings/optimize.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "strings/optimize.h"
+#include "tools/indices.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <array>
 #include <cstring>
 #include <map>
@@ -33,7 +33,7 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::DigitalMusicMaker");
 
-    const Char DESCRIPTION[] = "Digital Music Maker v1.x";
+    const auto DESCRIPTION = "Digital Music Maker v1.x"sv;
 
     // const std::size_t MAX_POSITIONS_COUNT = 0x32;
     // const std::size_t MAX_PATTERN_SIZE = 64;
@@ -273,7 +273,7 @@ namespace Formats::Chiptune
             names[samIdx] = Strings::OptimizeAscii(srcSample.Name);
           }
         }
-        meta.SetStrings(std::move(names));
+        meta.SetStrings(names);
       }
 
       void ParsePositions(Builder& target) const
@@ -281,7 +281,7 @@ namespace Formats::Chiptune
         Positions positions;
         positions.Loop = Source.Loop;
         positions.Lines.assign(Source.Positions.begin(), Source.Positions.begin() + Source.Length + 1);
-        Dbg("Positions: %1%, loop to %2%", positions.GetSize(), positions.GetLoop());
+        Dbg("Positions: {}, loop to {}", positions.GetSize(), positions.GetLoop());
         target.SetPositions(std::move(positions));
       }
 
@@ -290,7 +290,7 @@ namespace Formats::Chiptune
         for (Indices::Iterator it = pats.Items(); it; ++it)
         {
           const uint_t patIndex = *it;
-          Dbg("Parse pattern %1%", patIndex);
+          Dbg("Parse pattern {}", patIndex);
           ParsePattern(patIndex, target);
         }
       }
@@ -304,7 +304,7 @@ namespace Formats::Chiptune
         const uint_t maxMixingsCount = (RawData.Size() - offsetof(Header, Mixings)) / sizeof(MixedLine);
         for (uint_t mixIdx = 0, mixLimit = std::min(availMixingsCount, maxMixingsCount); mixIdx < mixLimit; ++mixIdx)
         {
-          Dbg("Parse mixin %1%", mixIdx);
+          Dbg("Parse mixin {}", mixIdx);
           const MixedLine& src = mixings[mixIdx];
           const std::unique_ptr<ChannelBuilder> dst = target.SetSampleMixin(mixIdx, src.Period);
           ParseChannel(src.Mixin, *dst);
@@ -326,17 +326,17 @@ namespace Formats::Chiptune
           Require(bankEnd >= SAMPLES_ADDR);
           if (bankEnd == SAMPLES_ADDR)
           {
-            Dbg("Skipping empty bank #%1$02x (end=#%2$04x)", bankNum, bankEnd);
+            Dbg("Skipping empty bank #{:02x} (end=#{:04x})", bankNum, bankEnd);
             continue;
           }
           const std::size_t bankSize = bankEnd - SAMPLES_ADDR;
-          const std::size_t alignedBankSize = Math::Align<std::size_t>(bankSize, 256);
+          const auto alignedBankSize = Math::Align<std::size_t>(bankSize, 256);
           if (is4bitSamples)
           {
             const std::size_t realSize = 256 * (1 + alignedBankSize / 512);
             Require(lastData + realSize <= limit);
             regions.emplace(bankNum, RawData.SubView(lastData, realSize));
-            Dbg("Added unpacked bank #%1$02x (end=#%2$04x, size=#%3$04x) offset=#%4$05x", bankNum, bankEnd, realSize,
+            Dbg("Added unpacked bank #{:02x} (end=#{:04x}, size=#{:04x}) offset=#{:05x}", bankNum, bankEnd, realSize,
                 lastData);
             AddRange(lastData, realSize);
             lastData += realSize;
@@ -345,7 +345,7 @@ namespace Formats::Chiptune
           {
             Require(lastData + alignedBankSize <= limit);
             regions.emplace(bankNum, RawData.SubView(lastData, alignedBankSize));
-            Dbg("Added bank #%1$02x (end=#%2$04x, size=#%3$04x) offset=#%4$05x", bankNum, bankEnd, alignedBankSize,
+            Dbg("Added bank #{:02x} (end=#{:04x}, size=#{:04x}) offset=#{:05x}", bankNum, bankEnd, alignedBankSize,
                 lastData);
             AddRange(lastData, alignedBankSize);
             lastData += alignedBankSize;
@@ -357,13 +357,13 @@ namespace Formats::Chiptune
           const SampleInfo& srcSample = Source.SampleDescriptions[samIdx - 1];
           if (srcSample.Name[0] == '.')
           {
-            Dbg("No sample %1%", samIdx);
+            Dbg("No sample {}", samIdx);
             continue;
           }
           const std::size_t sampleStart = srcSample.Start;
           const std::size_t sampleEnd = srcSample.Limit;
           std::size_t sampleLoop = srcSample.Loop;
-          Dbg("Processing sample %1% (bank #%2$02x #%3$04x..#%4$04x loop #%5$04x)", samIdx, uint_t(srcSample.Bank),
+          Dbg("Processing sample {} (bank #{:02x} #{:04x}..#{:04x} loop #{:04x})", samIdx, uint_t(srcSample.Bank),
               sampleStart, sampleEnd, sampleLoop);
           Require(sampleStart >= SAMPLES_ADDR && sampleStart <= sampleEnd);
           if (sampleLoop < sampleStart)
@@ -557,13 +557,9 @@ namespace Formats::Chiptune
     bool FastCheck(Binary::View data)
     {
       const auto* header = data.As<Header>();
-      if (!header
-          || !(header->PatternSize == 64 || header->PatternSize == 48 || header->PatternSize == 32
-               || header->PatternSize == 24))
-      {
-        return false;
-      }
-      return true;
+      return header
+             && (header->PatternSize == 64 || header->PatternSize == 48 || header->PatternSize == 32
+                 || header->PatternSize == 24);
     }
 
     const auto FORMAT =
@@ -581,7 +577,7 @@ namespace Formats::Chiptune
         "01-32"
         // base size
         "02-38"
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -590,7 +586,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MODULE_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -610,7 +606,7 @@ namespace Formats::Chiptune
         const Binary::View data(rawData);
         if (!Format->Match(data))
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
         Builder& stub = GetStubBuilder();
         return Parse(rawData, stub);
@@ -625,7 +621,7 @@ namespace Formats::Chiptune
       const Binary::View data(rawData);
       if (!FastCheck(data))
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
 
       try
@@ -649,7 +645,7 @@ namespace Formats::Chiptune
       catch (const std::exception&)
       {
         Dbg("Failed to create");
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
 

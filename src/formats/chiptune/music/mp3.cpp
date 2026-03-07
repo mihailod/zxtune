@@ -8,53 +8,42 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/music/mp3.h"
+
 #include "formats/chiptune/container.h"
 #include "formats/chiptune/music/tags_id3.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <strings/encoding.h>
-#include <strings/trim.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "strings/sanitize.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <array>
 
 namespace Formats::Chiptune
 {
   namespace Mp3
   {
-    const Char DESCRIPTION[] = "MPEG Audio Layer";
+    const auto DESCRIPTION = "MPEG Audio Layer"sv;
 
     // http://wiki.hydrogenaud.io/index.php?title=APEv2_specification
     namespace ApeTag
     {
-      String MakeString(StringView str)
-      {
-        // do not trim before- it may break some encodings
-        auto decoded = Strings::ToAutoUtf8(str);
-        std::replace_if(
-            decoded.begin(), decoded.end(), [](Char c) { return c < ' '; }, ' ');
-        auto trimmed = Strings::TrimSpaces(decoded);
-        return decoded.size() == trimmed.size() ? decoded : trimmed.to_string();
-      }
-
       void ParseKey(StringView key, StringView value, MetaBuilder& target)
       {
-        if (key == "Artist"_sv)
+        if (key == "Artist"sv)
         {
-          target.SetAuthor(MakeString(value));
+          target.SetAuthor(Strings::Sanitize(value));
         }
-        else if (key == "Title"_sv)
+        else if (key == "Title"sv)
         {
-          target.SetTitle(MakeString(value));
+          target.SetTitle(Strings::Sanitize(value));
         }
-        else if (key == "Comment"_sv)
+        else if (key == "Comment"sv)
         {
-          // TODO: SetComment
-          target.SetStrings({MakeString(value)});
+          target.SetComment(Strings::SanitizeMultiline(value));
         }
       }
 
@@ -81,7 +70,7 @@ namespace Formats::Chiptune
       {
         static const std::size_t HEADER_SIZE = 32;
         static const uint8_t SIGNATURE[] = {'A', 'P', 'E', 'T', 'A', 'G', 'E', 'X'};
-        const auto hdr = stream.PeekRawData(HEADER_SIZE);
+        const auto* const hdr = stream.PeekRawData(HEADER_SIZE);
         if (!hdr || 0 != std::memcmp(hdr, SIGNATURE, sizeof(SIGNATURE)))
         {
           return false;
@@ -305,7 +294,7 @@ namespace Formats::Chiptune
         for (auto freeFormatFrameSize = Synchronize(); Stream.GetRestSize() != 0;)
         {
           const auto offset = Stream.GetPosition();
-          if (const auto inFrame = ReadFrame(freeFormatFrameSize))
+          if (const auto* const inFrame = ReadFrame(freeFormatFrameSize))
           {
             Frame out;
             out.Location.Offset = offset;
@@ -315,12 +304,7 @@ namespace Formats::Chiptune
             out.Properties.Mono = inFrame->GetIsMono();
             target.AddFrame(out);
           }
-          else if (Id3::Parse(Stream, *metaTarget))
-          {
-            metaTarget = &GetStubMetaBuilder();
-            continue;
-          }
-          else if (ApeTag::Parse(Stream, *metaTarget))
+          else if (Id3::Parse(Stream, *metaTarget) || ApeTag::Parse(Stream, *metaTarget))
           {
             metaTarget = &GetStubMetaBuilder();
             continue;
@@ -336,7 +320,7 @@ namespace Formats::Chiptune
             }
             if (skip > MAX_SYNC_GAP_NOTLOST && ++syncLostsCount > MAX_SYNC_LOSTS_COUNT)
             {
-              return Container::Ptr();
+              return {};
             }
           }
         }
@@ -346,7 +330,7 @@ namespace Formats::Chiptune
         }
         else
         {
-          return Container::Ptr();
+          return {};
         }
       }
 
@@ -355,7 +339,7 @@ namespace Formats::Chiptune
       std::size_t Synchronize()
       {
         const std::size_t FREEFORMAT_SYNC_FRAMES_COUNT = 10;
-        while (const auto firstFrame = SkipToNextFrame(0))
+        while (const auto* const firstFrame = SkipToNextFrame(0))
         {
           if (!firstFrame->IsFreeFormat())
           {
@@ -363,7 +347,7 @@ namespace Formats::Chiptune
           }
           const auto startOffset = Stream.GetPosition();
           std::size_t frameSize = 0;
-          while (const auto nextFrame = SkipToNextFrame(sizeof(*firstFrame)))
+          while (const auto* const nextFrame = SkipToNextFrame(sizeof(*firstFrame)))
           {
             if (nextFrame->Matches(*firstFrame))
             {
@@ -374,7 +358,7 @@ namespace Formats::Chiptune
           for (std::size_t validFrames = 2;
                frameSize > MIN_FREEFORMAT_FRAME_SIZE && frameSize < MAX_FREEFORMAT_FRAME_SIZE; ++validFrames)
           {
-            const auto nextFrame = SkipToNextFrame(frameSize);
+            const auto* const nextFrame = SkipToNextFrame(frameSize);
             if (!nextFrame || validFrames >= FREEFORMAT_SYNC_FRAMES_COUNT)
             {
               Stream.Seek(startOffset);
@@ -392,7 +376,7 @@ namespace Formats::Chiptune
 
       const FrameHeader* ReadFrame(std::size_t freeFormatSize)
       {
-        const auto frame = safe_ptr_cast<const FrameHeader*>(Stream.PeekRawData(sizeof(FrameHeader)));
+        const auto* const frame = safe_ptr_cast<const FrameHeader*>(Stream.PeekRawData(sizeof(FrameHeader)));
         if (frame && frame->IsValid())
         {
           if (frame->IsFreeFormat())
@@ -402,7 +386,7 @@ namespace Formats::Chiptune
             {
               return nullptr;
             }
-            else if (const auto nextFrameStart = Stream.PeekRawData(freeFormatSize + freeFormatSize))
+            else if (const auto* const nextFrameStart = Stream.PeekRawData(freeFormatSize + freeFormatSize))
             {
               if (!safe_ptr_cast<const FrameHeader*>(nextFrameStart)->Matches(*frame))
               {
@@ -433,11 +417,11 @@ namespace Formats::Chiptune
         {
           return nullptr;
         }
-        const auto data = Stream.PeekRawData(restSize);
-        const auto end = data + restSize - sizeof(FrameHeader);
+        const auto* const data = Stream.PeekRawData(restSize);
+        const auto* const end = data + restSize - sizeof(FrameHeader);
         for (std::size_t offset = startOffset;;)
         {
-          const auto match = std::find(data + offset, end, 0xff);
+          const auto* const match = std::find(data + offset, end, 0xff);
           if (match == end)
           {
             break;
@@ -467,7 +451,7 @@ namespace Formats::Chiptune
       }
       catch (const std::exception&)
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
 
@@ -491,7 +475,7 @@ namespace Formats::Chiptune
                                            "%0xxxxxxx"
                                            "%0xxxxxxx"
                                            */
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -500,7 +484,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -523,7 +507,7 @@ namespace Formats::Chiptune
         }
         else
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
       }
 

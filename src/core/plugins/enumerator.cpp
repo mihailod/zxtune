@@ -8,26 +8,22 @@
  *
  **/
 
-// local includes
 #include "core/plugins/archive_plugins_registrator.h"
 #include "core/plugins/archives/plugins_list.h"
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugins_list.h"
 #include "core/src/l10n.h"
-// common includes
-#include <error_tools.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <debug/log.h>
-#include <time/timer.h>
 
-#define FILE_TAG 04EDD719
+#include "debug/log.h"
+#include "time/timer.h"
+
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "pointers.h"
 
 namespace ZXTune
 {
   const Debug::Stream EnumeratorDbg("Core::Enumerator");
-  using Module::translate;
 
   class AllPlugins
     : private ArchivePluginsRegistrator
@@ -62,21 +58,20 @@ namespace ZXTune
       Players.reserve(256);
       const Time::Timer timer;
       ZXTune::RegisterArchivePlugins(*this);
-      ZXTune::RegisterMultitrackPlayerPlugins(*this, *this);
-      ZXTune::RegisterPlayerPlugins(*this);
-      EnumeratorDbg("Registered %1% archives and %2% players for %3%ms", Archives.size(), Players.size(),
+      ZXTune::RegisterPlayerPlugins(*this, *this);
+      EnumeratorDbg("Registered {} archives and {} players for {}ms", Archives.size(), Players.size(),
                     timer.Elapsed<Time::Millisecond>().Get());
     }
 
     void RegisterPlugin(ArchivePlugin::Ptr plugin) override
     {
-      EnumeratorDbg("Registered archive %1%", plugin->Id());
+      EnumeratorDbg("Registered archive {}", plugin->Id());
       Archives.emplace_back(std::move(plugin));
     }
 
     void RegisterPlugin(PlayerPlugin::Ptr plugin) override
     {
-      EnumeratorDbg("Registered player %1%", plugin->Id());
+      EnumeratorDbg("Registered player {}", plugin->Id());
       Players.emplace_back(std::move(plugin));
     }
   };
@@ -96,5 +91,3 @@ namespace ZXTune
     AllPlugins::Instance().Enumerate(visitor);
   }
 }  // namespace ZXTune
-
-#undef FILE_TAG

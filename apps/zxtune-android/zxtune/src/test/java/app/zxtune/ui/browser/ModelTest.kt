@@ -2,27 +2,49 @@ package app.zxtune.ui.browser
 
 import android.net.Uri
 import android.os.CancellationSignal
-import androidx.arch.core.executor.testing.InstantTaskExecutorRule
-import androidx.lifecycle.Observer
-import app.zxtune.Releaseable
+import androidx.core.net.toUri
+import app.zxtune.R
+import app.zxtune.TestUtils.mockCollectorOf
+import app.zxtune.fail
 import app.zxtune.fs.provider.Schema
 import app.zxtune.fs.provider.VfsProviderClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.kotlin.*
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
+import org.mockito.kotlin.clearInvocations
+import org.mockito.kotlin.doAnswer
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.doThrow
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.inOrder
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.stub
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoMoreInteractions
 import org.robolectric.RobolectricTestRunner
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
+import java.util.concurrent.Executors
 
 @RunWith(RobolectricTestRunner::class)
 class ModelTest {
 
-    @get:Rule
-    val instantTaskExecutorRule = InstantTaskExecutorRule()
+    private val dispatcher = StandardTestDispatcher()
+
+    private val testScope = TestScope()
 
     private val testUri = Uri.parse("scheme://host/path?query#fragment")
     private val testQuery = "file"
@@ -33,66 +55,84 @@ class ModelTest {
         BreadcrumbsEntry(testUri, "TestDir", 456)
     )
     private val testContent = listOf(
-        ListingEntry.makeFolder(Uri.EMPTY, "Dir", "Nested dir", 234),
-        ListingEntry.makeFile(Uri.EMPTY, "File", "Nested file", "Unused"),
-        ListingEntry.makeFile(Uri.EMPTY, "File2", "Nested file2", "Unused")
+        ListingEntry.makeFolder(Uri.EMPTY, "Dir", "Nested dir", ListingEntry.DrawableIcon(234)),
+        ListingEntry.makeFile(
+            Uri.EMPTY,
+            "File3",
+            "Remote",
+            "Unused",
+            R.drawable.ic_browser_file_remote,
+        ),
+        ListingEntry.makeFile(
+            Uri.EMPTY,
+            "File4",
+            "Track",
+            "Unused",
+            R.drawable.ic_browser_file_track,
+        ),
+        ListingEntry.makeFile(
+            Uri.EMPTY,
+            "File5",
+            "Archive",
+            "Unused",
+            R.drawable.ic_browser_file_archive,
+        ),
+        ListingEntry.makeFile(Uri.EMPTY, "File", "Unsupported", "Unused", null),
+        ListingEntry.makeFile(
+            Uri.EMPTY,
+            "File2",
+            "Unknown",
+            "Unused",
+            R.drawable.ic_browser_file_unknown,
+        ),
     )
 
-    private val vfsClient = mock<VfsProviderClient>()
-    private val modelClient = mock<Model.Client>()
-    private lateinit var underTest: Model
-    private val stateObserver = mock<Observer<Model.State>>()
-    private val progressObserver = mock<Observer<Int?>>()
-    private val notificationObserver = mock<Observer<Model.Notification?>>()
+    private val vfsClient = mock<VfsProviderClient> {
+        on { observeNotifications(any()) } doReturn emptyFlow()
+    }
+    private val underTest = Model(mock(), vfsClient, dispatcher, dispatcher)
+    private val stateObserver = testScope.mockCollectorOf(underTest.state)
+    private val progressObserver = testScope.mockCollectorOf(underTest.progress)
+    private val notificationsObserver = testScope.mockCollectorOf(underTest.notification)
+    private val errorsObserver = testScope.mockCollectorOf(underTest.errors)
+    private val playbacksObserver = testScope.mockCollectorOf(underTest.playbackEvents)
+    private val allMocks = arrayOf(
+        vfsClient,
+        stateObserver,
+        progressObserver,
+        notificationsObserver,
+        errorsObserver,
+        playbacksObserver
+    )
 
     @Before
     fun setUp() {
-        underTest = Model(mock(), vfsClient).apply {
-            setClient(modelClient)
-            state.observeForever(stateObserver)
-            progress.observeForever(progressObserver)
-            notification.observeForever(notificationObserver)
-
-        }
-        reset(vfsClient, modelClient, stateObserver, progressObserver, notificationObserver)
+        // check state flows
+        verify(stateObserver).invoke(argThat {
+            assertTrue(breadcrumbs.isEmpty())
+            assertTrue(entries.isEmpty())
+            assertTrue(filter.isEmpty())
+            assertEquals(Uri.EMPTY, this.uri)
+            true
+        })
+        verify(progressObserver).invoke(null)
+        verify(notificationsObserver).invoke(null)
+        verifyNoMoreInteractions(*allMocks)
+        clearInvocations(*allMocks)
     }
 
     @After
-    fun tearDown() =
-        verifyNoMoreInteractions(
-            vfsClient,
-            modelClient,
-            stateObserver,
-            progressObserver,
-            notificationObserver
-        )
-
-    @Test
-    fun `initial state`() = with(underTest) {
-        assertEquals(null, mutableState.value)
-        assertEquals(null, progress.value)
-        assertEquals(null, notification.value)
-    }
+    fun tearDown() = verifyNoMoreInteractions(*allMocks)
 
     private fun execute(cmd: Model.() -> Unit) {
-        with(underTest) {
-            cmd(this)
-            waitForIdle()
-        }
+        underTest.cmd()
+        dispatcher.scheduler.advanceUntilIdle()
     }
 
     @Test
-    fun `browseAsync workflow`() {
-        execute {
-            browseAsync {
-                testUri
-            }
-        }
-        inOrder(vfsClient, modelClient, progressObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(testUri), any(), any())
-            verify(progressObserver).onChanged(null)
-        }
+    fun `initial state`() {
+        // Just check Before/After consistence
+        execute {}
     }
 
     @Test
@@ -100,10 +140,12 @@ class ModelTest {
         execute {
             browse(testUri)
         }
-        inOrder(vfsClient, modelClient, progressObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(testUri), any(), any())
-            verify(progressObserver).onChanged(null)
+        inOrder(vfsClient, progressObserver) {
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) {
+                resolve(eq(testUri), any())
+            }
+            verify(progressObserver).invoke(null)
         }
     }
 
@@ -112,17 +154,12 @@ class ModelTest {
         execute {
             browseParent()
         }
-        inOrder(vfsClient, modelClient, progressObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(Uri.EMPTY), any(), any())
-            verify(progressObserver).onChanged(null)
-        }
-    }
-
-    @Test
-    fun `reload initial`() {
-        execute {
-            reload()
+        inOrder(vfsClient, progressObserver) {
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) {
+                resolve(eq(Uri.EMPTY), any())
+            }
+            verify(progressObserver).invoke(null)
         }
     }
 
@@ -131,356 +168,418 @@ class ModelTest {
         execute {
             search(testQuery)
         }
+        inOrder(vfsClient, progressObserver) {
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) {
+                search(eq(Uri.EMPTY), eq(testQuery), any())
+            }
+            verify(progressObserver).invoke(null)
+        }
     }
 
     @Test
     fun `browse file`() {
         vfsClient.stub {
-            on { resolve(any(), any(), any()) } doAnswer {
+            onBlocking { resolve(any(), any()) } doAnswer {
                 with(it.getArgument<VfsProviderClient.ListingCallback>(1)) {
-                    onProgress(1, 2)
-                    onProgress(2, 2)
-                    onFile(it.getArgument(0), "unused", "unused", "unused", null, null)
+                    onProgress(Schema.Status.Progress(1, 2))
+                    onProgress(Schema.Status.Progress(2, 2))
+                    onFile(
+                        Schema.Listing.File(
+                            it.getArgument(0),
+                            "unused",
+                            "unused",
+                            null,
+                            "unused",
+                            Schema.Listing.File.Type.UNKNOWN
+                        )
+                    )
                 }
             }
         }
         execute {
             browse(testUri)
         }
-        inOrder(vfsClient, modelClient, progressObserver, modelClient) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(testUri), any(), any())
-            verify(progressObserver).onChanged(50)
-            verify(progressObserver).onChanged(100)
-            verify(modelClient).onFileBrowse(testUri)
-            verify(progressObserver).onChanged(null)
+        inOrder(vfsClient, progressObserver, playbacksObserver) {
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) {
+                resolve(eq(testUri), any())
+            }
+            verify(progressObserver).invoke(50)
+            verify(progressObserver).invoke(100)
+            verify(playbacksObserver).invoke(testUri)
+            verify(progressObserver).invoke(null)
         }
     }
 
     @Test
     fun `browse dir with feed`() {
         vfsClient.stub {
-            on { resolve(any(), any(), any()) } doAnswer {
+            onBlocking { resolve(any(), any()) } doAnswer {
                 with(it.getArgument<VfsProviderClient.ListingCallback>(1)) {
-                    onProgress(1, 200)
-                    onProgress(100, 200)
-                    onDir(it.getArgument(0), "unused", "unused", null, true)
+                    onProgress(Schema.Status.Progress(1, 200))
+                    onProgress(Schema.Status.Progress(100, 200))
+                    onDir(Schema.Listing.Dir(it.getArgument(0), "unused", "unused", null, true))
                 }
             }
         }
         execute {
             browse(testUri)
         }
-        inOrder(vfsClient, modelClient, progressObserver, modelClient) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(testUri), any(), any())
-            verify(progressObserver).onChanged(0)
-            verify(progressObserver).onChanged(50)
-            verify(modelClient).onFileBrowse(testUri)
-            verify(progressObserver).onChanged(null)
+        inOrder(vfsClient, progressObserver, playbacksObserver) {
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) { resolve(eq(testUri), any()) }
+            verify(progressObserver).invoke(0)
+            verify(progressObserver).invoke(50)
+            verify(playbacksObserver).invoke(testUri)
+            verify(progressObserver).invoke(null)
         }
     }
 
     @Test
     fun `browse dir`() {
         vfsClient.stub {
-            on { resolve(any(), any(), any()) } doAnswer {
+            onBlocking { resolve(any(), any()) } doAnswer {
                 with(it.getArgument<VfsProviderClient.ListingCallback>(1)) {
-                    onProgress(5, 10)
-                    onDir(it.getArgument(0), "unused", "unused", null, false)
+                    onProgress(Schema.Status.Progress(5, 10))
+                    onDir(Schema.Listing.Dir(it.getArgument(0), "unused", "unused", null, false))
                 }
             }
-            on { parents(any(), any()) } doAnswer {
+            onBlocking { parents(any(), any()) } doAnswer {
                 with(it.getArgument<VfsProviderClient.ParentsCallback>(1)) {
                     testParents.forEach(this::feed)
                 }
             }
-            on { list(any(), any(), any()) } doAnswer {
+            onBlocking { list(any(), any()) } doAnswer {
                 with(it.getArgument<VfsProviderClient.ListingCallback>(1)) {
-                    onProgress(2, 10)
+                    onProgress(Schema.Status.Progress(2, 10))
                     testContent.forEach(this::feed)
                 }
-            }
-            on { subscribeForNotifications(any(), any()) } doAnswer {
-                it.getArgument<(Schema.Notifications.Object?) -> Unit>(1).invoke(null)
-                mock()
             }
         }
         execute {
             browse(testUri)
         }
-        inOrder(vfsClient, modelClient, progressObserver, stateObserver, notificationObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(testUri), any(), any())
-            verify(progressObserver).onChanged(50)
-            verify(vfsClient).parents(eq(testUri), any())
-            verify(vfsClient).list(eq(testUri), any(), any())
-            verify(progressObserver).onChanged(20)
-            verify(stateObserver).onChanged(Model.State(testUri, testParents, testContent))
-            verify(vfsClient).subscribeForNotifications(eq(testUri), any())
-            verify(notificationObserver).onChanged(null)
-            verify(progressObserver).onChanged(null)
+        inOrder(vfsClient, progressObserver, stateObserver, notificationsObserver) {
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) { resolve(eq(testUri), any()) }
+            verify(progressObserver).invoke(50)
+            verifyBlocking(vfsClient) { parents(eq(testUri), any()) }
+            verifyBlocking(vfsClient) { list(eq(testUri), any()) }
+            verify(progressObserver).invoke(20)
+            verify(vfsClient).observeNotifications(testUri)
+            verify(progressObserver).invoke(null)
+            verify(stateObserver).invoke(matchState(testUri, testParents, testContent))
         }
     }
 
     @Test
     fun `browse failed`() {
-        val err = Exception("Fail")
+        val err = IllegalArgumentException("Fail")
         vfsClient.stub {
-            on { resolve(any(), any(), any()) } doThrow err
+            onBlocking { resolve(any(), any()) } doThrow err
         }
         execute {
             browse(testUri)
         }
-        inOrder(vfsClient, modelClient, progressObserver, stateObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(testUri), any(), any())
-            verify(modelClient).onError(err.message!!)
-            verify(progressObserver).onChanged(null)
+        inOrder(vfsClient, progressObserver, stateObserver, errorsObserver) {
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) { resolve(eq(testUri), any()) }
+            verify(progressObserver).invoke(null)
+            verify(errorsObserver).invoke(requireNotNull(err.message))
         }
     }
 
     @Test
     fun `browseParent with unresolvable state`() {
-        setState(testParents, listOf())
+        setContent(testParents, listOf())
         execute {
             browseParent()
         }
-        inOrder(vfsClient, modelClient, progressObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(testParents[1].uri), any(), any())
-            verify(vfsClient).resolve(eq(testParents[0].uri), any(), any())
-            verify(progressObserver).onChanged(null)
+        inOrder(vfsClient, stateObserver, progressObserver) {
+            // setContent
+            testParents.last().uri.let { parentUri ->
+                verify(vfsClient).observeNotifications(parentUri)
+                verify(stateObserver).invoke(matchState(parentUri, testParents))
+            }
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) { resolve(eq(testParents[1].uri), any()) }
+            verifyBlocking(vfsClient) { resolve(eq(testParents[0].uri), any()) }
+            verify(progressObserver).invoke(null)
         }
     }
 
     @Test
     fun `browseParent with good state`() {
-        setState(testParents, listOf())
-        val notification = Model.Notification("message", null)
-        val notificationHandle = mock<Releaseable>()
+        setContent(testParents, listOf())
         vfsClient.stub {
-            on { resolve(any(), any(), any()) } doAnswer {
+            onBlocking { resolve(any(), any()) } doAnswer {
                 with(it.getArgument<VfsProviderClient.ListingCallback>(1)) {
-                    onDir(it.getArgument(0), "unused", "unused", null, false)
+                    onDir(Schema.Listing.Dir(it.getArgument(0), "unused", "unused", null, false))
                 }
             }
-            on { subscribeForNotifications(any(), any()) } doAnswer {
-                it.getArgument<(Schema.Notifications.Object?) -> Unit>(1)
-                    .invoke(Schema.Notifications.Object(notification.message, notification.action))
-                notificationHandle
+            on { observeNotifications(any()) } doAnswer {
+                flowOf(
+                    Schema.Notifications.Object("Notification for ${it.getArgument<Uri>(0)}", null)
+                )
             }
         }
         execute {
             browseParent()
-            waitForIdle()
+        }
+        execute {
             browseParent()
         }
         inOrder(
-            vfsClient,
-            modelClient,
-            stateObserver,
-            progressObserver,
-            notificationObserver,
-            notificationHandle
+            vfsClient, stateObserver, progressObserver, notificationsObserver
         ) {
+            // setContent
+            testParents.last().uri.let { parentUri ->
+                verify(vfsClient).observeNotifications(parentUri)
+                verify(stateObserver).invoke(matchState(parentUri, testParents))
+            }
             testParents[1].uri.let { parentUri ->
-                verify(progressObserver).onChanged(-1)
-                verify(vfsClient).resolve(eq(parentUri), any(), any())
-                verify(vfsClient).list(eq(parentUri), any(), any())
-                verify(stateObserver).onChanged(
-                    Model.State(
-                        parentUri,
-                        testParents.subList(0, 2),
-                        listOf()
-                    )
-                )
-                verify(vfsClient).subscribeForNotifications(eq(parentUri), any())
-                verify(notificationObserver).onChanged(notification)
-                verify(progressObserver).onChanged(null)
+                verify(progressObserver).invoke(-1)
+                verifyBlocking(vfsClient) { resolve(eq(parentUri), any()) }
+                verifyBlocking(vfsClient) { list(eq(parentUri), any()) }
+                verify(vfsClient).observeNotifications(parentUri)
+                verify(notificationsObserver).invoke(argThat {
+                    message == "Notification for $parentUri" && action == null
+                })
+                verify(progressObserver).invoke(null)
+                verify(stateObserver).invoke(matchState(parentUri, testParents.subList(0, 2)))
             }
             testParents[0].uri.let { parentUri ->
-                verify(progressObserver).onChanged(-1)
-                verify(vfsClient).resolve(eq(parentUri), any(), any())
-                verify(vfsClient).list(eq(parentUri), any(), any())
-                verify(stateObserver).onChanged(
-                    Model.State(
-                        parentUri,
-                        testParents.subList(0, 1),
-                        listOf()
-                    )
-                )
-                verify(notificationHandle).release()
-                verify(vfsClient).subscribeForNotifications(eq(parentUri), any())
-                verify(notificationObserver).onChanged(notification)
-                verify(progressObserver).onChanged(null)
+                verify(progressObserver).invoke(-1)
+                verifyBlocking(vfsClient) { resolve(eq(parentUri), any()) }
+                verifyBlocking(vfsClient) { list(eq(parentUri), any()) }
+                verify(vfsClient).observeNotifications(parentUri)
+                verify(notificationsObserver).invoke(argThat {
+                    message == "Notification for $parentUri" && action == null
+                })
+                verify(progressObserver).invoke(null)
+                verify(stateObserver).invoke(matchState(parentUri, testParents.subList(0, 1)))
             }
         }
     }
 
     @Test
     fun `browseParent with single dir`() {
-        setState(testParents.subList(0, 1), listOf())
+        val parents = testParents.subList(0, 1)
+        setContent(parents, listOf())
         execute {
             browseParent()
         }
-        inOrder(vfsClient, modelClient, progressObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(Uri.EMPTY), any(), any())
-            verify(progressObserver).onChanged(null)
+        inOrder(vfsClient, progressObserver, stateObserver) {
+            // setContent
+            parents.last().uri.let { parentUri ->
+                verify(vfsClient).observeNotifications(parentUri)
+                verify(stateObserver).invoke(matchState(parentUri, parents))
+            }
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) { resolve(eq(Uri.EMPTY), any()) }
+            verify(progressObserver).invoke(null)
         }
     }
 
     @Test
     fun `browseParent failed to resolve`() {
-        val err = Exception("Fail")
+        val err = IllegalArgumentException("Fail")
         vfsClient.stub {
-            on { resolve(any(), any(), any()) } doThrow err
+            onBlocking { resolve(any(), any()) } doThrow err
         }
         `browseParent with unresolvable state`()
     }
 
-    @Test
-    fun `reload with state`() {
-        setState(listOf(), listOf())
-        execute {
-            reload()
-        }
-        inOrder(vfsClient, modelClient, progressObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(testUri), any(), any())
-            verify(progressObserver).onChanged(null)
-        }
-    }
-
+    // Published state has no query field since it's for filtering
     @Test
     fun `search with state`() {
         val noResultQuery = "Unused"
         val matchedContent = listOf(testContent[1], testContent[2])
         vfsClient.stub {
-            on { search(any(), eq(testQuery), any(), any()) } doAnswer {
+            onBlocking { search(any(), eq(testQuery), any()) } doAnswer {
                 with(it.getArgument<VfsProviderClient.ListingCallback>(2)) {
-                    matchedContent.forEach(this::feed)
+                    CoroutineScope(dispatcher).launch {
+                        matchedContent.forEach { entry ->
+                            delay(1000)
+                            feed(entry)
+                        }
+                    }
+                    dispatcher.scheduler.advanceUntilIdle()
                 }
             }
         }
-        setState(testParents, listOf())
+        setContent(testParents, testContent)
         execute {
             search(noResultQuery)
         }
         execute {
             search(testQuery)
         }
-        inOrder(vfsClient, modelClient, stateObserver, progressObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(stateObserver).onChanged(
-                Model.State(
-                    testUri,
-                    testParents,
-                    listOf(),
-                    noResultQuery
-                )
-            )
-            verify(vfsClient).search(eq(testUri), eq(noResultQuery), any(), any())
-            verify(progressObserver).onChanged(null)
+        inOrder(vfsClient, stateObserver, progressObserver) {
+            // setContent
+            testParents.last().uri.let { parentUri ->
+                verify(vfsClient).observeNotifications(parentUri)
+                verify(stateObserver).invoke(matchState(parentUri, testParents, testContent))
+            }
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) { search(eq(testUri), eq(noResultQuery), any()) }
+            verify(progressObserver).invoke(null)
+            verify(stateObserver).invoke(matchState(testUri, testParents))
 
-            // TODO: mock captures references of mutable object, so only last version is available
-            verify(progressObserver).onChanged(-1)
-            verify(stateObserver).onChanged(
-                Model.State(
-                    testUri,
-                    testParents,
-                    matchedContent,
-                    testQuery
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) { search(eq(testUri), eq(testQuery), any()) }
+            verify(stateObserver).invoke(matchState(testUri, testParents))
+            verify(stateObserver).invoke(
+                matchState(
+                    testUri, testParents, matchedContent.subList(0, 1)
                 )
             )
-            verify(vfsClient).search(eq(testUri), eq(testQuery), any(), any())
-            verify(stateObserver, times(2)).onChanged(
-                Model.State(
-                    testUri,
-                    testParents,
-                    matchedContent,
-                    testQuery
-                )
-            )
-            verify(progressObserver).onChanged(null)
+            verify(stateObserver).invoke(matchState(testUri, testParents, matchedContent))
+            verify(progressObserver).invoke(null)
         }
-        verifyNoMoreInteractions(stateObserver)
     }
 
     @Test
     fun `search failed`() {
-        val err = Exception("Fail")
+        val err = IllegalArgumentException("Fail")
         vfsClient.stub {
-            on { search(any(), any(), any(), any()) } doThrow err
+            onBlocking { search(any(), any(), any()) } doThrow err
         }
-        setState(testParents, listOf())
+        setContent(testParents, testContent)
         execute {
             search(testQuery)
         }
-        inOrder(vfsClient, modelClient, stateObserver, progressObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(stateObserver).onChanged(Model.State(testUri, testParents, listOf(), testQuery))
-            verify(vfsClient).search(eq(testUri), eq(testQuery), any(), any())
-            verify(modelClient).onError(err.message!!)
-            verify(progressObserver).onChanged(null)
-        }
-    }
-
-    @Test
-    fun `no notifications`() {
-        execute {
-
+        inOrder(vfsClient, stateObserver, progressObserver, errorsObserver) {
+            // setContent
+            testParents.last().uri.let { parentUri ->
+                verify(vfsClient).observeNotifications(parentUri)
+                verify(stateObserver).invoke(matchState(parentUri, testParents, testContent))
+            }
+            verify(progressObserver).invoke(-1)
+            verifyBlocking(vfsClient) { search(eq(testUri), eq(testQuery), any()) }
+            verify(progressObserver).invoke(null)
+            verify(errorsObserver).invoke(checkNotNull(err.message))
+            verify(stateObserver).invoke(matchState(testUri, testParents))
+            verify(stateObserver).invoke(matchState(testUri, testParents, testContent))
         }
     }
 
     @Test
     fun `queued requests with cancellation`() {
+        // Required in order to hang vfsClient in separate thread
+        val parallelDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val model = Model(mock(), vfsClient, parallelDispatcher, parallelDispatcher)
+        val progress = testScope.mockCollectorOf(model.progress)
+
         val slowUri = Uri.parse("slow://")
-        val lock = ReentrantLock()
-        val signal = lock.newCondition()
+        val chan = Channel<Unit>()
         vfsClient.stub {
-            on { resolve(eq(slowUri), any(), any()) } doAnswer {
-                lock.withLock {
-                    signal.signal()
-                }
+            onBlocking { resolve(eq(slowUri), any()) } doAnswer {
+                chan.trySend(Unit)
                 with(it.getArgument<CancellationSignal>(2)) {
-                    throwIfCanceled()
-                    Thread.sleep(1000)
+                    while (true) {
+                        throwIfCanceled()
+                        Thread.sleep(100)
+                    }
                 }
             }
+            onBlocking { resolve(eq(testUri), any()) } doAnswer {
+                chan.trySend(Unit)
+                Unit
+            }
+        }
+        testScope.runTest {
+            model.browse(slowUri)
+            chan.receive()
+            model.browse(testUri)
+            chan.receive()
+        }
+        inOrder(vfsClient, progress) {
+            // initial
+            verify(progress).invoke(null)
+            // slow
+            verify(progress).invoke(-1)
+            verifyBlocking(vfsClient) { resolve(eq(slowUri), any()) }
+            verify(progress).invoke(null)
+            // next op
+            verify(progress).invoke(-1)
+            verifyBlocking(vfsClient) { resolve(eq(testUri), any()) }
+            verify(progress).invoke(null)
+        }
+        verifyNoMoreInteractions(progressObserver)
+    }
+
+    @Test
+    fun filtering() {
+        setContent(testParents, testContent)
+        execute {
+            filter = "uN"
         }
         execute {
-            browse(slowUri)
-            lock.withLock {
-                signal.await()
+            filter = "uNk"
+        }
+        execute {
+            filter = "e23"
+        }
+        inOrder(vfsClient, stateObserver) {
+            // setContent
+            testParents.last().uri.let { parentUri ->
+                verify(vfsClient).observeNotifications(parentUri)
+                verify(stateObserver).invoke(matchState(parentUri, testParents, testContent))
             }
-            browse(testUri)
-        }
-        inOrder(vfsClient, modelClient, progressObserver) {
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(slowUri), any(), any())
-            //verify(progressObserver).onChanged(null)
 
-            verify(progressObserver).onChanged(-1)
-            verify(vfsClient).resolve(eq(testUri), any(), any())
-            verify(progressObserver).onChanged(null)
+            verify(stateObserver).invoke(
+                matchState(testUri, testParents, testContent.takeLast(2), "uN")
+            )
+            verify(stateObserver).invoke(
+                matchState(testUri, testParents, testContent.takeLast(1), "uNk")
+            )
+            verify(stateObserver).invoke(
+                matchState(testUri, testParents, filter = "e23")
+            )
         }
     }
 
-    private fun setState(breadCrumbs: List<BreadcrumbsEntry>, entries: List<ListingEntry>) {
-        underTest.mutableState.value = Model.State(testUri, breadCrumbs, entries)
-        clearInvocations(stateObserver)
+    private fun setContent(
+        breadCrumbs: List<BreadcrumbsEntry>, entries: List<ListingEntry>
+    ) {
+        CoroutineScope(dispatcher).launch {
+            underTest.updateContent(breadCrumbs, entries)
+        }
+        dispatcher.scheduler.advanceUntilIdle()
     }
+}
+
+private fun matchState(
+    uri: Uri,
+    breadCrumbs: List<BreadcrumbsEntry>,
+    entries: List<ListingEntry> = listOf(),
+    filter: String = ""
+) = argThat<Model.State> {
+    uri == this.uri && breadCrumbs == this.breadcrumbs && entries == this.entries && filter == this.filter
 }
 
 private fun VfsProviderClient.ListingCallback.feed(entry: ListingEntry) = with(entry) {
-    when (type) {
-        ListingEntry.FILE -> onFile(uri, title, description, details.orEmpty(), tracks, cached)
-        ListingEntry.FOLDER -> onDir(uri, title, description, icon, false)
-    }
+    details?.let {
+        onFile(Schema.Listing.File(uri, title, description, icon?.toUri(), it, fileTypeByIcon(additionalIcon)))
+    } ?: onDir(Schema.Listing.Dir(uri, title, description, icon?.toUri(), false))
+}
+
+private fun ListingEntry.Icon.toUri() = when(this) {
+    is ListingEntry.DrawableIcon -> "android.resource:/$id".toUri()
+    is ListingEntry.LoadableIcon -> uri
+}
+
+private fun fileTypeByIcon(icon: Int?) = when (icon) {
+    null -> Schema.Listing.File.Type.UNSUPPORTED
+    R.drawable.ic_browser_file_unknown -> Schema.Listing.File.Type.UNKNOWN
+    R.drawable.ic_browser_file_remote -> Schema.Listing.File.Type.REMOTE
+    R.drawable.ic_browser_file_track -> Schema.Listing.File.Type.TRACK
+    R.drawable.ic_browser_file_archive -> Schema.Listing.File.Type.ARCHIVE
+    else -> fail("Unexpected icon")
 }
 
 private fun VfsProviderClient.ParentsCallback.feed(entry: BreadcrumbsEntry) = with(entry) {
-    onObject(uri, title, icon)
+    onObject(Schema.Parents.Object(uri, title, icon))
 }

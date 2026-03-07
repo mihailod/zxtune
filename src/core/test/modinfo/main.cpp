@@ -8,30 +8,33 @@
  *
  **/
 
-#include <binary/container_factories.h>
-#include <core/service.h>
-#include <error_tools.h>
-#include <io/api.h>
+#include "binary/container_factories.h"
+#include "core/service.h"
+#include "io/api.h"
+#include "module/track_information.h"
+#include "parameters/container.h"
+#include "parameters/template.h"
+#include "time/serialize.h"
+#include "tools/progress_callback.h"
+
+#include "error_tools.h"
+#include "string_view.h"
+
 #include <iostream>
-#include <module/track_information.h>
-#include <parameters/container.h>
-#include <parameters/template.h>
-#include <progress_callback.h>
-#include <time/serialize.h>
 
 namespace
 {
-  Module::Holder::Ptr OpenModuleByPath(const String& fullPath)
+  Module::Holder::Ptr OpenModuleByPath(StringView fullPath)
   {
     const Parameters::Container::Ptr emptyParams = Parameters::Container::Create();
-    const String filename = fullPath;  // TODO: split if required
+    const auto filename = fullPath;  // TODO: split if required
     const Binary::Container::Ptr data = IO::OpenData(filename, *emptyParams, Log::ProgressCallback::Stub());
     return ZXTune::Service::Create(emptyParams)->OpenModule(data, {}, Parameters::Container::Create());
   }
 
   void ShowModuleInfo(const Module::Information& info)
   {
-    if (const auto trackInfo = dynamic_cast<const Module::TrackInformation*>(&info))
+    if (const auto* const trackInfo = dynamic_cast<const Module::TrackInformation*>(&info))
     {
       std::cout << "Positions: " << trackInfo->PositionsCount() << " (" << trackInfo->LoopPosition() << ')'
                 << std::endl;
@@ -48,18 +51,18 @@ namespace
       Write(name, Parameters::ConvertToString(val));
     }
 
-    virtual void SetValue(Parameters::Identifier name, StringView val) override
+    void SetValue(Parameters::Identifier name, StringView val) override
     {
       Write(name, Parameters::ConvertToString(val));
     }
 
-    virtual void SetValue(Parameters::Identifier name, Binary::View val) override
+    void SetValue(Parameters::Identifier name, Binary::View val) override
     {
       Write(name, Parameters::ConvertToString(val));
     }
 
   private:
-    static void Write(StringView name, const String& value)
+    static void Write(StringView name, StringView value)
     {
       std::cout << name << ": " << value << std::endl;
     }

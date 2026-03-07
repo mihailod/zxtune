@@ -1,24 +1,20 @@
 /**
-*
-* @file
-*
-* @brief  MP3 subsystem API gate interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  MP3 subsystem API gate interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//std includes
-#include <memory>
-//platform-specific includes
 #include <lame/lame.h>
 
-namespace Sound
+#include <memory>
+
+namespace Sound::Mp3
 {
-  namespace Mp3
-  {
 <TMPL_INCLUDE NAME="api.h.templ">
-  }
-}
+}  // namespace Sound::Mp3

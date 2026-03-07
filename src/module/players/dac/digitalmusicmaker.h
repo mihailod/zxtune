@@ -10,13 +10,9 @@
 
 #pragma once
 
-// local includes
 #include "module/players/dac/dac_factory.h"
 
-namespace Module
+namespace Module::DigitalMusicMaker
 {
-  namespace DigitalMusicMaker
-  {
-    DAC::Factory::Ptr CreateFactory();
-  }
-}  // namespace Module
+  DAC::Factory::Ptr CreateFactory();
+}  // namespace Module::DigitalMusicMaker

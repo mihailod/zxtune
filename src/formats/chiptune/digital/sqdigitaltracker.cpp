@@ -8,22 +8,23 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/digital/sqdigitaltracker.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <indices.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <strings/format.h>
-#include <strings/optimize.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "strings/format.h"
+#include "strings/optimize.h"
+#include "tools/indices.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <array>
 #include <cstring>
 
@@ -33,7 +34,7 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::SQDigitalTracker");
 
-    const Char DESCRIPTION[] = "SQ Digital Tracker";
+    const auto DESCRIPTION = "SQ Digital Tracker"sv;
 
     // const std::size_t MAX_MODULE_SIZE = 0x4400 + 8 * 0x4000;
     const std::size_t MAX_POSITIONS_COUNT = 100;
@@ -311,17 +312,17 @@ namespace Formats::Chiptune
         target.SetInitialTempo(Source.Tempo);
         MetaBuilder& meta = target.GetMetaBuilder();
         const auto title = *Source.Title.begin() == '|' && *Source.Title.rbegin() == '|'
-                               ? StringView(Source.Title.data() + 1, &Source.Title.back())
-                               : StringView(Source.Title);
+                               ? MakeStringView(Source.Title.data() + 1, &Source.Title.back())
+                               : MakeStringView(Source.Title.begin(), Source.Title.end());
         meta.SetTitle(Strings::OptimizeAscii(title));
         meta.SetProgram(DESCRIPTION);
         Strings::Array names;
         names.reserve(SAMPLES_COUNT);
         for (const auto& name : Source.SampleNames)
         {
-          names.push_back(Strings::OptimizeAscii(name));
+          names.emplace_back(Strings::OptimizeAscii(name));
         }
-        meta.SetStrings(std::move(names));
+        meta.SetStrings(names);
       }
 
       void ParsePositions(Builder& target) const
@@ -329,7 +330,7 @@ namespace Formats::Chiptune
         Positions positions;
         positions.Loop = Source.Loop;
         positions.Lines.assign(Source.Positions.begin(), Source.Positions.begin() + Source.LastPosition + 1);
-        Dbg("Positions: %1%, loop to %2%", positions.GetSize(), positions.GetLoop());
+        Dbg("Positions: {}, loop to {}", positions.GetSize(), positions.GetLoop());
         target.SetPositions(std::move(positions));
       }
 
@@ -338,7 +339,7 @@ namespace Formats::Chiptune
         for (Indices::Iterator it = pats.Items(); it; ++it)
         {
           const uint_t patIndex = *it;
-          Dbg("Parse pattern %1%", patIndex);
+          Dbg("Parse pattern {}", patIndex);
           const Pattern& source = Source.Patterns[patIndex];
           PatternBuilder& patBuilder = target.StartPattern(patIndex);
           ParsePattern(source, patBuilder, target);
@@ -347,7 +348,7 @@ namespace Formats::Chiptune
 
       void ParseSamples(const Indices& sams, Builder& target) const
       {
-        Dbg("Parse %1% samples", sams.Count());
+        Dbg("Parse {} samples", sams.Count());
         //[bank & 7] => <offset, size>
         std::pair<std::size_t, std::size_t> regions[8] = {};
         for (std::size_t layIdx = 0, cursor = sizeof(Source); layIdx != Source.Layouts.size(); ++layIdx)
@@ -357,7 +358,7 @@ namespace Formats::Chiptune
           const std::size_t size = 256 * layout.Sectors;
           if (addr >= BIG_SAMPLE_ADDR && addr + size <= SAMPLES_LIMIT)
           {
-            Dbg("Used bank %1% at %2$04x..%3$04x", uint_t(layout.Bank), addr, addr + size);
+            Dbg("Used bank {} at {:04x}..{:04x}", uint_t(layout.Bank), addr, addr + size);
             regions[layout.Bank & 0x07] = std::make_pair(cursor, size);
           }
           AddRange(cursor, size);
@@ -371,7 +372,7 @@ namespace Formats::Chiptune
           const std::size_t rawLoop = info.Loop;
           if (rawAddr < BIG_SAMPLE_ADDR || rawLoop < rawAddr)
           {
-            Dbg("Skip sample %1%", samIdx);
+            Dbg("Skip sample {}", samIdx);
             continue;
           }
           const uint_t bank = info.Bank & 0x07;
@@ -382,14 +383,14 @@ namespace Formats::Chiptune
           const std::size_t offset = offsetSize.first + rawAddr - sampleBase;
           if (const auto sample = GetSample(offset, size))
           {
-            Dbg("Sample %1%: start=#%2$04x loop=#%3$04x size=#%4$04x bank=%5%", samIdx, rawAddr, rawLoop, sample.Size(),
+            Dbg("Sample {}: start=#{:04x} loop=#{:04x} size=#{:04x} bank={}", samIdx, rawAddr, rawLoop, sample.Size(),
                 uint_t(info.Bank));
             const std::size_t loop = info.IsLooped ? rawLoop - sampleBase : sample.Size();
             target.SetSample(samIdx, loop, sample);
           }
           else
           {
-            Dbg("Empty sample %1%", samIdx);
+            Dbg("Empty sample {}", samIdx);
           }
         }
       }
@@ -401,7 +402,7 @@ namespace Formats::Chiptune
 
       RangeChecker::Range GetFixedArea() const
       {
-        return RangeChecker::Range(offsetof(Header, Patterns), sizeof(Source.Patterns));
+        return {offsetof(Header, Patterns), sizeof(Source.Patterns)};
       }
 
     private:
@@ -495,7 +496,7 @@ namespace Formats::Chiptune
         "00-63"
         // length
         "01-64"
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -504,7 +505,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -523,7 +524,7 @@ namespace Formats::Chiptune
       {
         if (!Format->Match(rawData))
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
         Builder& stub = GetStubBuilder();
         return Parse(rawData, stub);
@@ -558,7 +559,7 @@ namespace Formats::Chiptune
       catch (const std::exception&)
       {
         Dbg("Failed to create");
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
 

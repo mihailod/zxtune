@@ -10,17 +10,12 @@
 
 #pragma once
 
-// library includes
-#include <formats/packed.h>
+#include "formats/packed.h"
 
-namespace Formats
+#include "string_type.h"
+
+namespace Formats::Packed::Lha
 {
-  namespace Packed
-  {
-    namespace Lha
-    {
-      Container::Ptr DecodeRawData(const Binary::Container& input, const String& method, std::size_t outputSize);
-      Container::Ptr DecodeRawDataAtLeast(const Binary::Container& input, const String& method, std::size_t sizeHint);
-    }  // namespace Lha
-  }    // namespace Packed
-}  // namespace Formats
+  Container::Ptr DecodeRawData(const Binary::Container& input, const String& method, std::size_t outputSize);
+  Container::Ptr DecodeRawDataAtLeast(const Binary::Container& input, const String& method, std::size_t sizeHint);
+}  // namespace Formats::Packed::Lha

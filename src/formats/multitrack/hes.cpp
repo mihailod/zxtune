@@ -8,18 +8,17 @@
  *
  **/
 
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/container_base.h>
-#include <binary/crc.h>
-#include <binary/format_factories.h>
-#include <formats/multitrack.h>
-#include <math/numeric.h>
-// std includes
+#include "binary/container_base.h"
+#include "binary/crc.h"
+#include "binary/format_factories.h"
+#include "formats/multitrack.h"
+#include "math/numeric.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <array>
 #include <cstring>
 #include <utility>
@@ -28,7 +27,7 @@ namespace Formats::Multitrack
 {
   namespace HES
   {
-    typedef std::array<uint8_t, 4> SignatureType;
+    using SignatureType = std::array<uint8_t, 4>;
 
     const SignatureType SIGNATURE = {{'H', 'E', 'S', 'M'}};
 
@@ -58,9 +57,9 @@ namespace Formats::Multitrack
         "'D'A'T'A"   // data signature
         "? ? 0x 00"  // 1MB size limit
         "? ? 0x 00"  // 1MB size limit
-        ""_sv;
+        ""sv;
 
-    const Char DESCRIPTION[] = "Home Entertainment System";
+    const auto DESCRIPTION = "Home Entertainment System"sv;
 
     const std::size_t MIN_SIZE = 256;
 
@@ -72,7 +71,7 @@ namespace Formats::Multitrack
       {
         return nullptr;
       }
-      const RawHeader* hdr = safe_ptr_cast<const RawHeader*>(rawData.Start());
+      const auto* hdr = safe_ptr_cast<const RawHeader*>(rawData.Start());
       if (hdr->Signature != SIGNATURE)
       {
         return nullptr;
@@ -115,7 +114,7 @@ namespace Formats::Multitrack
         : Format(Binary::CreateMatchOnlyFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }

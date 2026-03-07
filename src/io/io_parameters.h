@@ -10,19 +10,11 @@
 
 #pragma once
 
-// library includes
-#include <zxtune.h>
+#include "zxtune.h"
 
-namespace Parameters
+namespace Parameters::ZXTune::IO
 {
-  namespace ZXTune
-  {
-    //! @brief IO-parameters namespace
-    namespace IO
-    {
-      //! @brief Parameters#ZXTune#IO namespace prefix
-      const auto PREFIX = ZXTune::PREFIX + "io"_id;
-      // IO-related parameters
-    }  // namespace IO
-  }    // namespace ZXTune
-}  // namespace Parameters
+  //! @brief Parameters#ZXTune#IO namespace prefix
+  const auto PREFIX = ZXTune::PREFIX + "io"_id;
+  // IO-related parameters
+}  // namespace Parameters::ZXTune::IO

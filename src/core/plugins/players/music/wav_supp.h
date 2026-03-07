@@ -10,11 +10,12 @@
 
 #pragma once
 
-// library includes
-#include <binary/data.h>
-#include <binary/input_stream.h>
-#include <binary/view.h>
-#include <sound/chunk.h>
+#include "binary/data.h"
+#include "binary/input_stream.h"
+#include "binary/view.h"
+#include "sound/chunk.h"
+
+#include <utility>
 
 namespace Module::Wav
 {
@@ -46,7 +47,7 @@ namespace Module::Wav
   {
   public:
     BlockingModel(Properties props)
-      : Props(props)
+      : Props(std::move(props))
       , Stream(*Props.Data)
     {
       Require(Props.BlockSize != 0);
@@ -83,5 +84,4 @@ namespace Module::Wav
   Model::Ptr CreateAtrac3Model(Properties props, Binary::View extraData);
   Model::Ptr CreateAtrac3PlusModel(Properties props);
   Model::Ptr CreateAtrac9Model(Properties props, Binary::View extraData);
-  Model::Ptr CreateFmodAdpcmModel(Properties props);
 }  // namespace Module::Wav

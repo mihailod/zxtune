@@ -10,38 +10,31 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// std includes
-#include <list>
+#include "string_view.h"
+#include "types.h"
+
 #include <memory>
-#include <vector>
+#include <span>
 
-namespace Binary
+namespace Binary::FormatDSL
 {
-  namespace FormatDSL
+  class Predicate
   {
-    class Predicate
-    {
-    public:
-      typedef std::shared_ptr<const Predicate> Ptr;
-      virtual ~Predicate() = default;
+  public:
+    virtual ~Predicate() = default;
 
-      virtual bool Match(uint_t val) const = 0;
-    };
+    virtual bool Match(uint_t val) const = 0;
+  };
 
-    typedef std::vector<Predicate::Ptr> Pattern;
+  class Expression
+  {
+  public:
+    using Ptr = std::unique_ptr<const Expression>;
+    virtual ~Expression() = default;
 
-    class Expression
-    {
-    public:
-      typedef std::unique_ptr<const Expression> Ptr;
-      virtual ~Expression() = default;
+    virtual std::size_t StartOffset() const = 0;
+    virtual std::span<const Predicate* const> Predicates() const = 0;
 
-      virtual std::size_t StartOffset() const = 0;
-      virtual const Pattern& Predicates() const = 0;
-
-      static Ptr Parse(StringView notation);
-    };
-  }  // namespace FormatDSL
-}  // namespace Binary
+    static Ptr Parse(StringView notation);
+  };
+}  // namespace Binary::FormatDSL

@@ -10,11 +10,10 @@
 
 #pragma once
 
-// local includes
 #include "core/plugins/player_plugin.h"
-// library includes
-#include <formats/chiptune.h>
-#include <module/players/factory.h>
+#include "module/players/factory.h"
+
+#include "formats/chiptune.h"
 
 namespace Module
 {
@@ -23,8 +22,8 @@ namespace Module
 
 namespace ZXTune
 {
-  PlayerPlugin::Ptr CreatePlayerPlugin(StringView id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
+  PlayerPlugin::Ptr CreatePlayerPlugin(PluginId id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
                                        Module::Factory::Ptr factory);
-  PlayerPlugin::Ptr CreatePlayerPlugin(StringView id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
+  PlayerPlugin::Ptr CreatePlayerPlugin(PluginId id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
                                        Module::ExternalParsingFactory::Ptr factory);
 }  // namespace ZXTune

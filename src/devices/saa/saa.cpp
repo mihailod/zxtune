@@ -10,16 +10,15 @@
  *
  **/
 
-// local includes
-#include "device.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <devices/details/renderers.h>
-#include <parameters/tracking_helper.h>
-#include <sound/lpfilter.h>
-// std includes
+#include "devices/details/renderers.h"
+#include "devices/saa/device.h"
+
+#include "parameters/tracking_helper.h"
+#include "sound/lpfilter.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <cassert>
 #include <cmath>
 #include <functional>
@@ -112,11 +111,11 @@ namespace Devices::SAA
     SAADevice Device;
   };
 
-  typedef Details::ClockSource<Stamp> ClockSource;
+  using ClockSource = Details::ClockSource<Stamp>;
 
-  typedef Details::Renderer<Stamp> Renderer;
-  typedef Details::LQRenderer<Stamp, SAARenderer> LQRenderer;
-  typedef Details::MQRenderer<Stamp, SAARenderer> MQRenderer;
+  using Renderer = Details::Renderer<Stamp>;
+  using LQRenderer = Details::LQRenderer<Stamp, SAARenderer>;
+  using MQRenderer = Details::MQRenderer<Stamp, SAARenderer>;
 
   class HQWrapper
   {
@@ -159,7 +158,7 @@ namespace Devices::SAA
 
   class HQRenderer : public Details::BaseRenderer<Stamp, HQWrapper>
   {
-    typedef Details::BaseRenderer<Stamp, HQWrapper> Parent;
+    using Parent = Details::BaseRenderer<Stamp, HQWrapper>;
 
   public:
     HQRenderer(ClockSource& clock, SAARenderer& psg)
@@ -176,13 +175,10 @@ namespace Devices::SAA
   {
   public:
     RenderersSet(ClockSource& clock, SAARenderer& psg)
-      : ClockFreq()
-      , SoundFreq()
-      , Clock(clock)
+      : Clock(clock)
       , LQ(clock, psg)
       , MQ(clock, psg)
       , HQ(clock, psg)
-      , Current()
     {}
 
     void Reset()
@@ -226,13 +222,13 @@ namespace Devices::SAA
     }
 
   private:
-    uint64_t ClockFreq;
-    uint_t SoundFreq;
+    uint64_t ClockFreq = 0;
+    uint_t SoundFreq = 0;
     ClockSource& Clock;
     LQRenderer LQ;
     MQRenderer MQ;
     HQRenderer HQ;
-    Renderer* Current;
+    Renderer* Current = nullptr;
   };
 
   class RegularSAAChip : public Chip
@@ -240,7 +236,6 @@ namespace Devices::SAA
   public:
     explicit RegularSAAChip(ChipParameters::Ptr params)
       : Params(std::move(params))
-      , Clock()
       , Renderers(Clock, PSG)
     {
       RegularSAAChip::Reset();

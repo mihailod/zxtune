@@ -6,7 +6,14 @@ import org.junit.After
 import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.kotlin.*
+import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.inOrder
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verifyNoMoreInteractions
+import org.mockito.kotlin.whenever
 import org.robolectric.ParameterizedRobolectricTestRunner
 import java.io.IOException
 
@@ -48,36 +55,31 @@ class CachingCatalogTest(case: TestCase) : CachingCatalogTestBase(case) {
 
     private val workingRemote = mock<RemoteCatalog> {
         on { queryGroups(any()) } doAnswer {
-            it.getArgument<Catalog.GroupsVisitor>(0).run {
-                setCountHint(2)
+            it.getArgument<Catalog.Visitor<Group>>(0).run {
                 accept(group1)
                 accept(group2)
             }
         }
         on { queryAuthors(eq(query), any()) } doAnswer {
-            it.getArgument<Catalog.AuthorsVisitor>(1).run {
-                setCountHint(2)
+            it.getArgument<Catalog.Visitor<Author>>(1).run {
                 accept(author1)
                 accept(author2)
             }
         }
         on { queryAuthors(eq(queryCountry), any()) } doAnswer {
-            it.getArgument<Catalog.AuthorsVisitor>(1).run {
-                setCountHint(2)
+            it.getArgument<Catalog.Visitor<Author>>(1).run {
                 accept(author2)
                 accept(author3)
             }
         }
         on { queryAuthors(eq(queryGroup), any()) } doAnswer {
-            it.getArgument<Catalog.AuthorsVisitor>(1).run {
-                setCountHint(2)
+            it.getArgument<Catalog.Visitor<Author>>(1).run {
                 accept(author1)
                 accept(author3)
             }
         }
         on { queryTracks(eq(queryAuthor), any()) } doAnswer {
-            it.getArgument<Catalog.TracksVisitor>(1).run {
-                setCountHint(2)
+            it.getArgument<Catalog.Visitor<Track>>(1).run {
                 accept(track1)
                 accept(track2)
             }
@@ -94,9 +96,9 @@ class CachingCatalogTest(case: TestCase) : CachingCatalogTestBase(case) {
         doAnswer { remoteCatalogueAvailable }.whenever(remote).searchSupported()
     }
 
-    private val groupsVisitor = mock<Catalog.GroupsVisitor>()
-    private val authorsVisitor = mock<Catalog.AuthorsVisitor>()
-    private val tracksVisitor = mock<Catalog.TracksVisitor>()
+    private val groupsVisitor = mock<Catalog.Visitor<Group>>()
+    private val authorsVisitor = mock<Catalog.Visitor<Author>>()
+    private val tracksVisitor = mock<Catalog.Visitor<Track>>()
     private val foundTracksVisitor = mock<Catalog.FoundTracksVisitor>()
 
     private val allMocks = arrayOf(
@@ -243,6 +245,6 @@ class CachingCatalogTest(case: TestCase) : CachingCatalogTestBase(case) {
     companion object {
         @JvmStatic
         @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")
-        fun data() = TestCase.values().asList()
+        fun data() = TestCase.entries
     }
 }

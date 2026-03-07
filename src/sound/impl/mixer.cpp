@@ -8,20 +8,17 @@
  *
  **/
 
-// local includes
 #include "sound/impl/mixer_core.h"
-// common includes
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <l10n/api.h>
-#include <math/numeric.h>
-#include <sound/matrix_mixer.h>
-// std includes
+
+#include "l10n/api.h"
+#include "math/numeric.h"
+#include "sound/matrix_mixer.h"
+
+#include "error_tools.h"
+#include "make_ptr.h"
+
 #include <algorithm>
 #include <numeric>
-
-#define FILE_TAG 278565B1
 
 namespace Sound
 {
@@ -30,7 +27,7 @@ namespace Sound
   template<unsigned Channels>
   class MixerImpl : public FixedChannelsMatrixMixer<Channels>
   {
-    typedef FixedChannelsMatrixMixer<Channels> Base;
+    using Base = FixedChannelsMatrixMixer<Channels>;
 
   public:
     MixerImpl()

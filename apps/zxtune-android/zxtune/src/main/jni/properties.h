@@ -10,31 +10,57 @@
 
 #pragma once
 
-// library includes
-#include <parameters/accessor.h>
-#include <parameters/modifier.h>
-// platform includes
+#include "apps/zxtune-android/zxtune/src/main/jni/array.h"
+
+#include "parameters/accessor.h"
+#include "parameters/modifier.h"
+
+#include "string_view.h"
+
 #include <jni.h>
 
 namespace Jni
 {
+  class JstringView : public StringView
+  {
+  public:
+    JstringView(JNIEnv* env, jstring str)
+      : StringView(MakeView(env, str))
+      , Env(env)
+      , Str(str)
+    {}
+
+    ~JstringView()
+    {
+      if (!empty())
+      {
+        Env->ReleaseStringUTFChars(Str, data());
+      }
+    }
+
+  private:
+    // Since android-4.0.1-r1 GetStringUTFLength returns 0 on null string
+    // So, emulate that behaviour for all platforms
+    static StringView MakeView(JNIEnv* env, jstring str)
+    {
+      if (const std::size_t size = str ? env->GetStringUTFLength(str) : 0)
+      {
+        return {env->GetStringUTFChars(str, 0), size};
+      }
+      else
+      {
+        return {};
+      }
+    }
+
+  private:
+    JNIEnv* const Env;
+    const jstring Str;
+  };
+
   inline jstring MakeJstring(JNIEnv* env, const String& str)
   {
     return env->NewStringUTF(str.c_str());
-  }
-
-  inline String MakeString(JNIEnv* env, jstring str)
-  {
-    String res;
-    // Since android-4.0.1-r1 GetStringUTFLength returns 0 on null string
-    // So, emulate that behaviour for all platforms
-    if (const std::size_t size = str ? env->GetStringUTFLength(str) : 0)
-    {
-      const char* const syms = env->GetStringUTFChars(str, 0);
-      res.assign(syms, syms + size);
-      env->ReleaseStringUTFChars(str, syms);
-    }
-    return res;
   }
 
   class TempJString
@@ -70,17 +96,23 @@ namespace Jni
 
     jlong Get(jstring name, jlong defVal) const
     {
-      Parameters::IntType val = defVal;
-      Params.FindValue(MakeString(Env, name), val);
-      return val;
+      return Params.FindInteger(JstringView(Env, name)).value_or(defVal);
     }
 
     jstring Get(jstring name, jstring defVal) const
     {
-      Parameters::StringType val;
-      if (Params.FindValue(MakeString(Env, name), val))
+      if (const auto val = Params.FindString(JstringView(Env, name)))
       {
-        return MakeJstring(Env, val);
+        return MakeJstring(Env, *val);
+      }
+      return defVal;
+    }
+
+    jbyteArray Get(jstring name, jbyteArray defVal) const
+    {
+      if (const auto val = Params.FindData(JstringView(Env, name)))
+      {
+        return Jni::MakeByteArray(Env, *val);
       }
       return defVal;
     }
@@ -100,12 +132,12 @@ namespace Jni
 
     virtual void Set(jstring name, jlong value)
     {
-      Params.SetValue(MakeString(Env, name), value);
+      Params.SetValue(JstringView(Env, name), value);
     }
 
     virtual void Set(jstring name, jstring value)
     {
-      Params.SetValue(MakeString(Env, name), MakeString(Env, value));
+      Params.SetValue(JstringView(Env, name), JstringView(Env, value));
     }
 
   private:

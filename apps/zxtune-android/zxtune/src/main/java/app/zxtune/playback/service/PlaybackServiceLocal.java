@@ -18,11 +18,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import javax.annotation.Nullable;
+
 import app.zxtune.Log;
 import app.zxtune.Releaseable;
 import app.zxtune.TimeStamp;
 import app.zxtune.analytics.Analytics;
 import app.zxtune.core.Properties;
+import app.zxtune.core.PropertiesContainer;
+import app.zxtune.core.PropertiesModifier;
 import app.zxtune.device.sound.SoundOutputSamplesTarget;
 import app.zxtune.playback.Callback;
 import app.zxtune.playback.CompositeCallback;
@@ -130,7 +134,7 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
   }
 
   private void restoreSession(Uri uri, TimeStamp position) throws Exception {
-    final Iterator iter = IteratorFactory.createIterator(context, uri);
+    final Iterator iter = IteratorFactory.createIterator(context, uri, playback.navigation);
     final PlayableItem newItem = iter.getItem();
     final Holder newHolder = new Holder(newItem, player.getSampleRate());
     newHolder.source.setPosition(position);
@@ -161,7 +165,7 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
       for (; ; ) {
         final Uri uri = batch.get();
         try {
-          final Iterator iter = IteratorFactory.createIterator(context, uri);
+          final Iterator iter = IteratorFactory.createIterator(context, uri, playback.navigation);
           if (batch.compareAndSet(uri, null)) {
             iterator.set(iter);
             setNewItem(iter.getItem());
@@ -203,6 +207,13 @@ public class PlaybackServiceLocal implements PlaybackService, Releaseable {
   @Override
   public Visualizer getVisualizer() {
     return visualizer;
+  }
+
+  // TODO: pass modifying lambda
+  @Nullable
+  public PropertiesContainer getPlaybackProperties() {
+    final Holder current = holder.get();
+    return current != null ? current.player : null;
   }
 
   @Override

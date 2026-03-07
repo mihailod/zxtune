@@ -1,38 +1,34 @@
 /**
-*
-* @file
-*
-* @brief  DirectSound subsystem API gate interface
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  DirectSound subsystem API gate interface
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
 #pragma once
 
-//std includes
 #include <memory>
-//platform-dependent includes
 #define NOMINMAX
 #include <dsound.h>
 
-namespace Sound
+namespace Sound::DirectSound
 {
-  namespace DirectSound
+  class Api
   {
-    class Api
-    {
-    public:
-      typedef std::shared_ptr<Api> Ptr;
-      virtual ~Api() = default;
+  public:
+    using Ptr = std::shared_ptr<Api>;
+    virtual ~Api() = default;
 
-      
-      virtual HRESULT DirectSoundEnumerateW(LPDSENUMCALLBACKW cb, LPVOID param) = 0;
-      virtual HRESULT DirectSoundCreate(LPCGUID pcGuidDevice, LPDIRECTSOUND* ppDS, LPUNKNOWN pUnkOuter) = 0;
-    };
+    // clang-format off
 
-    //throw exception in case of error
-    Api::Ptr LoadDynamicApi();
+    virtual HRESULT DirectSoundEnumerateW(LPDSENUMCALLBACKW cb, LPVOID param) = 0;
+    virtual HRESULT DirectSoundCreate(LPCGUID pcGuidDevice, LPDIRECTSOUND* ppDS, LPUNKNOWN pUnkOuter) = 0;
+    // clang-format on
+  };
 
-  }
-}
+  // throw exception in case of error
+  Api::Ptr LoadDynamicApi();
+}  // namespace Sound::DirectSound

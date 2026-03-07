@@ -10,37 +10,28 @@
 
 #pragma once
 
-// library includes
-#include <module/state.h>
-
-namespace Sound
-{
-  struct LoopParameters;
-}
+#include "module/state.h"
 
 namespace Module
 {
   class Iterator
   {
   public:
-    typedef std::shared_ptr<Iterator> Ptr;
+    using Ptr = std::unique_ptr<Iterator>;
 
     virtual ~Iterator() = default;
 
     virtual void Reset() = 0;
-    virtual bool IsValid() const = 0;
-    virtual void NextFrame(const Sound::LoopParameters& looped) = 0;
+    virtual void NextFrame() = 0;
   };
 
   class StateIterator : public Iterator
   {
   public:
-    typedef std::shared_ptr<StateIterator> Ptr;
+    using Ptr = std::unique_ptr<StateIterator>;
 
     virtual uint_t CurrentFrame() const = 0;
 
     virtual State::Ptr GetStateObserver() const = 0;
   };
-
-  void SeekIterator(Iterator& iter, State::Ptr state, Time::AtMillisecond pos);
 }  // namespace Module

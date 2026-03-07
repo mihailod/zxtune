@@ -2,12 +2,9 @@ package app.zxtune.preferences
 
 import android.content.ContentResolver
 import android.content.Context
-import android.database.ContentObserver
-import android.net.Uri
 import android.os.Bundle
-import androidx.lifecycle.LiveData
-import app.zxtune.Releaseable
-import app.zxtune.ReleaseableStub
+import app.zxtune.ui.utils.observeChanges
+import kotlinx.coroutines.flow.transform
 
 class ProviderClient(ctx: Context) {
 
@@ -28,69 +25,30 @@ class ProviderClient(ctx: Context) {
 
     fun set(batch: Bundle) = resolver.put(batch)
 
-    fun getLive(key: String, defaultValue: String = ""): LiveData<String> =
-        PreferenceLiveData(resolver, key, defaultValue) { k, def ->
-            getString(k, def)
-        }
-
-    fun getLive(key: String, defaultValue: Int = 0): LiveData<Int> =
-        PreferenceLiveData(resolver, key, defaultValue) { k, def ->
-            getInt(k, def)
-        }
-
-    companion object {
-        fun create(ctx: Context) = ProviderClient(ctx)
+    fun watchString(key: String, defaultValue: String? = null) = watch(key, defaultValue) { k, _ ->
+        getString(k)
     }
+
+    fun watchInt(key: String, defaultValue: Int? = null) = watch(key, defaultValue) { k, def ->
+        when {
+            def != null -> getInt(k, def)
+            containsKey(k) -> getInt(k)
+            else -> defaultValue
+        }
+    }
+
+    private fun <T> watch(key: String, defaultValue: T?, fetch: Bundle.(String, T?) -> T?) =
+        resolver.observeChanges(Provider.notificationUri(key), false).transform {
+            val value = resolver.get(key)?.fetch(key, defaultValue) ?: defaultValue
+            value?.let {
+                emit(it)
+            }
+        }
 }
 
 private fun ContentResolver.list(prefix: String? = null) =
     call(Provider.URI, Provider.METHOD_LIST, prefix, null)
 
-private fun ContentResolver.get(key: String) =
-    call(Provider.URI, Provider.METHOD_GET, key, null)
+private fun ContentResolver.get(key: String) = call(Provider.URI, Provider.METHOD_GET, key, null)
 
-private fun ContentResolver.put(data: Bundle) =
-    call(Provider.URI, Provider.METHOD_PUT, null, data)
-
-// Do not use generic getters to avoid type check on each call.
-class PreferenceLiveData<T>(
-    private val resolver: ContentResolver,
-    private val key: String,
-    private val defValue: T,
-    private val getter: Bundle.(String, T) -> T,
-) : LiveData<T>() {
-
-    private var subscription: Releaseable = ReleaseableStub
-
-    private val observer = object : ContentObserver(null) {
-        override fun onChange(selfChange: Boolean) {
-            postValue(getActualValue())
-        }
-    }
-
-    override fun getValue() = if (isUpdating()) {
-        super.getValue()
-    } else {
-        getActualValue()
-    }
-
-    private fun isUpdating() = hasActiveObservers()
-
-    override fun onActive() {
-        subscription = resolver.subscribe(Provider.notificationUri(key), observer)
-        super.setValue(getActualValue())
-    }
-
-    override fun onInactive() = subscription.release().also { subscription = ReleaseableStub }
-
-    private fun getActualValue() = resolver.get(key)?.getter(key, defValue) ?: defValue
-}
-
-// TODO: extract
-private fun ContentResolver.subscribe(
-    uri: Uri,
-    observer: ContentObserver,
-    notifyForDescendants: Boolean = false,
-) = Releaseable { unregisterContentObserver(observer) }.also {
-    registerContentObserver(uri, notifyForDescendants, observer)
-}
+private fun ContentResolver.put(data: Bundle) = call(Provider.URI, Provider.METHOD_PUT, null, data)

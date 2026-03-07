@@ -4,9 +4,13 @@ import android.content.Context
 import android.database.ContentObserver
 import android.database.Cursor
 import android.net.Uri
-import android.os.CancellationSignal
-import app.zxtune.Releaseable
-import app.zxtune.use
+import app.zxtune.ui.utils.observeChanges
+import app.zxtune.ui.utils.query
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Threads scheme
@@ -20,113 +24,74 @@ import app.zxtune.use
  *
  */
 class VfsProviderClient(ctx: Context) {
-    // TODO: use Schema objects?
-    interface StatusCallback {
-        fun onProgress(done: Int, total: Int)
+    interface ListingCallback {
+        fun onProgress(status: Schema.Status.Progress)
+        fun onDir(dir: Schema.Listing.Dir)
+        fun onFile(file: Schema.Listing.File)
     }
 
-    interface ListingCallback : StatusCallback {
-        fun onDir(uri: Uri, name: String, description: String, icon: Int?, hasFeed: Boolean)
-        fun onFile(
-            uri: Uri,
-            name: String,
-            description: String,
-            details: String,
-            tracks: Int?,
-            cached: Boolean?
-        )
-    }
-
-    interface ParentsCallback : StatusCallback {
-        fun onObject(uri: Uri, name: String, icon: Int?)
+    interface ParentsCallback {
+        fun onObject(obj: Schema.Parents.Object)
     }
 
     private val resolver = ctx.contentResolver
 
-    @Throws(Exception::class)
-    fun resolve(uri: Uri, cb: ListingCallback, signal: CancellationSignal? = null) =
-        queryListing(Query.resolveUriFor(uri), cb, signal)
+    suspend fun resolve(uri: Uri, cb: ListingCallback) = fetchListing(Query.resolveUriFor(uri), cb)
 
-    private fun queryListing(
-        resolverUri: Uri,
-        cb: ListingCallback,
-        userSignal: CancellationSignal?
-    ) {
-        val signal = userSignal ?: CancellationSignal()
-        val notification = subscribeForChanges(resolverUri) {
-            query(resolverUri)?.use {
-                runCatching { getListing(it, cb) }.onFailure {
-                    signal.cancel()
-                    // Do not throw anything!!!
-                }
-            }
-        }
-        notification.use {
-            query(resolverUri, signal)?.use {
-                getListing(it, cb)
-            }
-        }
+    suspend fun list(uri: Uri, cb: ListingCallback) = fetchListing(Query.listingUriFor(uri), cb)
+
+    suspend fun parents(uri: Uri, cb: ParentsCallback) = resolver.query(Query.parentsUriFor(uri)) {
+        getParents(it, cb)
+        Unit
     }
 
-    @Throws(Exception::class)
-    fun list(uri: Uri, cb: ListingCallback, signal: CancellationSignal? = null) =
-        queryListing(Query.listingUriFor(uri), cb, signal)
+    suspend fun search(uri: Uri, query: String, cb: ListingCallback) = fetchListing(
+        Query.searchUriFor(uri, query), cb
+    )
 
-    @Throws(Exception::class)
-    fun parents(uri: Uri, cb: ParentsCallback) {
-        val resolverUri = Query.parentsUriFor(uri)
-        query(resolverUri)?.use {
-            getParents(it, cb)
-        }
-    }
-
-    @Throws(Exception::class)
-    fun search(uri: Uri, query: String, cb: ListingCallback, signal: CancellationSignal? = null) =
-        queryListing(Query.searchUriFor(uri, query), cb, signal)
-
-    fun subscribeForNotifications(
-        uri: Uri,
-        cb: (Schema.Notifications.Object?) -> Unit
-    ): Releaseable = Query.notificationUriFor(uri).let { resolverUri ->
-        subscribeForChanges(resolverUri) {
-            cb(getNotification(resolverUri))
-        }.also {
-            cb(getNotification(resolverUri))
-        }
-    }
-
-    private fun getNotification(resolverUri: Uri) = query(resolverUri)?.use {
-        getNotification(it)
-    }
-
-    private fun query(uri: Uri, signal: CancellationSignal? = null) =
-        resolver.query(uri, null, null, null, null, signal)
-
-    private fun subscribeForChanges(uri: Uri, cb: () -> Unit): Releaseable {
+    private suspend fun fetchListing(resolverUri: Uri, cb: ListingCallback) = coroutineScope {
+        // onChange called in separate thread while main is blocked in primary call
         val observer = object : ContentObserver(null) {
-            override fun onChange(selfChange: Boolean) = cb()
+            override fun onChange(selfChange: Boolean) = runBlocking {
+                fetchListingPortion(resolverUri, cb)
+                Unit
+            }
         }
-        resolver.registerContentObserver(uri, false, observer)
-        return Releaseable { resolver.unregisterContentObserver(observer) }
+        resolver.registerContentObserver(resolverUri, false, observer)
+        coroutineContext.job.invokeOnCompletion {
+            resolver.unregisterContentObserver(observer)
+        }
+        launch {
+            fetchListingPortion(resolverUri, cb)
+        }.join()
+    }
+
+    private suspend fun fetchListingPortion(resolverUri: Uri, cb: ListingCallback) =
+        resolver.query(resolverUri) {
+            getListing(it, cb)
+        }
+
+    fun observeNotifications(uri: Uri) =
+        // For some reason, notifyChange for root uri is not propagated to descendant subscribers
+        resolver.observeChanges(Query.notificationUriFor(Uri.EMPTY)).map {
+            getNotification(uri)
+        }
+
+    suspend fun getNotification(uri: Uri) = resolver.query(Query.notificationUriFor(uri)) {
+        getNotification(it)
     }
 
     companion object {
         @JvmStatic
-        fun getFileUriFor(uri: Uri) = Query.fileUriFor(uri)
+        fun getFileUriFor(uri: Uri, size: Long) = Query.fileUriFor(uri, size)
 
         private fun getListing(cursor: Cursor, cb: ListingCallback) {
             while (cursor.moveToNext()) {
                 when (val obj = Schema.Object.parse(cursor)) {
-                    is Schema.Listing.Dir -> obj.run {
-                        cb.onDir(uri, name, description, icon, hasFeed)
-                    }
-                    is Schema.Listing.File -> obj.run {
-                        cb.onFile(uri, name, description, details, tracks, isCached)
-                    }
+                    is Schema.Listing.Dir -> cb.onDir(obj)
+                    is Schema.Listing.File -> cb.onFile(obj)
                     is Schema.Status.Error -> throw Exception(obj.error)
-                    is Schema.Status.Progress -> obj.run {
-                        cb.onProgress(done, total)
-                    }
+                    is Schema.Status.Progress -> cb.onProgress(obj)
                     else -> Unit
                 }
             }
@@ -136,7 +101,7 @@ class VfsProviderClient(ctx: Context) {
             while (cursor.moveToNext()) {
                 when (val obj = Schema.Parents.Object.parse(cursor)) {
                     is Schema.Status.Error -> throw Exception(obj.error)
-                    is Schema.Parents.Object -> obj.run { cb.onObject(uri, name, icon) }
+                    is Schema.Parents.Object -> cb.onObject(obj)
                     else -> return false
                 }
             }

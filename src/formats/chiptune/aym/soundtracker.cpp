@@ -8,18 +8,17 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/soundtracker_detail.h"
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <array>
 
 namespace Formats::Chiptune
@@ -28,7 +27,7 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::SoundTracker");
 
-    const Char PROGRAM[] = "Sound Tracker v1.x";
+    const auto PROGRAM = "Sound Tracker v1.x"sv;
 
     using namespace SoundTracker;
 
@@ -164,7 +163,7 @@ namespace Formats::Chiptune
           dst.PatternIndex = src.Pattern - 1;
           dst.Transposition = src.Transposition;
         }
-        Dbg("Positions: %1% entries", positions.GetSize());
+        Dbg("Positions: {} entries", positions.GetSize());
         builder.SetPositions(std::move(positions));
       }
 
@@ -175,12 +174,12 @@ namespace Formats::Chiptune
           const uint_t patIndex = *it;
           if (patIndex < MaxPatterns)
           {
-            Dbg("Parse pattern %1%", patIndex);
+            Dbg("Parse pattern {}", patIndex);
             ParsePattern(patIndex, builder);
           }
           else
           {
-            Dbg("Fill stub pattern %1%", patIndex);
+            Dbg("Fill stub pattern {}", patIndex);
             builder.StartPattern(patIndex).Finish(Source.PatternsSize);
           }
         }
@@ -191,7 +190,7 @@ namespace Formats::Chiptune
         for (Indices::Iterator it = samples.Items(); it; ++it)
         {
           const uint_t samIdx = *it;
-          Dbg("Parse sample %1%", samIdx);
+          Dbg("Parse sample {}", samIdx);
           if (samIdx)
           {
             builder.SetSample(samIdx, ParseSample(Source.Samples[samIdx - 1]));
@@ -213,7 +212,7 @@ namespace Formats::Chiptune
         for (Indices::Iterator it = ornaments.Items(); it; ++it)
         {
           const uint_t ornIdx = *it;
-          Dbg("Parse ornament %1%", ornIdx);
+          Dbg("Parse ornament {}", ornIdx);
           builder.SetOrnament(ornIdx, ParseOrnament(Source.Ornaments[ornIdx]));
         }
       }
@@ -233,24 +232,18 @@ namespace Formats::Chiptune
 
       struct EnvState
       {
-        uint_t Type;
-        uint_t Tone;
+        uint_t Type = 0;
+        uint_t Tone = 0;
 
-        EnvState()
-          : Type()
-          , Tone()
-        {}
+        EnvState() = default;
       };
 
       struct ChanState
       {
-        uint_t Sample;
-        uint_t Ornament;
+        uint_t Sample = 0;
+        uint_t Ornament = 0;
 
-        ChanState()
-          : Sample()
-          , Ornament()
-        {}
+        ChanState() = default;
       };
 
       void ParsePattern(uint_t patIndex, Builder& builder) const
@@ -436,7 +429,7 @@ namespace Formats::Chiptune
         // patterns size
         // Real pattern size may be from 01 but I don't know any modules with such patterns size
         "20-40"
-        ""_sv;
+        ""sv;
 
     Formats::Chiptune::Container::Ptr ParseUncompiled(const Binary::Container& rawData, Builder& target)
     {
@@ -483,7 +476,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }

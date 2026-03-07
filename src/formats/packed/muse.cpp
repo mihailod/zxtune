@@ -8,19 +8,18 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
-// common includes
-#include <error.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/compression/zlib_container.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <debug/log.h>
-#include <formats/packed.h>
-// std includes
+
+#include "binary/compression/zlib_container.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+#include "formats/packed.h"
+
+#include "error.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <memory>
 
 namespace Formats::Packed
@@ -29,7 +28,7 @@ namespace Formats::Packed
   {
     const Debug::Stream Dbg("Formats::Packed::Muse");
 
-    const Char DESCRIPTION[] = "MUSE Compressor";
+    const auto DESCRIPTION = "MUSE Compressor"sv;
     const auto HEADER_PATTERN =
         "'M'U'S'E"
         "de ad be|ba af|be"
@@ -37,7 +36,7 @@ namespace Formats::Packed
         "????"  // crc
         "????"  // packed size
         "????"  // unpacked size
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Packed::Decoder
     {
@@ -46,7 +45,7 @@ namespace Formats::Packed
         : Depacker(Binary::CreateFormat(HEADER_PATTERN))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -69,7 +68,7 @@ namespace Formats::Packed
           const uint_t sign = input.Read<be_uint32_t>();
           Require(sign == 0xdeadbabe || sign == 0xdeadbeaf);
           const std::size_t fileSize = input.Read<le_uint32_t>();
-          const uint32_t crc = input.Read<le_uint32_t>();
+          /*const uint32_t crc = */ input.Read<le_uint32_t>();
           const std::size_t packedSize = input.Read<le_uint32_t>();
           const std::size_t unpackedSize = input.Read<le_uint32_t>();
           const auto packedData = input.ReadData(packedSize);
@@ -78,11 +77,11 @@ namespace Formats::Packed
         }
         catch (const std::exception& e)
         {
-          Dbg("Failed to uncompress: %1%", e.what());
+          Dbg("Failed to uncompress: {}", e.what());
         }
         catch (const Error& e)
         {
-          Dbg("Failed to uncompress: %1%", e.ToString());
+          Dbg("Failed to uncompress: {}", e.ToString());
         }
         return {};
       }

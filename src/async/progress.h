@@ -10,9 +10,8 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// std includes
+#include "types.h"
+
 #include <memory>
 
 namespace Async
@@ -20,7 +19,7 @@ namespace Async
   class Progress
   {
   public:
-    typedef std::shared_ptr<Progress> Ptr;
+    using Ptr = std::shared_ptr<Progress>;
     virtual ~Progress() = default;
 
     virtual void Produce(uint_t items) = 0;

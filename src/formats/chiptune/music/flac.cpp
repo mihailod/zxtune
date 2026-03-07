@@ -8,23 +8,23 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/music/flac.h"
+
 #include "formats/chiptune/container.h"
 #include "formats/chiptune/music/tags_id3.h"
 #include "formats/chiptune/music/tags_vorbis.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
 
 namespace Formats::Chiptune
 {
   namespace Flac
   {
-    const Char DESCRIPTION[] = "Free Lossless Audio Codec";
+    const auto DESCRIPTION = "Free Lossless Audio Codec"sv;
 
     // https://www.xiph.org/flac/format
     class Format
@@ -76,6 +76,7 @@ namespace Formats::Chiptune
             break;
           }
           Binary::DataInputStream payload(Stream.ReadData(payloadSize));
+          // See FLAC/format.h for FLAC_METADATA_TYPE_* enum
           if (type == 0)
           {
             ParseStreamInfo(payload, target);
@@ -83,6 +84,10 @@ namespace Formats::Chiptune
           else if (type == 4)
           {
             Vorbis::ParseComment(payload, target.GetMetaBuilder());
+          }
+          else if (type == 6)
+          {
+            ParsePicture(payload, target.GetMetaBuilder());
           }
           if (isLast)
           {
@@ -103,13 +108,25 @@ namespace Formats::Chiptune
         // big endian:
         // ffffffff ffffffff ffffcccb bbbbssss ssssssss ssssssss ssssssss ssssssss
         const uint64_t params = input.Read<be_uint64_t>();
-        const auto totalSamples = params & 0xfffffffffull;
+        const auto totalSamples = params & 0xfffffffffuLL;
         const auto bitsPerSample = 1 + uint_t((params >> 36) & 0x1f);
         const auto channels = 1 + uint_t((params >> 41) & 7);
         const auto sampleRate = uint_t(params >> 44);
         Require(sampleRate != 0);
         target.SetStreamParameters(sampleRate, channels, bitsPerSample);
         target.SetTotalSamples(totalSamples);
+      }
+
+      static void ParsePicture(Binary::DataInputStream& input, MetaBuilder& target)
+      {
+        input.Skip(4);  // type
+        const auto typeSize = input.Read<be_uint32_t>();
+        input.Skip(typeSize);
+        const auto descriptionSize = input.Read<be_uint32_t>();
+        input.Skip(descriptionSize);
+        input.Skip(4 * 4);  // width, height, depth, colors count
+        const auto dataSize = input.Read<be_uint32_t>();
+        target.SetPicture(input.ReadData(dataSize));
       }
 
       bool ParseFrames(Builder& target)
@@ -136,9 +153,9 @@ namespace Formats::Chiptune
       std::size_t FindFrameHeader()
       {
         const auto limit = Stream.GetRestSize();
-        const auto start = Stream.PeekRawData(limit);
-        const auto end = start + limit;
-        for (auto cursor = start; cursor + MAX_HEADER_SIZE < end;)
+        const auto* const start = Stream.PeekRawData(limit);
+        const auto* const end = start + limit;
+        for (const auto* cursor = start; cursor + MAX_HEADER_SIZE < end;)
         {
           const auto headerSize = GetFrameHeaderSize(cursor);
           if (headerSize >= MIN_HEADER_SIZE)
@@ -146,7 +163,7 @@ namespace Formats::Chiptune
             Stream.Skip(cursor - start);
             return headerSize;
           }
-          const auto match = std::find(cursor + 1, end, 0xff);
+          const auto* const match = std::find(cursor + 1, end, 0xff);
           if (match == end)
           {
             return 0;
@@ -200,7 +217,7 @@ namespace Formats::Chiptune
       }
       catch (const std::exception&)
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
 
@@ -232,7 +249,7 @@ namespace Formats::Chiptune
         "'3         |'a"
         "00-04      |'C"
         "00-0a      |00"  // streaminfo metatag
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -241,7 +258,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -264,7 +281,7 @@ namespace Formats::Chiptune
         }
         else
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
       }
 

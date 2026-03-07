@@ -8,17 +8,17 @@
  *
  **/
 
-// local includes
 #include "formats/archived/trdos_catalogue.h"
 #include "formats/archived/trdos_utils.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <cstring>
 #include <numeric>
 
@@ -28,7 +28,7 @@ namespace Formats::Archived
   {
     const Debug::Stream Dbg("Formats::Archived::TRD");
 
-    const Char DESCRIPTION[] = "TRD (TR-DOS)";
+    const auto DESCRIPTION = "TRD (TR-DOS)"sv;
     const auto FORMAT =
         "(00|01|20-7f??????? ??? ?? ? 0x 00-a0){128}"
         // service sector
@@ -44,7 +44,7 @@ namespace Formats::Archived
         "?"                // deleted files
         "20-7f{8}"         // title
         "000000"           // reserved
-        ""_sv;
+        ""sv;
 
     // hints
     const std::size_t MODULE_SIZE = 655360;
@@ -123,14 +123,14 @@ namespace Formats::Archived
     static_assert(sizeof(Sector) * alignof(Sector) == BYTES_PER_SECTOR, "Invalid layout");
     static_assert(sizeof(Catalog) * alignof(Catalog) == BYTES_PER_SECTOR * SECTORS_IN_TRACK, "Invalid layout");
 
-    const Char UNALLOCATED_FILENAME[] = {'$', 'U', 'n', 'a', 'l', 'l', 'o', 'c', 'a', 't', 'e', 'd', 0};
+    const auto UNALLOCATED_FILENAME = "$Unallocated"sv;
 
     class Visitor
     {
     public:
       virtual ~Visitor() = default;
 
-      virtual void OnFile(const String& name, std::size_t offset, std::size_t size) = 0;
+      virtual void OnFile(StringView name, std::size_t offset, std::size_t size) = 0;
     };
 
     std::size_t Parse(Binary::View data, Visitor& visitor)
@@ -169,19 +169,19 @@ namespace Formats::Archived
         const uint_t size = catEntry->SizeInSectors;
         if (offset + size > totalSectors)
         {
-          Dbg("File '%1%' is out of bounds", entryName);
+          Dbg("File '{}' is out of bounds", entryName);
           return 0;  // out of bounds
         }
         const auto begin = usedSectors.begin() + offset;
         const auto end = begin + size;
         if (end != std::find(begin, end, true))
         {
-          Dbg("File '%1%' is overlapped with some other", entryName);
+          Dbg("File '{}' is overlapped with some other", entryName);
           return 0;  // overlap
         }
         if (!*(begin - 1))
         {
-          Dbg("File '%1%' has a gap before", entryName);
+          Dbg("File '{}' has a gap before", entryName);
           return 0;  // gap
         }
         std::fill(begin, end, true);
@@ -215,10 +215,10 @@ namespace Formats::Archived
         : Builder(builder)
       {}
 
-      void OnFile(const String& filename, std::size_t offset, std::size_t size) override
+      void OnFile(StringView filename, std::size_t offset, std::size_t size) override
       {
-        const TRDos::File::Ptr file = TRDos::File::CreateReference(filename, offset, size);
-        Builder.AddFile(file);
+        auto file = TRDos::File::CreateReference(filename, offset, size);
+        Builder.AddFile(std::move(file));
       }
 
     private:
@@ -233,7 +233,7 @@ namespace Formats::Archived
       : Format(Binary::CreateFormat(TRD::FORMAT, TRD::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return TRD::DESCRIPTION;
     }
@@ -248,7 +248,7 @@ namespace Formats::Archived
       const Binary::View data(rawData);
       if (!Format->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       const auto builder = TRDos::CatalogueBuilder::CreateFlat();
       TRD::BuildVisitorAdapter visitor(*builder);
@@ -257,7 +257,7 @@ namespace Formats::Archived
         builder->SetRawData(rawData.GetSubcontainer(0, size));
         return builder->GetResult();
       }
-      return Container::Ptr();
+      return {};
     }
 
   private:

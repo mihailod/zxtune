@@ -10,13 +10,12 @@
 
 #pragma once
 
-// common includes
-#include <error.h>
-#include <iterator.h>
-// library includes
-#include <module/state.h>
-#include <sound/analyzer.h>
-#include <sound/gain.h>
+#include "module/state.h"
+#include "sound/analyzer.h"
+#include "sound/backend_attrs.h"
+#include "sound/gain.h"
+
+#include "error.h"
 
 namespace Sound
 {
@@ -25,14 +24,12 @@ namespace Sound
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<const BackendInformation> Ptr;
-    //! Iterator type
-    typedef ObjectIterator<Ptr> Iterator;
+    using Ptr = std::shared_ptr<const BackendInformation>;
 
     virtual ~BackendInformation() = default;
 
     //! Short spaceless identifier
-    virtual String Id() const = 0;
+    virtual BackendId Id() const = 0;
     //! Textual description
     virtual String Description() const = 0;
     //! Backend capabilities @see backend_attrs.h
@@ -46,7 +43,7 @@ namespace Sound
   {
   public:
     //! @brief Pointer types
-    typedef std::shared_ptr<VolumeControl> Ptr;
+    using Ptr = std::shared_ptr<VolumeControl>;
 
     virtual ~VolumeControl() = default;
 
@@ -66,7 +63,7 @@ namespace Sound
   {
   public:
     //! @brief Pointer type
-    typedef std::shared_ptr<PlaybackControl> Ptr;
+    using Ptr = std::shared_ptr<PlaybackControl>;
 
     virtual ~PlaybackControl() = default;
 
@@ -111,7 +108,7 @@ namespace Sound
   {
   public:
     //! @brief Pointer type
-    typedef std::shared_ptr<const Backend> Ptr;
+    using Ptr = std::shared_ptr<const Backend>;
 
     virtual ~Backend() = default;
 
@@ -132,7 +129,7 @@ namespace Sound
   class BackendCallback
   {
   public:
-    typedef std::shared_ptr<BackendCallback> Ptr;
+    using Ptr = std::shared_ptr<BackendCallback>;
     virtual ~BackendCallback() = default;
 
     virtual void OnStart() = 0;

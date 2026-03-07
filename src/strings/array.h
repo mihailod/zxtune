@@ -10,12 +10,11 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// std includes
+#include "string_type.h"
+
 #include <vector>
 
 namespace Strings
 {
-  typedef std::vector<String> Array;
+  using Array = std::vector<String>;
 }

@@ -10,14 +10,10 @@
 
 #pragma once
 
-// library includes
-#include <devices/dac.h>
-#include <parameters/accessor.h>
+#include "devices/dac.h"
+#include "parameters/accessor.h"
 
-namespace Module
+namespace Module::DAC
 {
-  namespace DAC
-  {
-    Devices::DAC::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params);
-  }
-}  // namespace Module
+  Devices::DAC::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params);
+}  // namespace Module::DAC

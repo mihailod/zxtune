@@ -10,12 +10,11 @@
 
 #pragma once
 
-// local includes
 #include "core/plugins/archive_plugin.h"
-// library includes
-#include <formats/packed.h>
+
+#include "formats/packed.h"
 
 namespace ZXTune
 {
-  ArchivePlugin::Ptr CreateArchivePlugin(StringView id, uint_t caps, Formats::Packed::Decoder::Ptr decoder);
+  ArchivePlugin::Ptr CreateArchivePlugin(PluginId id, uint_t caps, Formats::Packed::Decoder::Ptr decoder);
 }

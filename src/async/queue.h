@@ -10,7 +10,6 @@
 
 #pragma once
 
-// std includes
 #include <memory>
 
 namespace Async
@@ -19,7 +18,7 @@ namespace Async
   class Queue
   {
   public:
-    typedef std::shared_ptr<Queue<T> > Ptr;
+    using Ptr = std::shared_ptr<Queue<T>>;
 
     virtual ~Queue() = default;
 

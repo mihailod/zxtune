@@ -10,17 +10,14 @@
 
 #pragma once
 
-// common includes
-#include <error.h>
-// library includes
-#include <platform/shared_library.h>
+#include "platform/shared_library.h"
 
-namespace Platform
+#include "error.h"
+#include "string_view.h"
+
+namespace Platform::Details
 {
-  namespace Details
-  {
-    String GetSharedLibraryFilename(const String& name);
-    std::vector<String> GetSharedLibraryFilenames(const SharedLibrary::Name& name);
-    Error LoadSharedLibrary(const String& fileName, SharedLibrary::Ptr& res);
-  }  // namespace Details
-}  // namespace Platform
+  String GetSharedLibraryFilename(StringView name);
+  std::vector<String> GetSharedLibraryFilenames(const SharedLibrary::Name& name);
+  Error LoadSharedLibrary(const String& fileName, SharedLibrary::Ptr& res);
+}  // namespace Platform::Details

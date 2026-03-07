@@ -10,9 +10,10 @@
 
 #pragma once
 
-// library includes
-#include <sound/gain.h>
-#include <sound/multichannel_sample.h>
+#include "sound/gain.h"
+#include "sound/multichannel_sample.h"
+
+#include <array>
 
 namespace Sound
 {
@@ -20,8 +21,8 @@ namespace Sound
   class MixerCore
   {
   public:
-    typedef std::array<Gain, ChannelsCount> MatrixType;
-    typedef typename MultichannelSample<ChannelsCount>::Type InType;
+    using MatrixType = std::array<Gain, ChannelsCount>;
+    using InType = typename MultichannelSample<ChannelsCount>::Type;
 
     MixerCore()
     {
@@ -29,9 +30,9 @@ namespace Sound
       for (uint_t inChan = 0; inChan != ChannelsCount; ++inChan)
       {
         CoeffRow& row = Matrix[inChan];
-        for (uint_t outChan = 0; outChan != row.size(); ++outChan)
+        for (auto& outChan : row)
         {
-          row[outChan] = val;
+          outChan = val;
         }
       }
     }
@@ -49,7 +50,7 @@ namespace Sound
         }
       }
       static_assert(Sample::CHANNELS == 2, "Incompatible sound channels count");
-      return Sample(out[0].Integer(), out[1].Integer());
+      return {out[0].Integer(), out[1].Integer()};
     }
 
     void SetMatrix(const MatrixType& matrix)
@@ -65,9 +66,9 @@ namespace Sound
 
   private:
     static const int_t PRECISION = 256;
-    typedef Math::FixedPoint<int_t, PRECISION> Coeff;
-    typedef std::array<Coeff, Sample::CHANNELS> CoeffRow;
-    typedef std::array<CoeffRow, ChannelsCount> CoeffMatrix;
+    using Coeff = Math::FixedPoint<int_t, PRECISION>;
+    using CoeffRow = std::array<Coeff, Sample::CHANNELS>;
+    using CoeffMatrix = std::array<CoeffRow, ChannelsCount>;
     CoeffMatrix Matrix;
   };
 }  // namespace Sound

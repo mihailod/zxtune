@@ -8,21 +8,22 @@
  *
  **/
 
-// local includes
 #include "formats/image/container.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <formats/image.h>
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "formats/image.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
+#include <memory>
 
 namespace Formats::Image
 {
   namespace LaserCompact40
   {
-    const Char DESCRIPTION[] = "LaserCompact 4.0";
+    const auto DESCRIPTION = "LaserCompact 4.0"sv;
     const auto DEPACKER_PATTERN =
         "0ef9"    // ld c,#f9
         "0d"      // dec c
@@ -39,7 +40,7 @@ namespace Formats::Image
         "47"      // ld b,a
         "7e"      // ld a,(hl)
         "3045"    // jr nc,xx
-        ""_sv;
+        ""sv;
 
     /*
       @1fc6 48ROM
@@ -204,7 +205,7 @@ namespace Formats::Image
               } while (--len);
             }
           }
-          Result.reset(new Binary::Dump());
+          Result = std::make_unique<Binary::Dump>();
           if (target <= PIXELS_SIZE)
           {
             decoded.resize(PIXELS_SIZE);
@@ -232,7 +233,7 @@ namespace Formats::Image
       : Depacker(Binary::CreateFormat(LaserCompact40::DEPACKER_PATTERN, LaserCompact40::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return LaserCompact40::DESCRIPTION;
     }
@@ -246,12 +247,12 @@ namespace Formats::Image
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const LaserCompact40::Container container(rawData);
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       LaserCompact40::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), decoder.GetUsedSize());

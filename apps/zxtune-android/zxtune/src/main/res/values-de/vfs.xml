@@ -22,8 +22,8 @@
     <string name="vfs_zxart_root_description">http://www.zxart.ee/eng/music</string>
     <string name="vfs_zxart_authors_name">Autoren</string>
     <string name="vfs_zxart_parties_name">Demoparty</string>
-    <string name="vfs_zxart_toptracks_name">Top-Tonspuren</string>
-    <string name="vfs_zxart_toptracks_description">100 Tonspuren mit höchster Bewertung</string>
+    <string name="vfs_zxart_toptracks_name">Top-Titel</string>
+    <string name="vfs_zxart_toptracks_description">100 Titel mit höchster Bewertung</string>
     <string name="vfs_zxart_unknown_year_name">Unbekanntes Jahr</string>
     <string name="vfs_zxart_compo_unknown">Unbekannter Wettbewerb</string>
     <string name="vfs_zxart_compo_standard">Standard-Musik-Wettbewerb</string>
@@ -40,6 +40,8 @@
     <string name="vfs_zxart_compo_oldschool">Oldschool-Musikwettbewerb</string>
     <string name="vfs_zxart_compo_mainstream">Mainstream-Musikwettbewerb</string>
     <string name="vfs_zxart_compo_progressive">Progressive Musikwettbewerb</string>
+    <string name="vfs_zxart_compo_ts">TurboSound Musikwettbewerb</string>
+    <string name="vfs_zxart_compo_tsfm">TSFM Musikwettbewerb</string>
     <string name="vfs_zxart_compo_related">Musik von diesem Event Werke</string>
     <!-- joshw.info -->
     <string name="vfs_joshw_root_description">Verschiedene Archive</string>
@@ -187,9 +189,26 @@
     <string name="vfs_vgmrips_chips_name">Chips</string>
     <string name="vfs_vgmrips_systems_name">Systeme</string>
     <string name="vfs_vgmrips_random_name">Zufällige Melodien</string>
+    <!-- ocremix.org -->
+    <string name="vfs_ocremix_systems_name">Systeme</string>
+    <string name="vfs_ocremix_organizations_name">Organisationen</string>
+    <string name="vfs_ocremix_remixes_name">Remixe</string>
+    <string name="vfs_ocremix_albums_name">Alben</string>
+    <string name="vfs_ocremix_games_name">Spiele</string>
+    <!-- khinsider -->
+    <string name="vfs_khinsider_random_name">Lied aus zufälligem Album</string>
+    <string name="vfs_khinsider_top_name">Top-Alben</string>
+    <string name="vfs_khinsider_series_name">Beliebte Serien</string>
+    <string name="vfs_khinsider_platforms_name">Plattformen</string>
+    <string name="vfs_khinsider_types_name">Alben nach Typ</string>
+    <string name="vfs_khinsider_albumsletters_name">Alben nach Buchstaben</string>
+    <string name="vfs_khinsider_albumsyears_name">Alben nach Jahr</string>
+    <string name="vfs_khinsider_top_new100_name">Die besten 100 neu hinzugefügten</string>
+    <string name="vfs_khinsider_top_40_name">Die besten 40</string>
+    <string name="vfs_khinsider_top_favorites_name">Die meisten Favoriten</string>
     <!-- errors -->
     <string name="network_inaccessible">Netzwerk ist nicht erreichbar</string>
     <string name="failed_resolve">Adresse %s konnte nicht aufgelöst werden</string>
-    <string name="limited_storage_access">Tippen Sie auf, um die Zugriffsberechtigung zu erteilen</string>
-    <string name="no_stored_playlists_access">Tippen Sie auf, um einen dauerhaften Speicherort einzurichten</string>
+    <string name="limited_storage_access">Tippen Sie, um die Zugriffsberechtigung zu erteilen</string>
+    <string name="no_stored_playlists_access">Tippen Sie, um einen dauerhaften Speicherort einzurichten</string>
 </resources>

@@ -8,11 +8,14 @@
  *
  **/
 
-#include "../../utils.h"
-#include <formats/chiptune/music/mp3.h>
-#include <strings/format.h>
-#include <time/duration.h>
-#include <time/instant.h>
+#include "formats/chiptune/music/mp3.h"
+#include "formats/test/utils.h"
+
+#include "strings/format.h"
+#include "time/duration.h"
+#include "time/instant.h"
+
+#include "string_view.h"
 
 namespace
 {
@@ -46,6 +49,16 @@ namespace
       }
     }
 
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
+    }
+
+    void SetPicture(Binary::View content) override
+    {
+      std::cout << "Picture: " << content.Size() << " bytes" << std::endl;
+    }
+
     MetaBuilder& GetMetaBuilder() override
     {
       return *this;
@@ -53,7 +66,7 @@ namespace
 
     void AddFrame(const Mp3::Frame& frame) override
     {
-      std::cout << Strings::Format("Frame: @%1%(0x%1$08x)/%2% bytes %3%hz %4% samples (at %5% uS)\n",
+      std::cout << Strings::Format("Frame: @{0}(0x{0:08x})/{1} bytes {2}hz {3} samples (at {4} uS)\n",
                                    frame.Location.Offset, frame.Location.Size, frame.Properties.Samplerate,
                                    frame.Properties.SamplesCount, Start.Get());
       Start += Time::Microseconds::FromRatio(frame.Properties.SamplesCount, frame.Properties.Samplerate);
@@ -72,9 +85,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Binary::Dump> rawData(new Binary::Dump());
-    Test::OpenFile(argv[1], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[1]);
     Mp3Builder builder;
     if (const auto result = Formats::Chiptune::Mp3::Parse(*data, builder))
     {

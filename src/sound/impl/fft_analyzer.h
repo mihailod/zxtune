@@ -10,9 +10,8 @@
 
 #pragma once
 
-// library includes
-#include <sound/analyzer.h>
-#include <sound/sample.h>
+#include "sound/analyzer.h"
+#include "sound/sample.h"
 
 namespace Sound
 {
@@ -21,7 +20,7 @@ namespace Sound
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<FFTAnalyzer> Ptr;
+    using Ptr = std::shared_ptr<FFTAnalyzer>;
 
     // TODO: use std::span when available
     virtual void FeedSound(const Sample* samples, std::size_t count) = 0;

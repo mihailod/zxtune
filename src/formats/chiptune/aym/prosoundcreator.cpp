@@ -8,28 +8,28 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/prosoundcreator.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <indices.h>
-#include <iterator.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <strings/format.h>
-#include <strings/optimize.h>
-#include <strings/trim.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "strings/casing.h"
+#include "strings/format.h"
+#include "strings/optimize.h"
+#include "strings/trim.h"
+#include "tools/indices.h"
+#include "tools/iterators.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <array>
 #include <cctype>
 #include <cstring>
-// boost includes
-#include <boost/algorithm/string/predicate.hpp>
 
 namespace Formats::Chiptune
 {
@@ -37,9 +37,9 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::ProSoundCreator");
 
-    const Char EDITOR[] = "Pro Sound Creator v%1%";
-    const Char EDITOR_OLD[] = "Pro Sound Creator v1.00-1.03";
-    const Char EDITOR_NEW[] = "Pro Sound Creator v1.04-1.07";
+    constexpr auto EDITOR = "Pro Sound Creator v{}"sv;
+    const auto EDITOR_OLD = "Pro Sound Creator v1.00-1.03"sv;
+    const auto EDITOR_NEW = "Pro Sound Creator v1.04-1.07"sv;
 
     const std::size_t MIN_MODULE_SIZE = 256;
     const std::size_t MAX_MODULE_SIZE = 0x4200;
@@ -85,8 +85,6 @@ namespace Formats::Chiptune
     const uint8_t PSC_ID_0[] = {'P', 'S', 'C', ' ', 'V'};
     const uint8_t PSC_ID_1[] = {' ', 'C', 'O', 'M', 'P', 'I', 'L', 'A', 'T', 'I', 'O', 'N', ' ', 'O', 'F', ' '};
 
-    const Char BY_DELIMITER[] = {'B', 'Y', 0};
-
     struct RawId
     {
       uint8_t Identifier1[5];       //'PSC V'
@@ -106,8 +104,9 @@ namespace Formats::Chiptune
 
       bool HasAuthor() const
       {
-        const auto trimId = Strings::TrimSpaces(Identifier3);
-        return boost::algorithm::iequals(trimId, BY_DELIMITER);
+        const auto BY_DELIMITER = "BY"sv;
+        const auto trimId = Strings::TrimSpaces(MakeStringView(Identifier3));
+        return Strings::EqualNoCaseAscii(trimId, BY_DELIMITER);
       }
 
       uint_t GetVersion() const
@@ -479,7 +478,7 @@ namespace Formats::Chiptune
 
       void Add(std::size_t offset, std::size_t size) const
       {
-        Dbg(" Affected range %1%..%2%", offset, offset + size);
+        Dbg(" Affected range {}..{}", offset, offset + size);
         Require(TotalRanges->AddRange(offset, size));
       }
 
@@ -508,14 +507,15 @@ namespace Formats::Chiptune
 
     Traits GetOldVersionTraits(const RawHeader& hdr)
     {
-      const String programName = hdr.Id.Check() ? Strings::Format(EDITOR, StringView(hdr.Id.Version)) : EDITOR_OLD;
-      const Traits res = {programName, 0, 0};
-      return res;
+      String programName = hdr.Id.Check() ? Strings::Format(EDITOR, MakeStringView(hdr.Id.Version))
+                                          : String{EDITOR_OLD};
+      return {std::move(programName), 0, 0};
     }
 
     Traits GetNewVersionTraits(const RawHeader& hdr)
     {
-      String programName = hdr.Id.Check() ? Strings::Format(EDITOR, StringView(hdr.Id.Version)) : EDITOR_NEW;
+      String programName = hdr.Id.Check() ? Strings::Format(EDITOR, MakeStringView(hdr.Id.Version))
+                                          : String{EDITOR_NEW};
       return {std::move(programName), hdr.OrnamentsTableOffset, sizeof(hdr)};
     }
 
@@ -537,7 +537,8 @@ namespace Formats::Chiptune
     public:
       uint_t Add(const RawPattern& pat)
       {
-        const auto begin = Container.begin(), end = Container.end();
+        const auto begin = Container.begin();
+        const auto end = Container.end();
         const auto it = std::find_if(
             begin, end, [&pat](const RawPattern& rh) { return pat.Size == rh.Size && pat.Offsets == rh.Offsets; });
         if (it != end)
@@ -551,13 +552,13 @@ namespace Formats::Chiptune
         return newIdx;
       }
 
-      typedef std::vector<RawPattern> ContainerType;
+      using ContainerType = std::vector<RawPattern>;
 
-      typedef RangeIterator<ContainerType::const_iterator> Iterator;
+      using Iterator = RangeIterator<ContainerType::const_iterator>;
 
       Iterator Get() const
       {
-        return Iterator(Container.begin(), Container.end());
+        return {Container.begin(), Container.end()};
       }
 
     private:
@@ -589,7 +590,7 @@ namespace Formats::Chiptune
           }
           else
           {
-            meta.SetTitle(Strings::OptimizeAscii(StringView(Source.Id.Title.data(), &Source.Id.Author.back() + 1)));
+            meta.SetTitle(Strings::OptimizeAscii(MakeStringView(Source.Id.Title.data(), &Source.Id.Author.back() + 1)));
           }
         }
       }
@@ -613,7 +614,7 @@ namespace Formats::Chiptune
           const uint_t patIndex = patterns.Add(pat);
           positions.Lines.push_back(patIndex);
         }
-        Dbg("Positions: %1% entries, loop to %2%", positions.GetSize(), positions.GetLoop());
+        Dbg("Positions: {} entries, loop to {}", positions.GetSize(), positions.GetLoop());
         builder.SetPositions(std::move(positions));
         return patterns;
       }
@@ -624,7 +625,7 @@ namespace Formats::Chiptune
         for (PatternsSet::Iterator it = patterns.Get(); it; ++it)
         {
           const RawPattern& pat = *it;
-          Dbg("Parse pattern %1%", pat.Index);
+          Dbg("Parse pattern {}", pat.Index);
           if (ParsePattern(pat, builder))
           {
             hasValidPatterns = true;
@@ -635,12 +636,12 @@ namespace Formats::Chiptune
 
       void ParseSamples(const Indices& samples, Builder& builder) const
       {
-        Dbg("Samples: %1% to parse", samples.Count());
+        Dbg("Samples: {} to parse", samples.Count());
         const std::size_t samplesTableStart = sizeof(RawHeader);
         for (Indices::Iterator it = samples.Items(); it; ++it)
         {
           const uint_t samIdx = *it;
-          Dbg("Parse sample %1%", samIdx);
+          Dbg("Parse sample {}", samIdx);
           const std::size_t offsetAddr = samplesTableStart + samIdx * sizeof(uint16_t);
           const std::size_t sampleAddr = Trait.SamplesBase + GetServiceObject<le_uint16_t>(offsetAddr);
           builder.SetSample(samIdx, ParseSample(sampleAddr));
@@ -649,7 +650,7 @@ namespace Formats::Chiptune
 
       void ParseOrnaments(const Indices& ornaments, Builder& builder) const
       {
-        Dbg("Ornaments: %1% to parse", ornaments.Count());
+        Dbg("Ornaments: {} to parse", ornaments.Count());
         // Some of the modules (e.g. Story Map.psc) references more ornaments than really stored
         const std::size_t ornamentsTableStart = Source.OrnamentsTableOffset;
         const std::size_t ornamentsTableEnd = Source.SamplesStart;
@@ -659,14 +660,14 @@ namespace Formats::Chiptune
           const uint_t ornIdx = *it;
           if (ornIdx < maxOrnaments)
           {
-            Dbg("Parse ornament %1%", ornIdx);
+            Dbg("Parse ornament {}", ornIdx);
             const std::size_t offsetAddr = ornamentsTableStart + ornIdx * sizeof(uint16_t);
             const std::size_t ornamentAddr = Trait.OrnamentsBase + GetServiceObject<le_uint16_t>(offsetAddr);
             builder.SetOrnament(ornIdx, ParseOrnament(ornamentAddr));
           }
           else
           {
-            Dbg("Parse stub ornament %1%", ornIdx);
+            Dbg("Parse stub ornament {}", ornIdx);
             builder.SetOrnament(ornIdx, Ornament());
           }
         }
@@ -726,15 +727,11 @@ namespace Formats::Chiptune
       {
         struct ChannelState
         {
-          std::size_t Offset;
-          uint_t Period;
-          uint_t Counter;
+          std::size_t Offset = 0;
+          uint_t Period = 0;
+          uint_t Counter = 0;
 
-          ChannelState()
-            : Offset()
-            , Period()
-            , Counter()
-          {}
+          ChannelState() = default;
 
           void Skip(uint_t toSkip)
           {
@@ -750,7 +747,6 @@ namespace Formats::Chiptune
         std::array<ChannelState, 3> Channels;
 
         explicit ParserState(const DataCursors& src)
-          : Channels()
         {
           for (std::size_t idx = 0; idx != src.size(); ++idx)
           {
@@ -798,7 +794,7 @@ namespace Formats::Chiptune
           const std::size_t start = rangesStarts[chanNum];
           if (start >= Data.Size())
           {
-            Dbg("Invalid offset (%1%)", start);
+            Dbg("Invalid offset ({})", start);
           }
           else
           {
@@ -924,7 +920,7 @@ namespace Formats::Chiptune
 
       Sample ParseSample(std::size_t offset) const
       {
-        const RawSample& src = GetObject<RawSample>(offset);
+        const auto& src = GetObject<RawSample>(offset);
         Sample result;
         const std::size_t availSize = (Data.Size() - offset) / sizeof(RawSample::Line);
         for (std::size_t idx = 0, lim = std::min(availSize, MAX_SAMPLE_SIZE); idx != lim; ++idx)
@@ -958,7 +954,7 @@ namespace Formats::Chiptune
 
       Ornament ParseOrnament(std::size_t offset) const
       {
-        const RawOrnament& src = GetObject<RawOrnament>(offset);
+        const auto& src = GetObject<RawOrnament>(offset);
         Ornament result;
         const std::size_t availSize = (Data.Size() - offset) / sizeof(RawOrnament::Line);
         for (std::size_t idx = 0, lim = std::min(availSize, MAX_ORNAMENT_SIZE); idx != lim; ++idx)
@@ -1055,11 +1051,7 @@ namespace Formats::Chiptune
           return false;
         }
         const std::size_t samplesSize = GetAreaSize(SAMPLES);
-        if (samplesSize == Undefined || samplesSize < sizeof(RawSample))
-        {
-          return false;
-        }
-        return true;
+        return samplesSize != Undefined && samplesSize >= sizeof(RawSample);
       }
 
       bool CheckOrnaments() const
@@ -1070,11 +1062,7 @@ namespace Formats::Chiptune
           return false;
         }
         const std::size_t samplesSize = GetAreaSize(ORNAMENTS);
-        if (samplesSize == Undefined || samplesSize < sizeof(RawOrnament))
-        {
-          return false;
-        }
-        return true;
+        return samplesSize != Undefined && samplesSize >= sizeof(RawOrnament);
       }
 
       bool CheckPositions() const
@@ -1123,7 +1111,7 @@ namespace Formats::Chiptune
       return data.SubView(0, MAX_MODULE_SIZE);
     }
 
-    const Char DESCRIPTION[] = "Pro Sound Creator v1.xx";
+    const auto DESCRIPTION = "Pro Sound Creator v1.xx"sv;
     const auto FORMAT =
         "?{69}"    // Id
         "?00"      // uint16_t SamplesStart;TODO
@@ -1131,7 +1119,7 @@ namespace Formats::Chiptune
         "03-1f"    // uint8_t Tempo;
         "50-9000"  // uint16_t OrnamentsTableOffset;
         "08-cf00"  // first sample
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -1140,7 +1128,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MIN_MODULE_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }

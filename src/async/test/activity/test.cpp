@@ -8,12 +8,17 @@
  *
  **/
 
-#include <async/activity.h>
+#include "async/activity.h"
+
+#include "make_ptr.h"
+
 #include <iostream>
-#include <make_ptr.h>
 #include <thread>
 
-#define FILE_TAG 238D7960
+bool operator!=(const Error& lh, const Error& rh)
+{
+  return lh.ToString() != rh.ToString();
+}
 
 namespace
 {
@@ -21,12 +26,12 @@ namespace
 
   Error FailedToPrepareError()
   {
-    return Error(THIS_LINE, "Failed to prepare");
+    return {THIS_LINE, "Failed to prepare"};
   }
 
   Error FailedToExecuteError()
   {
-    return Error(THIS_LINE, "Failed to execute");
+    return {THIS_LINE, "Failed to execute"};
   }
 
   class InvalidOperation : public Operation

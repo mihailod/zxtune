@@ -8,14 +8,13 @@
  *
  **/
 
-// local includes
+#include "async/activity.h"
+
 #include "async/src/event.h"
-// common includes
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <async/activity.h>
-// std includes
+
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <cassert>
 #include <thread>
 
@@ -32,7 +31,7 @@ namespace Async
   class ThreadActivity : public Activity
   {
   public:
-    typedef std::shared_ptr<ThreadActivity> Ptr;
+    using Ptr = std::shared_ptr<ThreadActivity>;
 
     explicit ThreadActivity(Operation::Ptr op)
       : Oper(std::move(op))
@@ -112,7 +111,7 @@ namespace Async
 {
   Activity::Ptr Activity::Create(Operation::Ptr operation)
   {
-    const ThreadActivity::Ptr result = MakePtr<ThreadActivity>(operation);
+    auto result = MakePtr<ThreadActivity>(std::move(operation));
     result->Start();
     return result;
   }

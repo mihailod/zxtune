@@ -8,18 +8,18 @@
  *
  **/
 
-// local includes
-#include "search_dialog.h"
-#include "playlist/ui/table_view.h"
+#include "apps/zxtune-qt/playlist/ui/desktop/search_dialog.h"
+
+#include "apps/zxtune-qt/playlist/ui/table_view.h"
+#include "apps/zxtune-qt/ui/state.h"
 #include "search_dialog.ui.h"
-#include "ui/state.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
+
+#include "contract.h"
+#include "make_ptr.h"
 
 namespace
 {
-  const Char SEARCH_NAMESPACE[] = {'S', 'e', 'a', 'r', 'c', 'h', '\0'};
+  const auto SEARCH_NAMESPACE = "Search"sv;
 
   // TODO: extract to common place
   void UpdateRecent(QComboBox& box)
@@ -82,33 +82,30 @@ namespace
   };
 }  // namespace
 
-namespace Playlist
+namespace Playlist::UI
 {
-  namespace UI
+  SearchDialog::SearchDialog(QWidget& parent)
+    : QDialog(&parent)
+  {}
+
+  SearchDialog::Ptr SearchDialog::Create(QWidget& parent)
   {
-    SearchDialog::SearchDialog(QWidget& parent)
-      : QDialog(&parent)
-    {}
+    return MakePtr<SearchDialogImpl>(parent);
+  }
 
-    SearchDialog::Ptr SearchDialog::Create(QWidget& parent)
-    {
-      return MakePtr<SearchDialogImpl>(parent);
-    }
+  Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent)
+  {
+    return ExecuteSearchDialog(parent, Model::IndexSet::Ptr());
+  }
 
-    Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent)
+  Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent, const Model::IndexSet::Ptr& scope)
+  {
+    const SearchDialog::Ptr dialog = SearchDialog::Create(parent);
+    Playlist::Item::Search::Data data;
+    if (!dialog->Execute(data))
     {
-      return ExecuteSearchDialog(parent, Model::IndexSet::Ptr());
+      return {};
     }
-
-    Playlist::Item::SelectionOperation::Ptr ExecuteSearchDialog(QWidget& parent, Model::IndexSet::Ptr scope)
-    {
-      const SearchDialog::Ptr dialog = SearchDialog::Create(parent);
-      Playlist::Item::Search::Data data;
-      if (!dialog->Execute(data))
-      {
-        return Playlist::Item::SelectionOperation::Ptr();
-      }
-      return scope ? Playlist::Item::CreateSearchOperation(scope, data) : Playlist::Item::CreateSearchOperation(data);
-    }
-  }  // namespace UI
-}  // namespace Playlist
+    return scope ? Playlist::Item::CreateSearchOperation(scope, data) : Playlist::Item::CreateSearchOperation(data);
+  }
+}  // namespace Playlist::UI

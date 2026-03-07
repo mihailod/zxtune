@@ -8,17 +8,16 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <numeric>
 
 namespace Formats::Packed
@@ -30,7 +29,7 @@ namespace Formats::Packed
     const std::size_t MIN_SIZE = 256;
     const std::size_t MAX_DECODED_SIZE = 0xc000;
 
-    const Char DESCRIPTION[] = "MegaLZ";
+    const auto DESCRIPTION = "MegaLZ"sv;
     // assume that packed data are located right after depacked
     // prologue is ignored due to standard absense
     const auto DEPACKER_PATTERN =
@@ -55,15 +54,13 @@ namespace Formats::Packed
         "0c"      // inc c
         "280f"    // jr z,xxxx
         "013f03"  // ld bc,#033f
-        ""_sv;
+        ""sv;
 
     class Bitstream : private ByteStream
     {
     public:
       explicit Bitstream(Binary::View data)
         : ByteStream(data.As<uint8_t>(), data.Size())
-        , Bits()
-        , Mask(0)
       {}
 
       uint8_t GetByte()
@@ -118,8 +115,8 @@ namespace Formats::Packed
       using ByteStream::GetProcessedBytes;
 
     private:
-      uint_t Bits;
-      uint_t Mask;
+      uint_t Bits = 0;
+      uint_t Mask = 0;
     };
 
     class DataDecoder
@@ -128,19 +125,17 @@ namespace Formats::Packed
       explicit DataDecoder(Binary::View data)
         : IsValid(data.Size() >= MIN_SIZE)
         , Stream(data.SubView(DEPACKER_SIZE))
-        , Result(new Binary::Dump())
-        , Decoded(*Result)
       {
         if (IsValid)
         {
-          Decoded.reserve(data.Size() * 2);
+          Decoded = Binary::DataBuilder(data.Size() * 2);
           IsValid = DecodeData();
         }
       }
 
-      std::unique_ptr<Binary::Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid ? std::move(Result) : std::unique_ptr<Binary::Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
 
       std::size_t GetUsedSize() const
@@ -153,12 +148,12 @@ namespace Formats::Packed
       {
         try
         {
-          Decoded.push_back(Stream.GetByte());
-          while (Decoded.size() < MAX_DECODED_SIZE)
+          Decoded.AddByte(Stream.GetByte());
+          while (Decoded.Size() < MAX_DECODED_SIZE)
           {
             if (Stream.GetBit())
             {
-              Decoded.push_back(Stream.GetByte());
+              Decoded.AddByte(Stream.GetByte());
               continue;
             }
             const uint_t code = Stream.GetBits(2);
@@ -182,7 +177,7 @@ namespace Formats::Packed
               const uint_t len = Stream.GetLen();
               if (len == 9)
               {
-                Require(Decoded.size() >= MIN_DECODED_SIZE);
+                Require(Decoded.Size() >= MIN_DECODED_SIZE);
                 return true;
               }
               else
@@ -202,8 +197,7 @@ namespace Formats::Packed
     private:
       bool IsValid;
       Bitstream Stream;
-      std::unique_ptr<Binary::Dump> Result;
-      Binary::Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
   }  // namespace MegaLZ
 
@@ -214,7 +208,7 @@ namespace Formats::Packed
       : Depacker(Binary::CreateFormat(MegaLZ::DEPACKER_PATTERN, MegaLZ::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return MegaLZ::DESCRIPTION;
     }
@@ -229,7 +223,7 @@ namespace Formats::Packed
       const Binary::View data(rawData);
       if (!Depacker->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       MegaLZ::DataDecoder decoder(data.SubView(0, MegaLZ::MAX_DECODED_SIZE));
       return CreateContainer(decoder.GetResult(), decoder.GetUsedSize());

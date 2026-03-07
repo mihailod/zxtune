@@ -8,17 +8,16 @@
  *
  **/
 
-// local includes
-#include "overlay_progress.h"
-// library includes
-#include <time/elapsed.h>
-// std includes
+#include "apps/zxtune-qt/ui/controls/overlay_progress.h"
+
+#include "time/elapsed.h"
+
+#include <QtGui/QMouseEvent>
+#include <QtGui/QPainter>
+
 #include <array>
 #include <cmath>
 #include <utility>
-// qt includes
-#include <QtGui/QMouseEvent>
-#include <QtGui/QPainter>
 
 namespace
 {
@@ -35,7 +34,6 @@ namespace
     explicit OverlayProgressImpl(QWidget& parent)
       : OverlayProgress(parent)
       , Palette()
-      , Value()
       , RefreshTimeout(Time::Milliseconds(1000))
     {
       setPalette(Qt::transparent);
@@ -139,7 +137,7 @@ namespace
     const QPalette Palette;
     QPoint Center;
     std::array<QLineF, STEPS_MAX> Lines;
-    int Value;
+    int Value = 0;
     Time::Elapsed RefreshTimeout;
   };
 }  // namespace

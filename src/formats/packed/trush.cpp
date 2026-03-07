@@ -10,19 +10,18 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/hrust1_bitstream.h"
 #include "formats/packed/pack_utils.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-#include <math/numeric.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+#include "math/numeric.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <cstring>
 
 namespace Formats::Packed
@@ -31,7 +30,7 @@ namespace Formats::Packed
   {
     const std::size_t MAX_DECODED_SIZE = 0xc000;
 
-    const Char DESCRIPTION[] = "Trush Compressor v3.x";
+    const auto DESCRIPTION = "Trush Compressor v3.x"sv;
     // Head and tail are delimited by optional signature (some versions store additional code there)
 
     // At least two different prefixes
@@ -57,7 +56,7 @@ namespace Formats::Packed
         "01??"         // ld bc,xxxx ;size of body
         "d5"           // push de
         "c3??"         // jp xxxx
-        ""_sv;
+        ""sv;
 
     const std::size_t HEAD_SIZE = 0x27;
 
@@ -100,7 +99,7 @@ namespace Formats::Packed
                 "?"      //ei/nop |         |
                 "?"      //ret    |         | nop
                 */
-        ""_sv;
+        ""sv;
 
     const std::size_t BODY_SIZE = 0xce;
 
@@ -178,8 +177,6 @@ namespace Formats::Packed
       explicit DataDecoder(const Container& container)
         : IsValid(container.FastCheck())
         , Stream(container.GetPackedData(), container.GetPackedSize())
-        , Result(new Binary::Dump())
-        , Decoded(*Result)
       {
         if (IsValid && !Stream.Eof())
         {
@@ -187,22 +184,22 @@ namespace Formats::Packed
         }
       }
 
-      std::unique_ptr<Binary::Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid ? std::move(Result) : std::unique_ptr<Binary::Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
 
     private:
       bool DecodeData()
       {
-        Decoded.reserve(Stream.GetRestBytes() * 2);
+        Decoded = Binary::DataBuilder(Stream.GetRestBytes() * 2);
 
-        while (!Stream.Eof() && Decoded.size() < MAX_DECODED_SIZE)
+        while (!Stream.Eof() && Decoded.Size() < MAX_DECODED_SIZE)
         {
           //%0 - put byte
           if (!Stream.GetBit())
           {
-            Decoded.push_back(Stream.GetByte());
+            Decoded.AddByte(Stream.GetByte());
             continue;
           }
           uint_t code = Stream.GetBits(2);
@@ -286,8 +283,7 @@ namespace Formats::Packed
     private:
       bool IsValid;
       Hrust1Bitstream Stream;
-      std::unique_ptr<Binary::Dump> Result;
-      Binary::Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
   }  // namespace Trush
 
@@ -300,7 +296,7 @@ namespace Formats::Packed
                                                Trush::HEAD_SIZE, Trush::MAX_HEAD_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Trush::DESCRIPTION;
     }
@@ -314,12 +310,12 @@ namespace Formats::Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const Trush::Container container(rawData.Start(), rawData.Size(), DepackerBody->NextMatchOffset(rawData));
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       Trush::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), container.GetUsedSize());

@@ -1,44 +1,48 @@
-// library includes
-#include <binary/data_builder.h>
-#include <formats/chiptune/multidevice/multitrackcontainer.h>
-#include <module/attributes.h>
-#include <platform/version/api.h>
-#include <strings/format.h>
-// std includes
+#include "formats/chiptune/multidevice/multitrackcontainer.h"
+
+#include "binary/data_builder.h"
+#include "module/attributes.h"
+#include "platform/version/api.h"
+#include "strings/format.h"
+
+#include "string_view.h"
+
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 
 namespace Platform::Version
 {
-  extern const Char PROGRAM_NAME[] = {'m', 't', 'c', 't', 'o', 'o', 'l', 0};
+  const StringView PROGRAM_NAME = "mtctool"sv;
 }
 
 namespace
 {
-  Binary::Container::Ptr OpenFile(const std::string& name)
+  template<class Stream>
+  Stream OpenStream(StringView name)
   {
-    std::ifstream stream(name.c_str(), std::ios::binary);
-    if (!stream)
+    Stream result(String{name}.c_str(), std::ios::binary);
+    if (!result)
     {
-      throw std::runtime_error("Failed to open " + name);
+      throw std::runtime_error("Failed to open "s + name);
     }
+    return result;
+  }
+
+  Binary::Container::Ptr OpenFile(StringView name)
+  {
+    auto stream = OpenStream<std::ifstream>(name);
     stream.seekg(0, std::ios_base::end);
     const std::size_t size = stream.tellg();
     stream.seekg(0);
     Binary::DataBuilder data(size);
-    std::unique_ptr<Binary::Dump> tmp(new Binary::Dump(size));
     stream.read(static_cast<char*>(data.Allocate(size)), size);
     return data.CaptureResult();
   }
 
-  void WriteFile(Binary::View data, const std::string& name)
+  void WriteFile(Binary::View data, StringView name)
   {
-    std::ofstream stream(name.c_str(), std::ios::binary);
-    if (!stream)
-    {
-      throw std::runtime_error("Failed to open " + name);
-    }
+    auto stream = OpenStream<std::ofstream>(name);
     stream.write(static_cast<const char*>(data.Start()), data.Size());
   }
 
@@ -48,15 +52,14 @@ namespace
     CmdlineIterator(int argc, const char* argv[])
       : Argc(argc)
       , Argv(argv)
-      , Pos()
     {}
 
-    std::string Executable() const
+    StringView Executable() const
     {
       return *Argv;
     }
 
-    std::string operator*() const
+    StringView operator*() const
     {
       CheckIsValid();
       return Argv[Pos];
@@ -76,10 +79,9 @@ namespace
       return copy;
     }
 
-    typedef void (*BoolType)();
-    operator BoolType() const
+    explicit operator bool() const
     {
-      return IsValid() ? &std::abort : nullptr;
+      return IsValid();
     }
 
   private:
@@ -99,51 +101,50 @@ namespace
   private:
     const int Argc;
     const char** Argv;
-    int Pos;
+    int Pos = 0;
   };
 
-  std::string GetFilename(const std::string& path)
+  StringView GetFilename(StringView path)
   {
-    const std::string::size_type delimPos = path.find_last_of("/\\");
-    return delimPos == std::string::npos ? path : path.substr(delimPos + 1);
+    const auto delimPos = path.find_last_of("/\\");
+    return delimPos == path.npos ? path : path.substr(delimPos + 1);
   }
 
   void Create(CmdlineIterator& arg)
   {
-    const std::string& file = *arg++;
-    const Formats::Chiptune::MultiTrackContainer::ContainerBuilder::Ptr builder =
-        Formats::Chiptune::MultiTrackContainer::CreateBuilder();
+    const auto file = *arg++;
+    const auto builder = Formats::Chiptune::MultiTrackContainer::CreateBuilder();
     builder->SetProperty(Module::ATTR_PROGRAM, Platform::Version::GetProgramVersionString());
     uint_t track = 0;
     while (arg)
     {
-      const std::string& cmd = *arg++;
-      if (cmd == "--track")
+      const auto cmd = *arg++;
+      if (cmd == "--track"sv)
       {
         builder->StartTrack(track++);
       }
-      else if (cmd == "--title")
+      else if (cmd == "--title"sv)
       {
         builder->SetTitle(*arg++);
       }
-      else if (cmd == "--author")
+      else if (cmd == "--author"sv)
       {
         builder->SetAuthor(*arg++);
       }
-      else if (cmd == "--annotation")
+      else if (cmd == "--annotation"sv)
       {
         builder->SetAnnotation(*arg++);
       }
-      else if (cmd == "--property")
+      else if (cmd == "--property"sv)
       {
-        const String& name = *arg++;
-        const String& value = *arg++;
+        const auto name = *arg++;
+        const auto value = *arg++;
         builder->SetProperty(name, value);
       }
       else
       {
-        const Binary::Container::Ptr data = OpenFile(cmd);
-        builder->SetData(data);
+        auto data = OpenFile(cmd);
+        builder->SetData(std::move(data));
         builder->SetProperty(Module::ATTR_FILENAME, GetFilename(cmd));
       }
     }
@@ -190,8 +191,8 @@ namespace
 
   void List(CmdlineIterator& arg)
   {
-    const std::string& file = *arg;
-    const Binary::Container::Ptr data = OpenFile(file);
+    const auto file = *arg;
+    const auto data = OpenFile(file);
     Printer printer;
     Formats::Chiptune::MultiTrackContainer::Parse(*data, printer);
   }
@@ -199,10 +200,7 @@ namespace
   class Extractor : public Formats::Chiptune::MultiTrackContainer::Builder
   {
   public:
-    Extractor()
-      : LastTrackIdx()
-      , LastDataIdx()
-    {}
+    Extractor() = default;
 
     void SetAuthor(StringView /*author*/) override {}
     void SetTitle(StringView /*title*/) override {}
@@ -233,8 +231,8 @@ namespace
     {
       if (LastData)
       {
-        const String& filename = LastDataName.empty() ? Strings::Format("track%u_data%u", LastTrackIdx, LastDataIdx)
-                                                      : LastDataName;
+        const auto& filename = LastDataName.empty() ? Strings::Format("track{}_data{}", LastTrackIdx, LastDataIdx)
+                                                    : LastDataName;
         std::cout << "Save " << LastData->Size() << " bytes to " << filename << std::endl;
         WriteFile(*LastData, filename);
         LastData.reset();
@@ -245,20 +243,20 @@ namespace
   private:
     Binary::Container::Ptr LastData;
     String LastDataName;
-    uint_t LastTrackIdx;
-    uint_t LastDataIdx;
+    uint_t LastTrackIdx = 0;
+    uint_t LastDataIdx = 0;
   };
 
   void Extract(CmdlineIterator& arg)
   {
-    const std::string& file = *arg;
-    const Binary::Container::Ptr data = OpenFile(file);
+    const auto file = *arg;
+    const auto data = OpenFile(file);
     Extractor extractor;
     Formats::Chiptune::MultiTrackContainer::Parse(*data, extractor);
     extractor.Flush();
   }
 
-  typedef void (*ModeFunc)(CmdlineIterator&);
+  using ModeFunc = void (*)(CmdlineIterator&);
 
   struct ModeEntry
   {
@@ -318,7 +316,7 @@ int main(int argc, const char* argv[])
       return 1;
     }
     CmdlineIterator arg(argc, argv);
-    const std::string mode = *++arg;
+    const auto mode = *++arg;
     ++arg;
     for (const auto& availMode : MODES)
     {

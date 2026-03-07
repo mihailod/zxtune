@@ -10,42 +10,39 @@
 
 #pragma once
 
-// local includes
-#include "conversion.h"
-#include "operations.h"
-// library includes
-#include <sound/service.h>
+#include "apps/zxtune-qt/playlist/supp/conversion.h"
+#include "apps/zxtune-qt/playlist/supp/operations.h"
 
-namespace Playlist
+#include "sound/service.h"
+
+#include "string_view.h"
+
+namespace Playlist::Item
 {
-  namespace Item
+  // export
+  class ConversionResultNotification : public Playlist::TextNotification
   {
-    // export
-    class ConversionResultNotification : public Playlist::TextNotification
-    {
-    public:
-      typedef std::shared_ptr<ConversionResultNotification> Ptr;
+  public:
+    using Ptr = std::shared_ptr<ConversionResultNotification>;
 
-      virtual void AddSucceed() = 0;
-      virtual void AddFailedToOpen(const String& path) = 0;
-      virtual void AddFailedToConvert(const String& path, const Error& err) = 0;
-    };
+    virtual void AddSucceed() = 0;
+    virtual void AddFailedToOpen(StringView path) = 0;
+    virtual void AddFailedToConvert(StringView path, const Error& err) = 0;
+  };
 
-    TextResultOperation::Ptr CreateSoundFormatConvertOperation(Playlist::Model::IndexSet::Ptr items, const String& type,
-                                                               Sound::Service::Ptr service,
-                                                               ConversionResultNotification::Ptr result);
+  TextResultOperation::Ptr CreateSoundFormatConvertOperation(Playlist::Model::IndexSet::Ptr items, StringView type,
+                                                             Sound::Service::Ptr service,
+                                                             ConversionResultNotification::Ptr result);
 
-    TextResultOperation::Ptr CreateExportOperation(const String& nameTemplate, Parameters::Accessor::Ptr params,
-                                                   ConversionResultNotification::Ptr result);
-    TextResultOperation::Ptr CreateExportOperation(Playlist::Model::IndexSet::Ptr items, const String& nameTemplate,
-                                                   Parameters::Accessor::Ptr params,
-                                                   ConversionResultNotification::Ptr result);
+  TextResultOperation::Ptr CreateExportOperation(StringView nameTemplate, Parameters::Accessor::Ptr params,
+                                                 ConversionResultNotification::Ptr result);
+  TextResultOperation::Ptr CreateExportOperation(Playlist::Model::IndexSet::Ptr items, StringView nameTemplate,
+                                                 Parameters::Accessor::Ptr params,
+                                                 ConversionResultNotification::Ptr result);
 
-    // dispatcher over factories described above
-    TextResultOperation::Ptr CreateConvertOperation(Playlist::Model::IndexSet::Ptr items,
-                                                    const Conversion::Options& opts,
-                                                    ConversionResultNotification::Ptr result);
-    TextResultOperation::Ptr CreateConvertOperation(const Conversion::Options& opts,
-                                                    ConversionResultNotification::Ptr result);
-  }  // namespace Item
-}  // namespace Playlist
+  // dispatcher over factories described above
+  TextResultOperation::Ptr CreateConvertOperation(Playlist::Model::IndexSet::Ptr items, const Conversion::Options& opts,
+                                                  ConversionResultNotification::Ptr result);
+  TextResultOperation::Ptr CreateConvertOperation(const Conversion::Options& opts,
+                                                  ConversionResultNotification::Ptr result);
+}  // namespace Playlist::Item
