@@ -26,7 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #undef _UNICODE
 #undef min
 
-#include <core/plugins/player_plugins_enumerator.h>
+#include <core/plugins/player_plugin.h>
 
 
 static const GUID player_plugins_disabled_guid = { 0xe8d7b860, 0x5a8b, 0x4954, { 0xb4, 0x7d, 0x4c, 0x9f, 0xfb, 0x23, 0xd0, 0xfc } };
@@ -34,7 +34,7 @@ static cfg_string player_plugins_disabled_cfg(player_plugins_disabled_guid, "");
 
 static pfc::string8 PlayerPluginHash(const ZXTune::PlayerPlugin::Ptr& pp)
 {
-	auto d = pp->GetDescription()->Description();
+	auto d = pp->Description();
 	auto hash = static_api_ptr_t<hasher_md5>()->process_single_string(d.c_str()).asString();
 	if(hash.length() > 8)
 		hash.truncate(8);
@@ -109,8 +109,8 @@ private:
 				auto pp = ZXTune::player_plugins[item];
 				switch(subItem)
 				{
-				case 1: out = pp->GetDescription()->Id().c_str();			return true;
-				case 2: out = pp->GetDescription()->Description().c_str();	return true;
+				case 1: out = pp->Id().c_str();			return true;
+				case 2: out = pp->Description().c_str();	return true;
 				default: return false;
 				}
 			}
@@ -134,7 +134,7 @@ private:
 
 BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM)
 {
-	ZXTune::PlayerPluginsEnumerator::Create()->Enumerate(); // gather all plugins if not gathered yet
+	ZXTune::PlayerPlugin::Enumerate(); // gather all plugins if not gathered yet
 	for(auto p = ZXTune::player_plugins.begin(); p != ZXTune::player_plugins.end(); ++p)
 	{
 		if(!ZXTune::PlayerPluginEnabled(*p))

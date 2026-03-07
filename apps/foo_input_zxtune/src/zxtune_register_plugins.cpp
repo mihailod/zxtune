@@ -17,6 +17,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <core/plugins/archives/plugins.h>
 #include <core/plugins/players/plugins_list.h>
+#include <core/plugins/player_plugins_registrator.h>
+#include <core/plugins/archive_plugins_registrator.h>
+#include <vector>
+#include <algorithm>
 
 namespace ZXTune
 {
@@ -93,26 +97,36 @@ void RegisterPlayerPlugins(PlayerPluginsRegistrator& registrator)
 	RegisterCOPSupport(ppf);
 	RegisterTFESupport(ppf);
 	RegisterXMPPlugins(ppf);
-	RegisterSIDPlugins(ppf);
 	RegisterET1Support(ppf);
 	RegisterAYCSupport(ppf);
 	RegisterSPCSupport(ppf);
 	RegisterMTCSupport(ppf);
-	RegisterGMEPlugins(ppf);
 	RegisterAHXSupport(ppf);
 	RegisterPSFSupport(ppf);
 	RegisterUSFSupport(ppf);
 	RegisterGSFSupport(ppf);
 	Register2SFSupport(ppf);
+	RegisterNCSFSupport(ppf);
 	RegisterSDSFSupport(ppf);
-	RegisterASAPPlugins(ppf);
 	RegisterV2MSupport(ppf);
 	RegisterVGMPlugins(ppf);
+	RegisterMPTPlugins(ppf);
+	
+	struct APR : public ArchivePluginsRegistrator
+	{
+		virtual void RegisterPlugin(typename ArchivePlugin::Ptr plugin) {}
+	};
+	APR apr;
+	RegisterSIDPlugins(ppf, apr);
+	RegisterGMEPlugins(ppf, apr);
+	RegisterASAPPlugins(ppf, apr);
+	RegisterVGMStreamPlugins(ppf, apr);
+	
 	ppf.Filter(&registrator);
 	std::stable_sort(player_plugins.begin(), player_plugins.end(),
 		[](const PlayerPlugin::Ptr& p1, const PlayerPlugin::Ptr& p2)
 		{
-			return p1->GetDescription()->Id() < p2->GetDescription()->Id();
+			return p1->Id() < p2->Id();
 		}
 	);
 }

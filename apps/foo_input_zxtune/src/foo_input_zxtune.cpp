@@ -24,7 +24,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //library includes
 #include <binary/container_factories.h>
-#include <core/module_open.h>
 #include <core/module_detect.h>
 #include <core/additional_files_resolve.h>
 #include <core/plugins/player_plugin.h>
@@ -122,7 +121,6 @@ public:
 private:
 	void ParseModules(abort_callback& p_abort);
 	std::string SubName(t_uint32 p_subsong);
-	double FrameDuration(Parameters::Accessor::Ptr props) const;
 
 private:
 	pfc::array_t<t_uint8>	m_buffer;
@@ -157,7 +155,7 @@ void input_zxtune::open(service_ptr_t<file> p_filehint, const char * p_path,t_in
 	m_file = p_filehint;//p_filehint may be null, hence next line
 	input_open_file_helper(m_file,p_path,p_reason,p_abort);//if m_file is null, opens file with appropriate privileges for our operation (read/write for writing tags, read-only otherwise).
 	t_size size = (t_size)m_file->get_size(p_abort);
-	std::unique_ptr<Dump> data(new Dump(size));
+	auto data = std::make_unique<Binary::Dump>(size);
 	m_file->read(&data->front(), size, p_abort);
 	input_file = Binary::CreateContainer(std::move(data));
 	if(!input_file)
@@ -179,7 +177,7 @@ public:
 		service_ptr_t<file> file;
 		input_open_file_helper(file, file_path.c_str(), input_open_info_read, m_abort);
 		t_size size = (t_size)file->get_size(m_abort);
-		std::unique_ptr<Dump> data(new Dump(size));
+		auto data = std::make_unique<Binary::Dump>(size);
 		file->read(&data->front(), size, m_abort);
 		auto input_file = Binary::CreateContainer(std::move(data));
 		if(!input_file)
@@ -195,11 +193,15 @@ void input_zxtune::ParseModules(abort_callback& p_abort)
 	struct ModuleDetector : public Module::DetectCallback, public FoobarFilesSource
 	{
 		ModuleDetector(Modules* _mods, abort_callback& _abort, const std::string& _file_path) : modules(_mods), FoobarFilesSource(_abort, _file_path) {}
-		virtual void ProcessModule(ZXTune::DataLocation::Ptr location, ZXTune::Plugin::Ptr, Module::Holder::Ptr holder) const
+		Parameters::Container::Ptr CreateInitialProperties(const String&) const override
+		{
+			return Parameters::Container::Create();
+		}
+		virtual void ProcessModule(const ZXTune::DataLocation& location, const ZXTune::Plugin&, Module::Holder::Ptr holder) override
 		{
 			ModuleDesc m;
 			m.module = holder;
-			m.subname = location->GetPath()->AsString();
+			m.subname = location.GetPath()->AsString();
 			if(m.subname.empty())
 			{
 				if(const auto files = dynamic_cast<const Module::AdditionalFiles*>(holder.get()))
@@ -209,12 +211,13 @@ void input_zxtune::ParseModules(abort_callback& p_abort)
 			}
 			modules->push_back(m);
 		}
-		virtual Log::ProgressCallback* GetProgress() const { return NULL; }
+		virtual Log::ProgressCallback* GetProgress() const override { return NULL; }
 		Modules* modules;
 	};
 
 	ModuleDetector md(&input_modules, p_abort, m_file_path);
-	Module::Detect(*params, input_file, md);
+
+	ZXTune::GetService().DetectModules(input_file, md);
 	if(input_modules.empty())
 	{
 		input_file.reset();
@@ -257,12 +260,6 @@ std::string input_zxtune::SubName(t_uint32 p_subsong)
 		return subname;
 	return std::string();
 }
-double input_zxtune::FrameDuration(Parameters::Accessor::Ptr props) const
-{
-	Parameters::IntType frameDuration = Parameters::ZXTune::Sound::FRAMEDURATION_DEFAULT;
-	props->FindValue(Parameters::ZXTune::Sound::FRAMEDURATION, frameDuration);
-	return double(frameDuration) / Parameters::ZXTune::Sound::FRAMEDURATION_PRECISION;
-}
 
 void input_zxtune::get_info(t_uint32 p_subsong, file_info & p_info,abort_callback & p_abort)
 {
@@ -288,7 +285,7 @@ void input_zxtune::get_info(t_uint32 p_subsong, file_info & p_info,abort_callbac
 	{
 		subname = SubName(p_subsong);
 		if(!input_module)
-			input_module = Module::Open(*params, input_file, subname);
+			input_module = ZXTune::GetService().OpenModule(input_file, subname, Parameters::Container::Create());
 		Module::Holder::Ptr m = input_module;
 		if(!m)
 			throw exception_io_unsupported_format();
@@ -299,7 +296,7 @@ void input_zxtune::get_info(t_uint32 p_subsong, file_info & p_info,abort_callbac
 		props = m->GetModuleProperties();
 	}
 
-	double len = mi->FramesCount() * FrameDuration(props);
+	double len = mi->Duration().CastTo<Time::Second>().Get();
 	p_info.set_length(len);
 	Parameters::IntType size;
 	if(props->FindValue(Module::ATTR_SIZE, size))
@@ -337,7 +334,7 @@ void input_zxtune::decode_initialize(t_uint32 p_subsong, unsigned p_flags, abort
 {
 	std::string subname = SubName(p_subsong);
 	if(!input_module)
-		input_module = Module::Open(*params, input_file, subname);
+		input_module = ZXTune::GetService().OpenModule(input_file, subname, Parameters::Container::Create());
 	if(!input_module)
 		throw exception_io_unsupported_format(); 
 
@@ -353,7 +350,7 @@ void input_zxtune::decode_initialize(t_uint32 p_subsong, unsigned p_flags, abort
 	Module::Information::Ptr mi = input_module->GetModuleInformation();
 	if(!mi)
 		throw exception_io_unsupported_format(); 
-	input_player = ZXTune::PlayerWrapper::Create(input_module);
+	input_player = ZXTune::PlayerWrapper::Create(*input_module);
 	if(!input_player)
 		throw exception_io_unsupported_format();
 
@@ -362,9 +359,12 @@ void input_zxtune::decode_initialize(t_uint32 p_subsong, unsigned p_flags, abort
 	if(props && props->FindValue(Module::ATTR_TYPE, type))
 	{
 		using namespace ZXTune;
-		auto it = std::find_if(player_plugins.begin(), player_plugins.end(), [&type](const PlayerPlugin::Ptr& p) { return p->GetDescription()->Id() == type; });
+		auto it = std::find_if(player_plugins.begin(), player_plugins.end(), [&type](const PlayerPlugin::Ptr& p) { return p->Id() == type; });
 		if(it != player_plugins.end())
-			console::formatter() << "ZXTune: using codec " << type.c_str() << " (" << (*it)->GetDescription()->Description().c_str() << ")";
+		{
+			console::formatter out;
+			out << "ZXTune: using codec " << type.c_str() << " (" << (*it)->Description().c_str() << ")";
+		}
 	}
 }
 bool input_zxtune::decode_run(audio_chunk & p_chunk,abort_callback & p_abort)
@@ -382,7 +382,7 @@ void input_zxtune::decode_seek(double p_seconds,abort_callback & p_abort)
 	t_uint64 s = audio_math::time_to_samples(p_seconds, raw_sample_rate);
 	Module::Information::Ptr mi = input_module->GetModuleInformation();
 	Parameters::Accessor::Ptr props = input_module->GetModuleProperties();
-	t_uint64 max_s = audio_math::time_to_samples(mi->FramesCount() * FrameDuration(props), raw_sample_rate);
+	t_uint64 max_s = audio_math::time_to_samples(mi->Duration().CastTo<Time::Second>().Get(), raw_sample_rate);
 	if(s > max_s)
 		s = max_s;
 	input_player->Seek((size_t)s);

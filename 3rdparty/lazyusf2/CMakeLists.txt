@@ -4,7 +4,7 @@ include_directories(".")
 
 set(SRCS_C
 	"ai/ai_controller.c" "api/callbacks.c" "main/main.c" "main/rom.c" "main/savestates.c"
-	"main/util.c" "memory/memory_impl.c" "pi/cart_rom.c" "pi/pi_controller.c"
+	"main/util.c" "memory/memory.c" "pi/cart_rom.c" "pi/pi_controller.c"
 	"r4300/cached_interp.c" "r4300/cp0.c" "r4300/cp1.c" "r4300/exception.c" "r4300/interupt.c"
 	"r4300/mi_controller.c" "r4300/r4300.c" "r4300/r4300_core.c" "r4300/recomp.c" "r4300/reset.c" "r4300/tlb.c"
 	"rdp/rdp_core.c"

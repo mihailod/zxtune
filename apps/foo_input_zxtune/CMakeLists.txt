@@ -4,10 +4,12 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 project(foo_input_zxtune)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-find_package(Boost REQUIRED)
-include_directories(${Boost_INCLUDE_DIRS})
+include_directories(${Boost_INCLUDE_DIR})
 add_definitions(-DHAVE_BOOST)
 add_definitions(-DNO_DEBUG_LOGS)
 
@@ -28,7 +30,6 @@ else()
 include_directories("${WTL_ROOT}/Include")
 endif()
 
-include_directories("../..")
 include_directories("../../include")
 include_directories("../../src")
 
@@ -74,7 +75,7 @@ add_subdirectory("../../src/formats/chiptune" "formats_chiptune")
 add_subdirectory("../../src/formats/packed" "formats_packed")
 add_subdirectory("../../src/formats/multitrack" "formats_multitrack")
 add_subdirectory("../../src/l10n/stub" "l10n_stub")
-add_subdirectory("../../src/module" "module")
+#add_subdirectory("../../src/module" "module")
 add_subdirectory("../../src/module/conversion" "module_conversion")
 add_subdirectory("../../src/module/players" "module_players")
 add_subdirectory("../../src/module/properties" "module_properties")
@@ -88,7 +89,7 @@ file(GLOB SRCS_CXX "src/*.cpp")
 file(GLOB SRCS_H "src/*.h")
 file(GLOB RES_RC "src/*.rc")
 
-set(LIBS asap gme he ht hvl lazyusf2 lhasa mgba sidplayfp snesspc v2m vgm vio2sf xmp z80ex zlib analysis binary binary_compression binary_format core core_plugins_archives core_plugins_players dbg devices_aym devices_beeper devices_dac devices_fm devices_saa devices_z80 formats_archived formats_archived_multitrack formats_chiptune formats_packed formats_multitrack l10n_stub module module_conversion module_players module_properties parameters platform_version sound strings tools)
+set(LIBS asap gme he ht hvl lazyusf2 lhasa mgba sidplayfp snesspc v2m vgm vio2sf xmp z80ex zlib analysis binary binary_compression binary_format core core_plugins_archives core_plugins_players dbg devices_aym devices_beeper devices_dac devices_fm devices_saa devices_z80 formats_archived formats_archived_multitrack formats_chiptune formats_packed formats_multitrack l10n_stub module_conversion module_players module_properties parameters platform_version sound strings tools)
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 set(ARCH "x64/")

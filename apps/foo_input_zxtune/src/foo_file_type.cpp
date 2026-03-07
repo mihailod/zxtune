@@ -20,7 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #undef UNICODE
 #undef min
 
-#include <core/plugins/player_plugins_enumerator.h>
+#include <core/plugins/player_plugin.h>
 
 
 static const char* containers_exts[] =
@@ -67,9 +67,9 @@ const std::vector<std::string>& SupportedExts()
 			if(find(res.begin(), res.end(), id) == res.end())
 				res.push_back(id);
 		};
-		for(auto p = ZXTune::PlayerPluginsEnumerator::Create()->Enumerate(); p->IsValid(); p->Next())
+		for(auto p : ZXTune::PlayerPlugin::Enumerate())
 		{
-			auto id = p->Get()->GetDescription()->Id();
+			auto id = p->Id();
 			Add(id);
 			if(id == "AY")
 				Add("EMUL");

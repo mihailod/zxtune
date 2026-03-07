@@ -4,7 +4,11 @@
 #include <cycle_buffer.h>
 #include <make_ptr.h>
 #include <parameters/container.h>
+#include <core/service.h>
 #include <module/holder.h>
+#include <module/players/pipeline.h>
+#include <sound/receiver.h>
+#include <sound/loop.h>
 
 #pragma once
 
@@ -56,13 +60,6 @@ public:
 		return 0;
 	}
 
-	std::size_t DropSamples(std::size_t count)
-	{
-		const std::size_t toDrop = Buffer.Consume(count);
-		DoneSamples += toDrop;
-		return toDrop;
-	}
-
 	void Reset()
 	{
 		Buffer.Reset();
@@ -94,33 +91,19 @@ public:
 			target += got;
 			samples -= got;
 			result += got;
-			if(0 == samples || !Renderer->RenderFrame())
-			{
+			if(!samples)
 				break;
-			}
+			auto chunk = Renderer->Render(Sound::LoopParameters());
+            if(chunk.empty())
+				break;
+            Buffer->ApplyData(std::move(chunk));
 		}
 		return result;
 	}
 
-	std::size_t Seek(std::size_t samples)
+	void Seek(std::size_t samples)
 	{
-		if(samples < Buffer->GetCurrentSample())
-		{
-			Reset();
-		}
-		while(samples != Buffer->GetCurrentSample())
-		{
-			const std::size_t toDrop = samples - Buffer->GetCurrentSample();
-			if(const std::size_t dropped = Buffer->DropSamples(toDrop))
-			{
-				continue;
-			}
-			if(!Renderer->RenderFrame())
-			{
-				break;
-			}
-		}
-		return Buffer->GetCurrentSample();
+		Renderer->SetPosition(Time::Instant<Time::Millisecond>(samples));
 	}
 
 	void Reset()
@@ -134,13 +117,13 @@ public:
 		return Params;
 	}
 
-	static Ptr Create(Module::Holder::Ptr holder)
+	static Ptr Create(const Module::Holder& holder)
 	{
 		const Parameters::Container::Ptr params = Parameters::Container::Create();
 		//copy initial properties
-		holder->GetModuleProperties()->Process(*params);
+		holder.GetModuleProperties()->Process(*params);
 		const BufferRender::Ptr buffer = MakePtr<BufferRender>();
-		const Module::Renderer::Ptr renderer = holder->CreateRenderer(params, buffer);
+		const Module::Renderer::Ptr renderer = Module::CreatePipelinedRenderer(holder, params);
 		return MakePtr<PlayerWrapper>(params, renderer, buffer);
 	}
 private:
@@ -148,6 +131,12 @@ private:
 	const Module::Renderer::Ptr Renderer;
 	const BufferRender::Ptr Buffer;
 };
+
+static const auto& GetService()
+{
+	static const auto service = ZXTune::Service::Create(Parameters::Container::Create());
+	return *service;
+}
 
 }
 //namespace ZXTune
