@@ -42,7 +42,7 @@ namespace Formats::Chiptune
         {
           if (const auto subData = Stream.GetReadContainer())
           {
-            return CreateCalculatingCrcContainer(subData, 0, subData->Size());
+            return CreateCalculatingCrcContainer(*subData);
           }
         }
         return {};

@@ -10,7 +10,6 @@
 
 #include "module/players/properties_helper.h"
 
-#include "binary/crc.h"
 #include "module/attributes.h"
 #include "sound/sound_parameters.h"
 #include "strings/join.h"
@@ -46,7 +45,7 @@ namespace Module
   void PropertiesHelper::SetSource(const Formats::Chiptune::Container& source)
   {
     Delegate.SetValue(ATTR_SIZE, source.Size());
-    Delegate.SetValue(ATTR_CRC, Binary::Crc32(source));
+    Delegate.SetValue(ATTR_CRC, source.Checksum());
     Delegate.SetValue(ATTR_FIXEDCRC, source.FixedChecksum());
   }
 

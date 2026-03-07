@@ -2,13 +2,13 @@ package app.zxtune.ui
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.FragmentActivity
+import app.zxtune.Features
 import app.zxtune.MainService
 import app.zxtune.PreferencesActivity
 import app.zxtune.R
@@ -28,6 +28,7 @@ class ApplicationMenu(private val activity: FragmentActivity) : MenuProvider {
                     item.isVisible = it
                 }
             }
+            menu.item(R.id.action_rate).isVisible = Features.UserRating.isAvailable()
         }
 
     override fun onPrepareMenu(menu: Menu) = menu.run {
@@ -63,13 +64,12 @@ class ApplicationMenu(private val activity: FragmentActivity) : MenuProvider {
         setTitle(R.string.problems)
         setMessage(R.string.problem_power_management)
         setPositiveButton(R.string.problem_power_management_fixit) { _, _ ->
-            activity.startActivity(ResultActivity.createSetupPowerManagementIntent(activity))
+            tryOpenIntent(ResultActivity.createSetupPowerManagementIntent(activity))
         }
     }.show()
 
-    // TODO: find proper intent or hide menuitem if no sutable
     private fun rate() {
-        if (tryOpenIntent(makeGooglePlayIntent()) || tryOpenIntent(makeMarketIntent())) {
+        if (tryOpenIntent(Features.UserRating.intent)) {
             Analytics.sendUiEvent(Analytics.UiAction.RATE)
         }
     }
@@ -77,17 +77,8 @@ class ApplicationMenu(private val activity: FragmentActivity) : MenuProvider {
     private fun tryOpenIntent(intent: Intent) = try {
         activity.startActivity(intent)
         true
-    } catch (e: ActivityNotFoundException) {
+    } catch (_: ActivityNotFoundException) {
         false
-    }
-
-    private fun makeGooglePlayIntent() = Intent(Intent.ACTION_VIEW).apply {
-        data = Uri.parse("https://play.google.com/store/apps/details?id=${activity.packageName}")
-        `package` = "com.android.vending"
-    }
-
-    private fun makeMarketIntent() = Intent(Intent.ACTION_VIEW).apply {
-        data = Uri.parse("market://details?id=${activity.packageName}")
     }
 
     private fun quit(): Unit = activity.run {

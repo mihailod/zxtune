@@ -92,12 +92,12 @@ class RemoteCatalogTest {
     @Test
     fun `test getTrackUris()`() = with(RemoteCatalog.getTrackUris(12345)) {
         assertEquals(1L, size.toLong())
-        assertEquals("http://zxtunes.com/downloads.php?id=12345", get(0).toString())
+        assertEquals("https://zxtunes.com/downloads.php?id=12345", get(0).toString())
     }
 
     @Test
     fun `test getImageUris()`() = with(RemoteCatalog.getImageUris(12345)) {
         assertEquals(1L, size.toLong())
-        assertEquals("http://zxtunes.com/photo/12345.jpg", get(0).toString())
+        assertEquals("https://zxtunes.com/photo/12345.jpg", get(0).toString())
     }
 }

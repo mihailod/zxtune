@@ -8,8 +8,9 @@
  *
  **/
 
+#include "formats/chiptune/container.h"
+
 #include "binary/container_base.h"
-#include "binary/crc.h"
 #include "binary/format_factories.h"
 #include "formats/multitrack.h"
 #include "math/numeric.h"
@@ -63,17 +64,22 @@ namespace Formats::Multitrack
 
     const auto DESCRIPTION = "Commodore64 SID/RSID/PSID"sv;
 
-    class Container : public Binary::BaseContainer<Multitrack::Container>
+    class Container : public Binary::BaseContainer<Multitrack::Container, Chiptune::Container>
     {
     public:
-      Container(const RawHeader* hdr, Binary::Container::Ptr data)
-        : BaseContainer(std::move(data))
+      Container(const RawHeader* hdr, const Binary::Container& data)
+        : BaseContainer(Chiptune::CreateCalculatingCrcContainer(data))
         , Hdr(hdr)
       {}
 
+      uint_t Checksum() const override
+      {
+        return Delegate->Checksum();
+      }
+
       uint_t FixedChecksum() const override
       {
-        return Binary::Crc32(*Delegate);
+        return Delegate->FixedChecksum();
       }
 
       uint_t TracksCount() const override
@@ -134,8 +140,7 @@ namespace Formats::Multitrack
       {
         if (const auto* hdr = GetHeader(rawData))
         {
-          auto used = rawData.GetSubcontainer(0, rawData.Size());
-          return MakePtr<Container>(hdr, std::move(used));
+          return MakePtr<Container>(hdr, rawData);
         }
         else
         {

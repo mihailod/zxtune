@@ -11,6 +11,7 @@
 #include "core/plugins/archives/archived.h"
 
 #include "core/plugins/archives/l10n.h"
+#include "core/plugins/scan_result.h"
 
 #include "core/plugin_attrs.h"
 #include "debug/log.h"
@@ -127,10 +128,10 @@ namespace ZXTune
       return Decoder->GetFormat();
     }
 
-    Analysis::Result::Ptr Detect(const Parameters::Accessor& /*params*/, DataLocation::Ptr input,
+    Analysis::Result::Ptr Detect(const Parameters::Accessor& params, DataLocation::Ptr input,
                                  ArchiveCallback& callback) const override
     {
-      const auto rawData = input->GetData();
+      auto rawData = input->GetData();
       if (const auto archive = Decoder->Decode(*rawData))
       {
         if (const auto count = archive->CountFiles())
@@ -140,7 +141,7 @@ namespace ZXTune
         }
         return Analysis::CreateMatchedResult(archive->Size());
       }
-      return Analysis::CreateUnmatchedResult(Decoder->GetFormat(), rawData);
+      return ZXTune::CreateUnmatchedResult(params, Decoder->GetFormat(), std::move(rawData));
     }
 
     DataLocation::Ptr TryOpen(const Parameters::Accessor& /*params*/, DataLocation::Ptr location,

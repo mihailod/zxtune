@@ -23,8 +23,8 @@ class RemoteCatalogTest(remoteUrlIdx: Int) : RemoteCatalogTestBase(remoteUrlIdx)
     fun `test root`() = with(Path.create()) {
         //hardcoded entries, filtered in Root
         val entries = arrayOf(
-            "32bit", "@MP3s by 32bit choonz (6 packages)",
-            "xm", "@Multichannel xm mods (413 packages)"
+            "32bit", "@MP3s by 32bit choonz (10 packages)",
+            "xm", "@Multichannel xm mods (414 packages)"
         )
         test(this, entries, Mode.CHECK_MISSED)
     }

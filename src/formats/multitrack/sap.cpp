@@ -136,6 +136,11 @@ namespace Formats::Multitrack
         , StartTrack(startTrack)
       {}
 
+      uint_t Checksum() const override
+      {
+        return Binary::Crc32(*Delegate);
+      }
+
       uint_t FixedChecksum() const override
       {
         return Content->GetFixedCrc(StartTrack);

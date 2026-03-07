@@ -536,8 +536,7 @@ namespace Formats::Chiptune
         FileParser file(target);
         if (auto result = IFF::Parse(data, file))
         {
-          const auto totalSize = result->Size();
-          return CreateCalculatingCrcContainer(std::move(result), 0, totalSize);
+          return CreateCalculatingCrcContainer(*result);
         }
       }
       catch (const std::exception& /*e*/)

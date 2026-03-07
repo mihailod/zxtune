@@ -11,6 +11,7 @@
 #include "core/plugins/players/multitrack_plugin.h"
 
 #include "core/plugins/archives/archived.h"
+#include "core/plugins/scan_result.h"
 #include "formats/archived/multitrack/filename.h"
 #include "module/players/properties_helper.h"
 
@@ -99,7 +100,7 @@ namespace ZXTune
           return Analysis::CreateMatchedResult(container->Size());
         }
       }
-      return Analysis::CreateUnmatchedResult(Decoder->GetFormat(), std::move(data));
+      return ZXTune::CreateUnmatchedResult(params, Decoder->GetFormat(), std::move(data));
     }
 
     DataLocation::Ptr CreateSubtrackLocation(DataLocation::Ptr inputData, Binary::Container::Ptr content,
@@ -187,6 +188,11 @@ namespace ZXTune
       Binary::Container::Ptr GetSubcontainer(std::size_t offset, std::size_t size) const override
       {
         return Delegate.GetSubcontainer(offset, size);
+      }
+
+      uint_t Checksum() const override
+      {
+        return Delegate.Checksum();
       }
 
       uint_t FixedChecksum() const override

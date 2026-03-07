@@ -46,8 +46,8 @@ private class InMemoryDatabase : SQLiteOpenHelper(null, null, null, 1) {
     override fun onUpgrade(db: SQLiteDatabase?, oldVersion: Int, newVersion: Int) = Unit
 }
 
-@Database(entities = [Timestamps.DAO.Record::class], version = 1)
-abstract class TimestampsTestDatabase : RoomDatabase() {
+@Database(entities = [TimestampRecord::class], version = 1)
+private abstract class TimestampsTestDatabase : RoomDatabase() {
     abstract fun timestamps(): Timestamps.DAO
 }
 

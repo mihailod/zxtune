@@ -92,6 +92,11 @@ namespace Formats::Multitrack
         , Hdr(hdr)
       {}
 
+      uint_t Checksum() const override
+      {
+        return Binary::Crc32(*Delegate);
+      }
+
       uint_t FixedChecksum() const override
       {
         // just skip text fields

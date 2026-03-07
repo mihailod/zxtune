@@ -8,8 +8,9 @@
  *
  **/
 
+#include "formats/chiptune/container.h"
+
 #include "binary/container_base.h"
-#include "binary/crc.h"
 #include "binary/format_factories.h"
 #include "formats/multitrack.h"
 #include "math/numeric.h"
@@ -79,17 +80,22 @@ namespace Formats::Multitrack
       return hdr;
     }
 
-    class Container : public Binary::BaseContainer<Multitrack::Container>
+    class Container : public Binary::BaseContainer<Multitrack::Container, Chiptune::Container>
     {
     public:
-      Container(const RawHeader* hdr, Binary::Container::Ptr data)
-        : BaseContainer(std::move(data))
+      Container(const RawHeader* hdr, const Binary::Container& data)
+        : BaseContainer(Chiptune::CreateCalculatingCrcContainer(data))
         , Hdr(hdr)
       {}
 
+      uint_t Checksum() const override
+      {
+        return Delegate->Checksum();
+      }
+
       uint_t FixedChecksum() const override
       {
-        return Binary::Crc32(*Delegate);
+        return Delegate->FixedChecksum();
       }
 
       uint_t TracksCount() const override
@@ -136,8 +142,8 @@ namespace Formats::Multitrack
           const std::size_t totalSize = sizeof(*hdr) + hdr->DataSize;
           // GME support truncated files
           const std::size_t realSize = std::min(rawData.Size(), totalSize);
-          auto used = rawData.GetSubcontainer(0, realSize);
-          return MakePtr<Container>(hdr, std::move(used));
+          const auto used = rawData.GetSubcontainer(0, realSize);
+          return MakePtr<Container>(hdr, *used);
         }
         else
         {

@@ -68,10 +68,14 @@ namespace
       return Devices::AYM::LAYOUT_ABC;
     }
 
+    uint_t MuteMask() const override
+    {
+      return 0;
+    }
+
     static Ptr Create()
     {
-      static StubChipParameters INSTANCE;
-      return MakeSingletonPointer(INSTANCE);
+      return MakePtr<StubChipParameters>();
     }
   };
 
@@ -181,16 +185,16 @@ namespace
   class BackendFactoryHandle : public Sound::BackendsStorage
   {
   public:
-    virtual void Register(const String& /*id*/, const char* /*description*/, uint_t /*caps*/,
+    virtual void Register(Sound::BackendId /*id*/, const char* /*description*/, uint_t /*caps*/,
                           Sound::BackendWorkerFactory::Ptr factory)
     {
       Factory = std::move(factory);
     }
 
-    virtual void Register(const String& /*id*/, const char* /*description*/, uint_t /*caps*/, const Error& /*status*/)
+    virtual void Register(Sound::BackendId /*id*/, const char* /*description*/, uint_t /*caps*/, const Error& /*status*/)
     {}
 
-    virtual void Register(const String& /*id*/, const char* /*description*/, uint_t /*caps*/) {}
+    virtual void Register(Sound::BackendId /*id*/, const char* /*description*/, uint_t /*caps*/) {}
 
     Async::Job::Ptr CreatePlayer(State::Ptr state)
     {

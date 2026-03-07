@@ -146,9 +146,9 @@ namespace Module::PSF
   {
   private:
     HELibrary()
+      : Bios(GetSCPH10000HeBios())
     {
-      const auto& bios = GetSCPH10000HeBios();
-      ::bios_set_embedded_image(bios.Start(), bios.Size());
+      ::bios_set_embedded_image(Bios->Start(), Bios->Size());
       Require(0 == ::psx_init());
     }
 
@@ -165,6 +165,9 @@ namespace Module::PSF
       static const HELibrary instance;
       return instance;
     }
+
+  private:
+    const Binary::Data::Ptr Bios;
   };
 
   struct SpuTrait
