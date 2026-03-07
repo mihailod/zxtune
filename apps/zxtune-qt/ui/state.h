@@ -10,9 +10,9 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// std includes
+#include "string_view.h"
+#include "types.h"
+
 #include <memory>
 
 class QWidget;
@@ -21,7 +21,7 @@ namespace UI
   class State
   {
   public:
-    typedef std::unique_ptr<State> Ptr;
+    using Ptr = std::unique_ptr<State>;
     virtual ~State() = default;
 
     virtual void AddWidget(QWidget& w) = 0;

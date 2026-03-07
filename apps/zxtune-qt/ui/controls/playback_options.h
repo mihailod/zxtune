@@ -10,11 +10,10 @@
 
 #pragma once
 
-// local includes
-#include "playlist/supp/data.h"
-// library includes
-#include <sound/backend.h>
-// qt includes
+#include "apps/zxtune-qt/playlist/supp/data.h"
+
+#include "sound/backend.h"
+
 #include <QtWidgets/QWidget>
 
 class PlaybackSupport;
@@ -28,8 +27,4 @@ protected:
 public:
   // creator
   static PlaybackOptions* Create(QWidget& parent, PlaybackSupport& supp, Parameters::Container::Ptr params);
-public slots:
-  virtual void InitState(Sound::Backend::Ptr, Playlist::Item::Data::Ptr) = 0;
-  virtual void UpdateState() = 0;
-  virtual void CloseState() = 0;
 };

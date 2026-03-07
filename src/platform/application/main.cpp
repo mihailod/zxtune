@@ -8,23 +8,26 @@
  *
  **/
 
-// common includes
-#include <error.h>
-// library includes
-#include <platform/application.h>
-// std includes
+#include "debug/log.h"
+#include "platform/application.h"
+
+#include "error.h"
+
 #include <locale>
 
-#ifdef UNICODE
-std::basic_ostream<Char>& StdOut = std::wcout;
-#else
-std::basic_ostream<Char>& StdOut = std::cout;
-#endif
+std::ostream& StdOut = std::cout;
+
+namespace
+{
+  const Debug::Stream Dbg("Platform::Application");
+}  // namespace
 
 // TODO: extract to different sources
 #ifdef _WIN32
-#  include <pointers.h>
-#  include <strings/encoding.h>
+#  include "strings/encoding.h"
+
+#  include "pointers.h"
+
 #  include <windows.h>
 
 Strings::Array ParseArgv(int, const char**)
@@ -47,16 +50,33 @@ Strings::Array ParseArgv(int, const char**)
 #else
 Strings::Array ParseArgv(int argc, const char* argv[])
 {
-  return Strings::Array(argv, argv + argc);
+  return {argv, argv + argc};
 }
 #endif
+
+void SetupLocale()
+{
+  try
+  {
+    // Required for Darwin but fails on clang-mingw toolchain
+    std::locale::global(std::locale("C"));
+  }
+  catch (const std::exception& e)
+  {
+    Dbg("Failed to setup locale: {}", e.what());
+  }
+  catch (...)
+  {
+    Dbg("Failed to setup locale");
+  }
+}
 
 int main(int argc, const char* argv[])
 {
   try
   {
-    std::locale::global(std::locale("C"));
-    std::unique_ptr<Platform::Application> app(Platform::Application::Create());
+    SetupLocale();
+    const auto app = Platform::Application::Create();
     return app->Run(ParseArgv(argc, argv));
   }
   catch (const Error& e)

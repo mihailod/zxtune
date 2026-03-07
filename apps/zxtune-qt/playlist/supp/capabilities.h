@@ -10,36 +10,32 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// library includes
-#include <core/plugin_attrs.h>
+#include "core/plugin_attrs.h"
 
-namespace Playlist
+#include "types.h"
+
+namespace Playlist::Item
 {
-  namespace Item
+  class Capabilities
   {
-    class Capabilities
+  public:
+    explicit Capabilities(uint_t pluginCaps)
+      : PluginCaps(pluginCaps)
+    {}
+
+    bool IsAYM() const
     {
-    public:
-      explicit Capabilities(uint_t pluginCaps)
-        : PluginCaps(pluginCaps)
-      {}
+      using namespace ZXTune::Capabilities::Module::Device;
+      return 0 != (PluginCaps & (AY38910 | TURBOSOUND));
+    }
 
-      bool IsAYM() const
-      {
-        using namespace ZXTune::Capabilities::Module::Device;
-        return 0 != (PluginCaps & (AY38910 | TURBOSOUND));
-      }
+    bool IsDAC() const
+    {
+      using namespace ZXTune::Capabilities::Module::Device;
+      return 0 != (PluginCaps & DAC);
+    }
 
-      bool IsDAC() const
-      {
-        using namespace ZXTune::Capabilities::Module::Device;
-        return 0 != (PluginCaps & DAC);
-      }
-
-    private:
-      const uint_t PluginCaps;
-    };
-  }  // namespace Item
-}  // namespace Playlist
+  private:
+    const uint_t PluginCaps;
+  };
+}  // namespace Playlist::Item

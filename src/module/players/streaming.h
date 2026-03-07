@@ -10,17 +10,16 @@
 
 #pragma once
 
-// local includes
 #include "module/players/iterator.h"
-#include "module/players/stream_model.h"
-// library includes
-#include <module/information.h>
-#include <time/duration.h>
+
+#include "module/information.h"
+#include "time/duration.h"
 
 namespace Module
 {
-  Information::Ptr CreateStreamInfo(Time::Microseconds frameDuration, StreamModel::Ptr model);
-  StateIterator::Ptr CreateStreamStateIterator(Time::Microseconds frameDuration, StreamModel::Ptr model);
+  class StreamModel;
+  Information::Ptr CreateStreamInfo(Time::Microseconds frameDuration, const StreamModel& model);
+  StateIterator::Ptr CreateStreamStateIterator(Time::Microseconds frameDuration, const StreamModel& model);
 
   Information::Ptr CreateTimedInfo(Time::Milliseconds duration);
   Information::Ptr CreateTimedInfo(Time::Milliseconds duration, Time::Milliseconds loopDuration);
@@ -56,8 +55,9 @@ namespace Module
       TotalPlayback = {};
     }
 
-    // Returns really consumed
-    Time::Microseconds Consume(Time::Microseconds range, const Sound::LoopParameters& looped);
+    // Consumes and returns min(range, End - Position)
+    Time::Microseconds ConsumeUpTo(Time::Microseconds range);
+    Time::Microseconds ConsumeRest();
 
     // Returns delta to skip
     Time::Microseconds Seek(Time::AtMicrosecond request)
@@ -66,12 +66,12 @@ namespace Module
       if (request < Position)
       {
         Position = request;
-        return Time::Microseconds(request.Get());
+        return Time::Microseconds{request.Get()};
       }
       else
       {
         const auto newPos = Time::AtMicrosecond(request.Get() % Limit.Get());
-        const auto delta = Time::Microseconds(newPos.Get() - Position.Get());
+        const auto delta = newPos - Position;
         Position = newPos;
         return delta;
       }
@@ -80,11 +80,6 @@ namespace Module
     Time::AtMicrosecond PreciseAt() const
     {
       return Position;
-    }
-
-    bool IsValid() const
-    {
-      return Position < Limit;
     }
 
   private:
@@ -127,12 +122,9 @@ namespace Module
       Loops = 0;
     }
 
-    bool IsValid() const
-    {
-      return DoneSamples < TotalSamples;
-    }
-
-    void Consume(uint_t samples, const Sound::LoopParameters& looped);
+    // Set samples = 0 to enforce stream end
+    // return done loops count
+    uint_t Consume(uint_t samples);
 
     void Seek(Time::AtMillisecond request)
     {

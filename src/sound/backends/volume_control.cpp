@@ -8,20 +8,18 @@
  *
  **/
 
-// local includes
 #include "sound/backends/volume_control.h"
-#include "sound/backends/l10n.h"
-// common includes
-#include <make_ptr.h>
 
-#define FILE_TAG B368C82C
+#include "sound/backends/l10n.h"
+
+#include "make_ptr.h"
 
 namespace Sound
 {
   class VolumeControlDelegate : public VolumeControl
   {
   public:
-    explicit VolumeControlDelegate(VolumeControl::Ptr delegate)
+    explicit VolumeControlDelegate(const VolumeControl::Ptr& delegate)
       : Delegate(delegate)
     {}
 
@@ -50,10 +48,8 @@ namespace Sound
 
 namespace Sound
 {
-  VolumeControl::Ptr CreateVolumeControlDelegate(VolumeControl::Ptr delegate)
+  VolumeControl::Ptr CreateVolumeControlDelegate(const VolumeControl::Ptr& delegate)
   {
     return MakePtr<VolumeControlDelegate>(delegate);
   }
 }  // namespace Sound
-
-#undef FILE_TAG

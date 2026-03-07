@@ -10,13 +10,9 @@
 
 #pragma once
 
-// local includes
 #include "module/players/aym/aym_factory.h"
 
-namespace Module
+namespace Module::ProSoundCreator
 {
-  namespace ProSoundCreator
-  {
-    AYM::Factory::Ptr CreateFactory();
-  }
-}  // namespace Module
+  AYM::Factory::Ptr CreateFactory();
+}  // namespace Module::ProSoundCreator

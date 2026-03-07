@@ -8,16 +8,16 @@
  *
  **/
 
-// local includes
 #include "core/plugins/players/plugin.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <core/module_detect.h>
-#include <core/plugin_attrs.h>
-#include <module/attributes.h>
-#include <module/players/properties_helper.h>
-// std includes
+
+#include "module/players/properties_helper.h"
+
+#include "core/module_detect.h"
+#include "core/plugin_attrs.h"
+#include "module/attributes.h"
+
+#include "make_ptr.h"
+
 #include <utility>
 
 namespace ZXTune
@@ -25,20 +25,19 @@ namespace ZXTune
   class CommonPlayerPlugin : public PlayerPlugin
   {
   public:
-    CommonPlayerPlugin(StringView id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
-                       Module::Factory::Ptr factory)
-      : Identifier(id.to_string())
+    CommonPlayerPlugin(PluginId id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder, Module::Factory::Ptr factory)
+      : Identifier(id)
       , Caps(caps)
       , Decoder(std::move(decoder))
       , Factory(std::move(factory))
     {}
 
-    String Id() const override
+    PluginId Id() const override
     {
       return Identifier;
     }
 
-    String Description() const override
+    StringView Description() const override
     {
       return Decoder->GetDescription();
     }
@@ -66,9 +65,8 @@ namespace ZXTune
         {
           props.SetType(Identifier);
           callback.ProcessModule(*inputData, *this, std::move(holder));
-          Parameters::IntType usedSize = 0;
-          properties->FindValue(Module::ATTR_SIZE, usedSize);
-          return Analysis::CreateMatchedResult(static_cast<std::size_t>(usedSize));
+          const auto usedSize = Parameters::GetInteger<std::size_t>(*properties, Module::ATTR_SIZE);
+          return Analysis::CreateMatchedResult(usedSize);
         }
       }
       return Analysis::CreateUnmatchedResult(Decoder->GetFormat(), std::move(data));
@@ -89,13 +87,13 @@ namespace ZXTune
     }
 
   private:
-    const String Identifier;
+    const PluginId Identifier;
     const uint_t Caps;
     const Formats::Chiptune::Decoder::Ptr Decoder;
     const Module::Factory::Ptr Factory;
   };
 
-  PlayerPlugin::Ptr CreatePlayerPlugin(StringView id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
+  PlayerPlugin::Ptr CreatePlayerPlugin(PluginId id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
                                        Module::Factory::Ptr factory)
   {
     return MakePtr<CommonPlayerPlugin>(id, caps | Capabilities::Category::MODULE, std::move(decoder),
@@ -105,20 +103,20 @@ namespace ZXTune
   class ExternalParsingPlayerPlugin : public PlayerPlugin
   {
   public:
-    ExternalParsingPlayerPlugin(StringView id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
+    ExternalParsingPlayerPlugin(PluginId id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
                                 Module::ExternalParsingFactory::Ptr factory)
-      : Identifier(id.to_string())
+      : Identifier(id)
       , Caps(caps)
       , Decoder(std::move(decoder))
       , Factory(std::move(factory))
     {}
 
-    String Id() const override
+    PluginId Id() const override
     {
       return Identifier;
     }
 
-    String Description() const override
+    StringView Description() const override
     {
       return Decoder->GetDescription();
     }
@@ -170,13 +168,13 @@ namespace ZXTune
     }
 
   private:
-    const String Identifier;
+    const PluginId Identifier;
     const uint_t Caps;
     const Formats::Chiptune::Decoder::Ptr Decoder;
     const Module::ExternalParsingFactory::Ptr Factory;
   };
 
-  PlayerPlugin::Ptr CreatePlayerPlugin(StringView id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
+  PlayerPlugin::Ptr CreatePlayerPlugin(PluginId id, uint_t caps, Formats::Chiptune::Decoder::Ptr decoder,
                                        Module::ExternalParsingFactory::Ptr factory)
   {
     return MakePtr<ExternalParsingPlayerPlugin>(id, caps | Capabilities::Category::MODULE, std::move(decoder),

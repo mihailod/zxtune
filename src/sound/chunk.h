@@ -10,9 +10,8 @@
 
 #pragma once
 
-// library includes
-#include <sound/sample.h>
-// std includes
+#include "sound/sample.h"
+
 #include <cassert>
 #include <cstring>
 #include <vector>
@@ -22,7 +21,7 @@ namespace Sound
   //! @brief Block of sound data
   struct Chunk : public std::vector<Sample>
   {
-    Chunk() {}
+    Chunk() = default;
 
     explicit Chunk(std::size_t size)
       : std::vector<Sample>(size)
@@ -30,18 +29,11 @@ namespace Sound
 
     Chunk(const Chunk&) = delete;
     Chunk& operator=(const Chunk&) = delete;
-    Chunk(Chunk&& rh) noexcept  // = default
-      : std::vector<Sample>(std::move(rh))
-    {}
+    Chunk(Chunk&& rh) noexcept = default;
+    Chunk& operator=(Chunk&& rh) noexcept = default;
 
-    Chunk& operator=(Chunk&& rh) noexcept  // = default
-    {
-      std::vector<Sample>::operator=(std::move(rh));
-      return *this;
-    }
-
-    typedef Sample* iterator;
-    typedef const Sample* const_iterator;
+    using iterator = Sample*;
+    using const_iterator = const Sample*;
 
     iterator begin()
     {

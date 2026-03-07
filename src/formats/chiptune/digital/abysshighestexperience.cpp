@@ -8,33 +8,34 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/digital/abysshighestexperience.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <strings/encoding.h>
-#include <strings/trim.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "strings/sanitize.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <array>
+#include <utility>
 
 namespace Formats::Chiptune
 {
   namespace AbyssHighestExperience
   {
-    typedef std::array<uint8_t, 3> IdentifierType;
+    using IdentifierType = std::array<uint8_t, 3>;
 
     const IdentifierType ID_AHX = {{'T', 'H', 'X'}};
     const IdentifierType ID_HVL = {{'H', 'V', 'L'}};
 
-    const Char ABYSS_EDITOR_OLD[] = "Abyss' Highest Experience v1.00-1.27";
-    const Char ABYSS_EDITOR_NEW[] = "Abyss' Highest Experience v2.00+";
-    const Char HIVELY_EDITOR_OLD[] = "Hively Tracker v1.0-1.4";
-    const Char HIVELY_EDITOR_NEW[] = "Hively Tracker v1.5+";
+    const auto ABYSS_EDITOR_OLD = "Abyss' Highest Experience v1.00-1.27"sv;
+    const auto ABYSS_EDITOR_NEW = "Abyss' Highest Experience v2.00+"sv;
+    const auto HIVELY_EDITOR_OLD = "Hively Tracker v1.0-1.4"sv;
+    const auto HIVELY_EDITOR_NEW = "Hively Tracker v1.5+"sv;
 
     /*
         struct Header
@@ -195,8 +196,7 @@ namespace Formats::Chiptune
         Require(Stream.GetPosition() <= Source.NamesOffset);
         Stream.Skip(Source.NamesOffset - Stream.GetPosition());
         MetaBuilder& meta = target.GetMetaBuilder();
-        const auto title = Strings::TrimSpaces(Stream.ReadCString(Stream.GetRestSize()));
-        meta.SetTitle(Strings::ToAutoUtf8(title));
+        meta.SetTitle(Strings::Sanitize(Stream.ReadCString(Stream.GetRestSize())));
         ParseSampleNames(meta);
         ParseProgram(meta);
       }
@@ -215,10 +215,9 @@ namespace Formats::Chiptune
         Strings::Array names(count);
         for (uint_t smp = 0; smp < count; ++smp)
         {
-          const auto name = Strings::TrimSpaces(Stream.ReadCString(Stream.GetRestSize()));
-          names[smp] = Strings::ToAutoUtf8(name);
+          names[smp] = Strings::SanitizeKeepPadding(Stream.ReadCString(Stream.GetRestSize()));
         }
-        meta.SetStrings(std::move(names));
+        meta.SetStrings(names);
       }
 
       void ParseProgram(MetaBuilder& meta)
@@ -268,7 +267,7 @@ namespace Formats::Chiptune
     struct FormatTraits
     {
       const StringView Format;
-      const Char* Description;
+      const StringView Description;
     };
 
     const FormatTraits AHXTraits = {
@@ -280,8 +279,8 @@ namespace Formats::Chiptune
         "?"             // tracks count
         "00-3f"         // samples count
         "?"             // subsongs count
-        ""_sv,
-        "Abyss' Highest Experience"};
+        ""sv,
+        "Abyss' Highest Experience"sv};
 
     const FormatTraits HVLTraits = {
         "'H'V'L 00-01"  // signature
@@ -294,18 +293,18 @@ namespace Formats::Chiptune
         "?"             // subsongs count
         "01-ff"         // mixgain, not zero
         "00-04"         // defstereo
-        ""_sv,
-        "Hively Tracker"};
+        ""sv,
+        "Hively Tracker"sv};
 
     class VersionedDecoder : public Decoder
     {
     public:
-      explicit VersionedDecoder(const FormatTraits& traits)
-        : Traits(traits)
+      explicit VersionedDecoder(FormatTraits traits)
+        : Traits(std::move(traits))
         , Header(Binary::CreateFormat(Traits.Format, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return Traits.Description;
       }
@@ -330,7 +329,7 @@ namespace Formats::Chiptune
       {
         if (!Check(data))
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
 
         try
@@ -341,7 +340,7 @@ namespace Formats::Chiptune
         }
         catch (const std::exception&)
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
       }
 

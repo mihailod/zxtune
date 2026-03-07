@@ -8,27 +8,25 @@
  *
  **/
 
-// local includes
 #include "module/players/tfm/tfd.h"
+
+#include "formats/chiptune/fm/tfd.h"
+#include "module/players/platforms.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
 #include "module/players/tfm/tfm_base_stream.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <formats/chiptune/fm/tfd.h>
-#include <module/players/platforms.h>
-#include <module/players/properties_helper.h>
-#include <module/players/streaming.h>
+
+#include "make_ptr.h"
 
 namespace Module::TFD
 {
   class ModuleData : public TFM::StreamModel
   {
   public:
-    typedef std::shared_ptr<ModuleData> RWPtr;
+    using RWPtr = std::shared_ptr<ModuleData>;
 
-    ModuleData()
-      : LoopPos()
-    {}
+    ModuleData() = default;
 
     uint_t GetTotalFrames() const override
     {
@@ -69,7 +67,7 @@ namespace Module::TFD
     }
 
   private:
-    uint_t LoopPos;
+    uint_t LoopPos = 0;
     Devices::TFM::Registers Data;
     std::vector<std::size_t> Offsets;
   };
@@ -79,23 +77,13 @@ namespace Module::TFD
   public:
     explicit DataBuilder(PropertiesHelper& props)
       : Properties(props)
+      , Meta(props)
       , Data(MakeRWPtr<ModuleData>())
-      , Chip(0)
     {}
 
-    void SetTitle(const String& title) override
+    Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
-      Properties.SetTitle(title);
-    }
-
-    void SetAuthor(const String& author) override
-    {
-      Properties.SetAuthor(author);
-    }
-
-    void SetComment(const String& comment) override
-    {
-      Properties.SetComment(comment);
+      return Meta;
     }
 
     void BeginFrames(uint_t count) override
@@ -121,13 +109,14 @@ namespace Module::TFD
 
     TFM::StreamModel::Ptr CaptureResult() const
     {
-      return std::move(Data);
+      return Data;
     }
 
   private:
     PropertiesHelper& Properties;
+    MetaProperties Meta;
     const ModuleData::RWPtr Data;
-    uint_t Chip;
+    uint_t Chip = 0;
   };
 
   class Factory : public TFM::Factory

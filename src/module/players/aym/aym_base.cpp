@@ -8,17 +8,16 @@
  *
  **/
 
-// local includes
 #include "module/players/aym/aym_base.h"
+
 #include "module/players/streaming.h"
 #include "module/players/tracking.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <sound/loop.h>
-#include <sound/mixer_factory.h>
+
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "sound/mixer_factory.h"
+
+#include "make_ptr.h"
 
 namespace Module
 {
@@ -38,14 +37,10 @@ namespace Module
       return Iterator->GetStateObserver();
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!Iterator->IsValid())
-      {
-        return {};
-      }
       TransferChunk();
-      Iterator->NextFrame(looped);
+      Iterator->NextFrame();
       LastChunk.TimeStamp += FrameDuration;
       return Device->RenderTill(LastChunk.TimeStamp);
     }
@@ -64,12 +59,12 @@ namespace Module
       {
         Iterator->Reset();
         Device->Reset();
-        LastChunk.TimeStamp = Devices::AYM::Stamp();
+        LastChunk.TimeStamp = {};
       }
-      while (state->At() < request && Iterator->IsValid())
+      while (state->At() < request)
       {
         TransferChunk();
-        Iterator->NextFrame({});
+        Iterator->NextFrame();
       }
     }
 
@@ -102,7 +97,7 @@ namespace Module
       }
       else
       {
-        return CreateStreamInfo(Tune->GetFrameDuration(), Tune->FindStreamModel());
+        return CreateStreamInfo(Tune->GetFrameDuration(), *Tune->FindStreamModel());
       }
     }
 
@@ -129,9 +124,10 @@ namespace Module
     {
       auto trackParams = AYM::TrackParameters::Create(Tune->GetProperties());
       const auto iterator = Tune->CreateDataIterator(std::move(trackParams));
+      const auto state = iterator->GetStateObserver();
       Devices::AYM::DataChunk chunk;
-      for (const auto frameDuration = Tune->GetFrameDuration(); iterator->IsValid();
-           chunk.TimeStamp += frameDuration, iterator->NextFrame({}))
+      for (const auto frameDuration = Tune->GetFrameDuration(); !state->LoopCount();
+           chunk.TimeStamp += frameDuration, iterator->NextFrame())
       {
         chunk.Data = iterator->GetData();
         aym.RenderData(chunk);
@@ -143,22 +139,19 @@ namespace Module
   };
 }  // namespace Module
 
-namespace Module
+namespace Module::AYM
 {
-  namespace AYM
+  Holder::Ptr CreateHolder(Chiptune::Ptr chiptune)
   {
-    Holder::Ptr CreateHolder(Chiptune::Ptr chiptune)
-    {
-      return MakePtr<AYMHolder>(std::move(chiptune));
-    }
+    return MakePtr<AYMHolder>(std::move(chiptune));
+  }
 
-    Devices::AYM::Chip::Ptr CreateChip(uint_t samplerate, Parameters::Accessor::Ptr params)
-    {
-      typedef Sound::ThreeChannelsMatrixMixer MixerType;
-      auto mixer = MixerType::Create();
-      auto pollParams = Sound::CreateMixerNotificationParameters(std::move(params), mixer);
-      auto chipParams = AYM::CreateChipParameters(samplerate, std::move(pollParams));
-      return Devices::AYM::CreateChip(std::move(chipParams), std::move(mixer));
-    }
-  }  // namespace AYM
-}  // namespace Module
+  Devices::AYM::Chip::Ptr CreateChip(uint_t samplerate, Parameters::Accessor::Ptr params)
+  {
+    using MixerType = Sound::ThreeChannelsMatrixMixer;
+    auto mixer = MixerType::Create();
+    auto pollParams = Sound::CreateMixerNotificationParameters(std::move(params), mixer);
+    auto chipParams = AYM::CreateChipParameters(samplerate, std::move(pollParams));
+    return Devices::AYM::CreateChip(std::move(chipParams), std::move(mixer));
+  }
+}  // namespace Module::AYM

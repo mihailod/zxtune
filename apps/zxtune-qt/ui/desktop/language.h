@@ -10,17 +10,16 @@
 
 #pragma once
 
-// std includes
-#include <memory>
-// qt includes
 #include <QtCore/QStringList>
+
+#include <memory>
 
 namespace UI
 {
   class Language
   {
   public:
-    typedef std::shared_ptr<Language> Ptr;
+    using Ptr = std::shared_ptr<Language>;
     virtual ~Language() = default;
 
     virtual QStringList GetAvailable() const = 0;

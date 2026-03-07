@@ -8,29 +8,27 @@
  *
  **/
 
-// local includes
 #include "sound/backends/file_backend.h"
 #include "sound/backends/l10n.h"
 #include "sound/backends/storage.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <l10n/markup.h>
-#include <math/numeric.h>
-#include <sound/backend_attrs.h>
-#include <sound/render_params.h>
-// std includes
+
+#include "binary/dump.h"
+#include "l10n/markup.h"
+#include "math/numeric.h"
+#include "sound/backend_attrs.h"
+#include "sound/render_params.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
 #include <algorithm>
 #include <cstring>
 
-#define FILE_TAG EF5CB4C6
-
 namespace Sound::Wav
 {
-  const Char BACKEND_ID[] = "wav";
+  const auto BACKEND_ID = "wav"_id;
   const char* const DESCRIPTION = L10n::translate("WAV support backend");
 
   // Standard .wav header
@@ -133,7 +131,7 @@ namespace Sound::Wav
       if (empty())
       {
         resize(sizeof(ListHeader));
-        ListHeader* const hdr = safe_ptr_cast<ListHeader*>(data());
+        auto* const hdr = safe_ptr_cast<ListHeader*>(data());
         std::memcpy(hdr->Id, LIST, sizeof(LIST));
         std::memcpy(hdr->Type, INFO, sizeof(INFO));
         hdr->Size = 0;
@@ -145,7 +143,7 @@ namespace Sound::Wav
     InfoElement* AddElement(std::size_t contentSize)
     {
       const std::size_t oldSize = size();
-      const std::size_t elemSize = Math::Align<std::size_t>(offsetof(InfoElement, Content) + contentSize, 2);
+      const auto elemSize = Math::Align<std::size_t>(offsetof(InfoElement, Content) + contentSize, 2);
       resize(oldSize + elemSize);
       return safe_ptr_cast<InfoElement*>(&at(oldSize));
     }
@@ -156,7 +154,6 @@ namespace Sound::Wav
   public:
     FileStream(uint_t soundFreq, Binary::SeekableOutputStream::Ptr stream)
       : Stream(std::move(stream))
-      , DoneBytes(0)
     {
       // init struct
       std::memcpy(Format.Id, RIFF, sizeof(RIFF));
@@ -222,7 +219,7 @@ namespace Sound::Wav
 
   private:
     const Binary::SeekableOutputStream::Ptr Stream;
-    uint32_t DoneBytes;
+    uint32_t DoneBytes = 0;
     WaveFormat Format;
     ListMetadata Meta;
   };
@@ -234,7 +231,7 @@ namespace Sound::Wav
       : Frequency(frequency)
     {}
 
-    String GetId() const override
+    BackendId GetId() const override
     {
       return BACKEND_ID;
     }
@@ -267,9 +264,7 @@ namespace Sound
 {
   void RegisterWavBackend(BackendsStorage& storage)
   {
-    const BackendWorkerFactory::Ptr factory = MakePtr<Wav::BackendWorkerFactory>();
-    storage.Register(Wav::BACKEND_ID, Wav::DESCRIPTION, CAP_TYPE_FILE, factory);
+    auto factory = MakePtr<Wav::BackendWorkerFactory>();
+    storage.Register(Wav::BACKEND_ID, Wav::DESCRIPTION, CAP_TYPE_FILE, std::move(factory));
   }
 }  // namespace Sound
-
-#undef FILE_TAG

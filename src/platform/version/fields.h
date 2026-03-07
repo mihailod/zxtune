@@ -10,13 +10,9 @@
 
 #pragma once
 
-// library includes
-#include <strings/fields.h>
+#include "strings/fields.h"
 
-namespace Platform
+namespace Platform::Version
 {
-  namespace Version
-  {
-    std::unique_ptr<Strings::FieldsSource> CreateVersionFieldsSource();
-  }
-}  // namespace Platform
+  std::unique_ptr<Strings::FieldsSource> CreateVersionFieldsSource();
+}  // namespace Platform::Version

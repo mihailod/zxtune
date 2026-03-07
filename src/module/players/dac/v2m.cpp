@@ -8,22 +8,25 @@
  *
  **/
 
-// local includes
 #include "module/players/dac/v2m.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <debug/log.h>
-#include <formats/chiptune/digital/v2m.h>
-#include <module/players/platforms.h>
-#include <module/players/properties_meta.h>
-#include <module/players/streaming.h>
-#include <sound/resampler.h>
-// 3rdparty includes
-#include <3rdparty/v2m/src/sounddef.h>
-#include <3rdparty/v2m/src/v2mconv.h>
-#include <3rdparty/v2m/src/v2mplayer.h>
+
+#include "formats/chiptune/digital/v2m.h"
+#include "module/players/platforms.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
+
+#include "debug/log.h"
+#include "sound/resampler.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+
+#include "3rdparty/v2m/src/sounddef.h"
+#include "3rdparty/v2m/src/v2mconv.h"
+#include "3rdparty/v2m/src/v2mplayer.h"
+
+#include <algorithm>
+#include <array>
 
 namespace Module::V2M
 {
@@ -32,7 +35,7 @@ namespace Module::V2M
   using DataPtr = std::shared_ptr<const uint8_t>;
 
   // Different versions of stdlib has different traits...
-  void Deleter(uint8_t* data)
+  void Deleter(const uint8_t* data)
   {
     delete[] data;
   }
@@ -62,7 +65,7 @@ namespace Module::V2M
       int outSize = 0;
       ::ConvertV2M(static_cast<const uint8_t*>(in.Start()), in.Size(), &outData, &outSize);
       Require(outData != nullptr && outSize != 0);
-      return DataPtr(outData, &Deleter);
+      return {outData, &Deleter};
     }
 
     explicit V2mEngine(DataPtr data)
@@ -109,7 +112,7 @@ namespace Module::V2M
     static Sound::Sample ConvertSample(const FloatPair& input)
     {
       static_assert(Sound::Sample::CHANNELS == 2, "Incompatible sound channels count");
-      return Sound::Sample(ConvertSingleSample(input[0]), ConvertSingleSample(input[1]));
+      return {ConvertSingleSample(input[0]), ConvertSingleSample(input[1])};
     }
 
     static Sound::Sample::Type ConvertSingleSample(float input)
@@ -143,16 +146,12 @@ namespace Module::V2M
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto avail = State->Consume(FRAME_DURATION, looped);
-
+      const auto loops = State->LoopCount();
+      const auto avail = State->ConsumeUpTo(FRAME_DURATION);
       auto frame = Target->Apply(Engine.RenderFrame(GetSamples(avail)));
-      if (State->At() < Time::AtMillisecond() + FRAME_DURATION)
+      if (State->LoopCount() != loops)
       {
         Engine.Reset();
       }
@@ -262,9 +261,9 @@ namespace Module::V2M
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create V2M: %s", e.what());
+        Dbg("Failed to create V2M: {}", e.what());
       }
-      return Module::Holder::Ptr();
+      return {};
     }
   };
 

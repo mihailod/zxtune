@@ -10,14 +10,10 @@
 
 #pragma once
 
-// library includes
-#include <devices/tfm.h>
-#include <parameters/accessor.h>
+#include "devices/tfm.h"
+#include "parameters/accessor.h"
 
-namespace Module
+namespace Module::TFM
 {
-  namespace TFM
-  {
-    Devices::TFM::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params);
-  }
-}  // namespace Module
+  Devices::TFM::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params);
+}  // namespace Module::TFM

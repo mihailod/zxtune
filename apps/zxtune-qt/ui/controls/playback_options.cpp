@@ -8,18 +8,23 @@
  *
  **/
 
-// local includes
-#include "playback_options.h"
+#include "apps/zxtune-qt/ui/controls/playback_options.h"
+
+#include "apps/zxtune-qt/playlist/supp/capabilities.h"
+#include "apps/zxtune-qt/supp/playback_supp.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
 #include "playback_options.ui.h"
-#include "playlist/supp/capabilities.h"
-#include "supp/playback_supp.h"
-#include "ui/tools/parameters_helpers.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <core/core_parameters.h>
-#include <parameters/merged_accessor.h>
-#include <sound/sound_parameters.h>
+
+#include "core/core_parameters.h"
+#include "module/attributes.h"
+#include "parameters/merged_accessor.h"
+#include "sound/sound_parameters.h"
+#include "strings/split.h"
+
+#include "contract.h"
+
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -31,11 +36,13 @@ namespace
     PlaybackOptionsImpl(QWidget& parent, PlaybackSupport& supp, Parameters::Container::Ptr params)
       : ::PlaybackOptions(parent)
       , Params(std::move(params))
+      , Muting(*this)
     {
       // setup self
       setupUi(this);
       AYMOptions->setVisible(false);
       DACOptions->setVisible(false);
+      Muting.SetVisible(false);
 
       // common
       Parameters::BooleanValue::Bind(*isLooped, *Params, Parameters::ZXTune::Sound::LOOPED, false);
@@ -47,38 +54,9 @@ namespace
       Parameters::BooleanValue::Bind(*isDACInterpolated, *Params, Parameters::ZXTune::Core::DAC::INTERPOLATION,
                                      Parameters::ZXTune::Core::DAC::INTERPOLATION_DEFAULT);
 
-      Require(connect(&supp, SIGNAL(OnStartModule(Sound::Backend::Ptr, Playlist::Item::Data::Ptr)),
-                      SLOT(InitState(Sound::Backend::Ptr, Playlist::Item::Data::Ptr))));
-      Require(connect(&supp, SIGNAL(OnUpdateState()), SLOT(UpdateState())));
-      Require(connect(&supp, SIGNAL(OnStopModule()), SLOT(CloseState())));
-    }
-
-    void InitState(Sound::Backend::Ptr /*player*/, Playlist::Item::Data::Ptr item) override
-    {
-      const Playlist::Item::Capabilities& caps = item->GetCapabilities();
-      AYMOptions->setVisible(caps.IsAYM());
-      DACOptions->setVisible(caps.IsDAC());
-      SetEnabled(true);
-
-      ModuleProperties = item->GetModuleProperties();
-    }
-
-    void UpdateState() override
-    {
-      if (isVisible() && ModuleProperties)
-      {
-        // TODO: use walker?
-        Parameters::IntType val;
-        isYM->setEnabled(!ModuleProperties->FindValue(Parameters::ZXTune::Core::AYM::TYPE, val));
-        aymLayout->setEnabled(!ModuleProperties->FindValue(Parameters::ZXTune::Core::AYM::LAYOUT, val));
-        isDACInterpolated->setEnabled(!ModuleProperties->FindValue(Parameters::ZXTune::Core::DAC::INTERPOLATION, val));
-      }
-    }
-
-    void CloseState() override
-    {
-      SetEnabled(false);
-      ModuleProperties = {};
+      Require(connect(&supp, &PlaybackSupport::OnStartModule, this, &PlaybackOptionsImpl::InitState));
+      Require(connect(&supp, &PlaybackSupport::OnUpdateState, this, &PlaybackOptionsImpl::UpdateState));
+      Require(connect(&supp, &PlaybackSupport::OnStopModule, this, &PlaybackOptionsImpl::CloseState));
     }
 
     // QWidget
@@ -92,15 +70,136 @@ namespace
     }
 
   private:
-    void SetEnabled(bool enabled)
+    class MuteState
     {
-      AYMOptions->setEnabled(enabled);
-      DACOptions->setEnabled(enabled);
+    public:
+      explicit MuteState(Ui::PlaybackOptions& self)
+        : Control(self.MuteOptions)
+        , Layout(self.MuteButtons)
+      {}
+
+      void SetVisible(bool visible)
+      {
+        Control->setVisible(visible);
+      }
+
+      void Init(const Playlist::Item::Data& item)
+      {
+        if (const auto channelsNames = item.GetModuleProperties()->FindString(Module::ATTR_CHANNELS_NAMES))
+        {
+          Params = item.GetAdjustedParameters();
+          using namespace Parameters::ZXTune::Core;
+          State = Parameters::GetInteger(*Params, CHANNELS_MASK, CHANNELS_MASK_DEFAULT);
+          Control->setVisible(true);
+          const auto names = Strings::Split(*channelsNames, '\n');
+          for (std::size_t idx = 0, namesCount = names.size(), buttonsCount = Buttons.size();
+               idx < std::max(namesCount, buttonsCount); ++idx)
+          {
+            auto& button = GetChannelControlButton(idx);
+            const auto hasChannel = idx < namesCount;
+            button.setVisible(hasChannel);
+            if (hasChannel)
+            {
+              if (namesCount <= 8)
+              {
+                button.setText(ToQString(names[idx]));
+                button.setToolTip({});
+              }
+              else
+              {
+                button.setText(QString::number(idx));
+                button.setToolTip(ToQString(names[idx]));
+              }
+              button.setChecked(0 == (State & (1 << idx)));
+            }
+          }
+        }
+        else
+        {
+          Params = {};
+          Control->setVisible(false);
+        }
+      }
+
+    private:
+      QToolButton& GetChannelControlButton(std::size_t idx)
+      {
+        Buttons.resize(std::max(idx + 1, Buttons.size()));
+        auto*& res = Buttons[idx];
+        if (!res)
+        {
+          res = new QToolButton(Control);
+          res->setCheckable(true);
+          res->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::MinimumExpanding);
+          Layout->addWidget(res);
+          Require(connect(res, &QToolButton::toggled, Control, [this, idx](bool enabled) { Apply(idx, enabled); }));
+        }
+        return *res;
+      }
+
+      void Apply(uint_t idx, bool enabled)
+      {
+        const auto mask = 1 << idx;
+        State |= mask;
+        if (enabled)
+        {
+          State ^= mask;
+        }
+        if (Params)
+        {
+          if (State)
+          {
+            Params->SetValue(Parameters::ZXTune::Core::CHANNELS_MASK, State);
+          }
+          else
+          {
+            Params->RemoveValue(Parameters::ZXTune::Core::CHANNELS_MASK);
+          }
+        }
+      }
+
+    public:
+      QFrame*& Control;
+      QHBoxLayout*& Layout;
+      Parameters::Container::Ptr Params;
+      Parameters::IntType State{};
+      std::vector<QToolButton*> Buttons{16};
+    };
+
+    void InitState(Sound::Backend::Ptr /*player*/, Playlist::Item::Data::Ptr item)
+    {
+      const auto& caps = item->GetCapabilities();
+      AYMOptions->setVisible(caps.IsAYM());
+      DACOptions->setVisible(caps.IsDAC());
+
+      ModuleProperties = item->GetModuleProperties();
+      Muting.Init(*item);  // muting is only in adjusted
+
+      setEnabled(true);
+    }
+
+    void UpdateState()
+    {
+      if (isVisible() && ModuleProperties)
+      {
+        // TODO: use walker?
+        using namespace Parameters::ZXTune::Core;
+        isYM->setEnabled(!ModuleProperties->FindInteger(AYM::TYPE).has_value());
+        aymLayout->setEnabled(!ModuleProperties->FindInteger(AYM::LAYOUT).has_value());
+        isDACInterpolated->setEnabled(!ModuleProperties->FindInteger(DAC::INTERPOLATION).has_value());
+      }
+    }
+
+    void CloseState()
+    {
+      setEnabled(false);
+      ModuleProperties = {};
     }
 
   private:
     const Parameters::Container::Ptr Params;
     Parameters::Accessor::Ptr ModuleProperties;
+    MuteState Muting;
   };
 }  // namespace
 
@@ -110,5 +209,5 @@ PlaybackOptions::PlaybackOptions(QWidget& parent)
 
 PlaybackOptions* PlaybackOptions::Create(QWidget& parent, PlaybackSupport& supp, Parameters::Container::Ptr params)
 {
-  return new PlaybackOptionsImpl(parent, supp, params);
+  return new PlaybackOptionsImpl(parent, supp, std::move(params));
 }

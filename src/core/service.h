@@ -10,11 +10,12 @@
 
 #pragma once
 
-// library includes
-#include <binary/container.h>
-#include <core/module_detect.h>  // DetectCallback
-#include <module/holder.h>
-#include <parameters/container.h>
+#include "binary/container.h"
+#include "core/module_detect.h"
+#include "module/holder.h"
+#include "parameters/container.h"
+
+#include "string_view.h"
 
 namespace ZXTune
 {
@@ -26,14 +27,14 @@ namespace ZXTune
     virtual ~Service() = default;
 
     // @throws Error if data cannot be resolved
-    virtual Binary::Container::Ptr OpenData(Binary::Container::Ptr data, const String& subpath) const = 0;
+    virtual Binary::Container::Ptr OpenData(Binary::Container::Ptr data, StringView subpath) const = 0;
 
     // @throws Error if no module found
-    virtual Module::Holder::Ptr OpenModule(Binary::Container::Ptr data, const String& subpath,
+    virtual Module::Holder::Ptr OpenModule(Binary::Container::Ptr data, StringView subpath,
                                            Parameters::Container::Ptr initialProperties) const = 0;
 
     virtual void DetectModules(Binary::Container::Ptr data, Module::DetectCallback& callback) const = 0;
-    virtual void OpenModule(Binary::Container::Ptr data, const String& subpath,
+    virtual void OpenModule(Binary::Container::Ptr data, StringView subpath,
                             Module::DetectCallback& callback) const = 0;
 
     static Ptr Create(Parameters::Accessor::Ptr parameters);

@@ -10,8 +10,9 @@
 
 #pragma once
 
-// library includes
-#include <module/additional_files.h>
+#include "module/additional_files.h"
+
+#include "string_view.h"
 
 namespace Module
 {
@@ -21,9 +22,9 @@ namespace Module
     virtual ~AdditionalFilesSource() = default;
 
     //! @throws Error
-    virtual Binary::Container::Ptr Get(const String& name) const = 0;
+    virtual Binary::Container::Ptr Get(StringView name) const = 0;
   };
 
   //! @throws Error
-  void ResolveAdditionalFiles(const AdditionalFilesSource& source, const AdditionalFiles& target);
+  void ResolveAdditionalFiles(const AdditionalFilesSource& source, const AdditionalFiles& files);
 }  // namespace Module

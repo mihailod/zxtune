@@ -8,20 +8,19 @@
  *
  **/
 
-// local includes
 #include "module/players/xsf/xsf_factory.h"
-#include "module/players/xsf/xsf.h"
-// common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <debug/log.h>
-#include <module/additional_files.h>
-#include <module/players/duration.h>
-#include <module/players/properties_helper.h>
 
-#define FILE_TAG 153C53E0
+#include "module/players/duration.h"
+#include "module/players/properties_helper.h"
+#include "module/players/xsf/xsf.h"
+
+#include "debug/log.h"
+#include "module/additional_files.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
 
 namespace Module::XSF
 {
@@ -68,9 +67,9 @@ namespace Module::XSF
       return result;
     }
 
-    void Resolve(const String& name, Binary::Container::Ptr data) override
+    void Resolve(StringView name, Binary::Container::Ptr data) override
     {
-      Dbg("Resolving dependency '%1%'", name);
+      Dbg("Resolving dependency '{}'", name);
       auto& file = Files.at(name);
       Require(0 == file.Version);
       if (Parse(name, *data, file))
@@ -88,11 +87,11 @@ namespace Module::XSF
         Require(!dep.empty());
         if (Files.emplace(dep, File()).second)
         {
-          Dbg("Found unresolved dependency '%1%'", dep);
+          Dbg("Found unresolved dependency '{}'", dep);
         }
         else
         {
-          Dbg("Reuse already resolved dependency '%1%'", dep);
+          Dbg("Reuse already resolved dependency '{}'", dep);
         }
       }
     }
@@ -104,7 +103,6 @@ namespace Module::XSF
         Require(!Files.empty());
         FillStrings();
         Delegate = HolderFactory->CreateMultifileModule(Head, Files, std::move(Properties));
-        Files.clear();
         Head = File();
       }
       return *Delegate;
@@ -122,8 +120,8 @@ namespace Module::XSF
         }
         else
         {
-          Dbg("Unresolved '%1%'", dep.first);
-          throw MakeFormattedError(THIS_LINE, "Unresolved dependency '%1%'", dep.first);
+          Dbg("Unresolved '{}'", dep.first);
+          throw MakeFormattedError(THIS_LINE, "Unresolved dependency '{}'", dep.first);
         }
       }
       PropertiesHelper(*Properties).SetStrings(linear);
@@ -133,7 +131,7 @@ namespace Module::XSF
     const XSF::Factory::Ptr HolderFactory;
     mutable Parameters::Container::Ptr Properties;
     mutable File Head;
-    mutable std::map<String, File> Files;
+    mutable FilesMap Files;
 
     mutable Holder::Ptr Delegate;
   };
@@ -177,7 +175,7 @@ namespace Module::XSF
           if (file.Dependencies.empty())
           {
             Dbg("Singlefile");
-            return Delegate->CreateSinglefileModule(std::move(file), std::move(properties));
+            return Delegate->CreateSinglefileModule(file, std::move(properties));
           }
           else
           {
@@ -190,17 +188,16 @@ namespace Module::XSF
       {
         Dbg("Failed to parse");
       }
-      return Module::Holder::Ptr();
+      return {};
     }
 
   private:
     const XSF::Factory::Ptr Delegate;
   };
 
-  Module::Factory::Ptr CreateFactory(XSF::Factory::Ptr delegate)
+  Module::Factory::Ptr CreateModuleFactory(XSF::Factory::Ptr delegate)
   {
+    Require(delegate != nullptr);
     return MakePtr<GenericFactory>(std::move(delegate));
   }
 }  // namespace Module::XSF
-
-#undef FILE_TAG

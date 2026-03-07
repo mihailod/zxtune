@@ -8,26 +8,25 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
-// common includes
-#include <byteorder.h>
-#include <error.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/compression/zlib_stream.h>
-#include <binary/data_builder.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <formats/packed.h>
-// std includes
+
+#include "binary/compression/zlib_stream.h"
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "error.h"
+#include "make_ptr.h"
+
 #include <array>
 
 namespace Formats::Packed
 {
   namespace Gzip
   {
-    typedef std::array<uint8_t, 2> SignatureType;
+    using SignatureType = std::array<uint8_t, 2>;
 
     const SignatureType SIGNATURE = {{0x1f, 0x8b}};
 
@@ -90,7 +89,7 @@ namespace Formats::Packed
 
     const std::size_t MIN_SIZE = sizeof(Header) + 2 + sizeof(Footer);
 
-    const Char DESCRIPTION[] = "GZip";
+    const auto DESCRIPTION = "GZip"sv;
     const auto FORMAT =
         "1f 8b"      // signature
         "08"         // compression method
@@ -98,7 +97,7 @@ namespace Formats::Packed
         "????"       // modtime
         "?"          // extra flags
         "?"          // OS
-        ""_sv;
+        ""sv;
   }  // namespace Gzip
 
   class GzipDecoder : public Decoder
@@ -108,7 +107,7 @@ namespace Formats::Packed
       : Format(Binary::CreateFormat(Gzip::FORMAT, Gzip::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Gzip::DESCRIPTION;
     }
@@ -122,7 +121,7 @@ namespace Formats::Packed
     {
       if (!Format->Match(rawData))
       {
-        return Formats::Packed::Container::Ptr();
+        return {};
       }
       try
       {
@@ -160,7 +159,7 @@ namespace Formats::Packed
       {}
       catch (const std::exception&)
       {}
-      return Formats::Packed::Container::Ptr();
+      return {};
     }
 
   private:

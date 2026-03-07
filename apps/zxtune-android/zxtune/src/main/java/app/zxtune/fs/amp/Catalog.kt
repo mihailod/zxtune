@@ -7,32 +7,14 @@
 package app.zxtune.fs.amp
 
 import android.content.Context
+import androidx.core.util.Consumer
 import app.zxtune.fs.http.MultisourceHttpProvider
 import java.io.IOException
 
 interface Catalog {
+    fun interface Visitor<T> : Consumer<T>
 
-    interface WithCountHint {
-        fun setCountHint(count: Int) {}
-    }
-
-    fun interface GroupsVisitor : WithCountHint {
-        override fun setCountHint(count: Int) {} // TODO: remove after KT-41670 fix
-        fun accept(obj: Group)
-    }
-
-    fun interface AuthorsVisitor : WithCountHint {
-        override fun setCountHint(count: Int) {} // TODO: remove after KT-41670 fix
-        fun accept(obj: Author)
-    }
-
-    fun interface TracksVisitor : WithCountHint {
-        override fun setCountHint(count: Int) {} // TODO: remove after KT-41670 fix
-        fun accept(obj: Track)
-    }
-
-    fun interface FoundTracksVisitor : WithCountHint {
-        override fun setCountHint(count: Int) {} // TODO: remove after KT-41670 fix
+    fun interface FoundTracksVisitor {
         fun accept(author: Author, track: Track)
     }
 
@@ -41,7 +23,7 @@ interface Catalog {
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryGroups(visitor: GroupsVisitor)
+    fun queryGroups(visitor: Visitor<Group>)
 
     /**
      * Query authors by handle filter
@@ -49,7 +31,7 @@ interface Catalog {
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryAuthors(handleFilter: String, visitor: AuthorsVisitor)
+    fun queryAuthors(handleFilter: String, visitor: Visitor<Author>)
 
     /**
      * Query authors by country id
@@ -57,7 +39,7 @@ interface Catalog {
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryAuthors(country: Country, visitor: AuthorsVisitor)
+    fun queryAuthors(country: Country, visitor: Visitor<Author>)
 
     /**
      * Query authors by group id
@@ -65,7 +47,7 @@ interface Catalog {
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryAuthors(group: Group, visitor: AuthorsVisitor)
+    fun queryAuthors(group: Group, visitor: Visitor<Author>)
 
     /**
      * Query authors's tracks
@@ -73,7 +55,7 @@ interface Catalog {
      * @param visitor result receiver
      */
     @Throws(IOException::class)
-    fun queryTracks(author: Author, visitor: TracksVisitor)
+    fun queryTracks(author: Author, visitor: Visitor<Track>)
 
     /**
      * Find tracks by query substring

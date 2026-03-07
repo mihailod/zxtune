@@ -8,17 +8,18 @@
  *
  **/
 
-// local includes
-#include "flac_settings.h"
+#include "apps/zxtune-qt/ui/conversion/flac_settings.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/conversion/backend_settings.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "flac_settings.ui.h"
-#include "supp/options.h"
-#include "ui/tools/parameters_helpers.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <sound/backends_parameters.h>
-// std includes
+
+#include "sound/backends_parameters.h"
+
+#include "contract.h"
+
 #include <utility>
 
 namespace
@@ -40,17 +41,16 @@ namespace
       // setup self
       setupUi(this);
 
-      Require(connect(compressionValue, SIGNAL(valueChanged(int)), SIGNAL(SettingsChanged())));
+      Require(connect(compressionValue, &QSlider::valueChanged, this, &UI::BackendSettingsWidget::SettingChanged<int>));
 
       using namespace Parameters;
       IntegerValue::Bind(*compressionValue, *Options, ZXTune::Sound::Backends::Flac::COMPRESSION,
                          ZXTune::Sound::Backends::Flac::COMPRESSION_DEFAULT);
     }
 
-    String GetBackendId() const override
+    StringView GetBackendId() const override
     {
-      static const Char ID[] = {'f', 'l', 'a', 'c', '\0'};
-      return ID;
+      return "flac"sv;
     }
 
     QString GetDescription() const override

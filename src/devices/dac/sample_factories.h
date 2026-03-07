@@ -10,16 +10,13 @@
 
 #pragma once
 
-// library includes
-#include <binary/view.h>
-#include <devices/dac/sample.h>
+#include "devices/dac/sample.h"
 
-namespace Devices
+#include "binary/view.h"
+
+namespace Devices::DAC
 {
-  namespace DAC
-  {
-    Sample::Ptr CreateU8Sample(Binary::View content, std::size_t loop);
-    Sample::Ptr CreateU4Sample(Binary::View content, std::size_t loop);
-    Sample::Ptr CreateU4PackedSample(Binary::View content, std::size_t loop);
-  }  // namespace DAC
-}  // namespace Devices
+  Sample::Ptr CreateU8Sample(Binary::View content, std::size_t loop);
+  Sample::Ptr CreateU4Sample(Binary::View content, std::size_t loop);
+  Sample::Ptr CreateU4PackedSample(Binary::View content, std::size_t loop);
+}  // namespace Devices::DAC

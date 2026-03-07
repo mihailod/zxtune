@@ -8,19 +8,19 @@
  *
  **/
 
-// local includes
 #include "module/players/dac/extremetracker1.h"
+
+#include "devices/dac/sample_factories.h"
+#include "formats/chiptune/digital/extremetracker1.h"
 #include "module/players/dac/dac_properties_helper.h"
 #include "module/players/dac/dac_simple.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <devices/dac/sample_factories.h>
-#include <formats/chiptune/digital/extremetracker1.h>
-#include <module/players/platforms.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
-#include <module/players/tracking.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
+#include "module/players/tracking.h"
+
+#include "make_ptr.h"
+
+#include <array>
 
 namespace Module::ExtremeTracker1
 {
@@ -44,7 +44,7 @@ namespace Module::ExtremeTracker1
     return step * 3270 / int_t(C_1_STEP_GLISS * 100);
   }
 
-  typedef DAC::SimpleModuleData ModuleData;
+  using ModuleData = DAC::SimpleModuleData;
 
   class DataBuilder : public Formats::Chiptune::ExtremeTracker1::Builder
   {
@@ -133,12 +133,9 @@ namespace Module::ExtremeTracker1
 
   struct GlissData
   {
-    GlissData()
-      : Sliding()
-      , Glissade()
-    {}
-    int_t Sliding;
-    int_t Glissade;
+    GlissData() = default;
+    int_t Sliding = 0;
+    int_t Glissade = 0;
 
     void Reset()
     {
@@ -191,11 +188,11 @@ namespace Module::ExtremeTracker1
 
     void GetNewLineState(const TrackModelState& state, DAC::TrackBuilder& track)
     {
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
         for (uint_t chan = 0; chan != CHANNELS_COUNT; ++chan)
         {
-          if (const auto src = line->GetChannel(chan))
+          if (const auto* const src = line->GetChannel(chan))
           {
             DAC::ChannelDataBuilder builder = track.GetChannel(chan);
             GetNewChannelState(*src, Gliss[chan], builder);
@@ -204,7 +201,7 @@ namespace Module::ExtremeTracker1
       }
     }
 
-    void GetNewChannelState(const Cell& src, GlissData& gliss, DAC::ChannelDataBuilder& builder)
+    static void GetNewChannelState(const Cell& src, GlissData& gliss, DAC::ChannelDataBuilder& builder)
     {
       if (src.HasData())
       {
@@ -279,10 +276,7 @@ namespace Module::ExtremeTracker1
 
     void GetSamples(Devices::DAC::Chip& chip) const override
     {
-      for (uint_t idx = 0, lim = Data->Samples.Size(); idx != lim; ++idx)
-      {
-        chip.SetSample(idx, Data->Samples.Get(idx));
-      }
+      Data->SetupSamples(chip);
     }
 
   private:
@@ -296,17 +290,16 @@ namespace Module::ExtremeTracker1
     DAC::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
                                       Parameters::Container::Ptr properties) const override
     {
-      DAC::PropertiesHelper props(*properties);
+      DAC::PropertiesHelper props(*properties, CHANNELS_COUNT);
       DataBuilder dataBuilder(props);
       if (const auto container = Formats::Chiptune::ExtremeTracker1::Parse(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
         return MakePtr<Chiptune>(dataBuilder.CaptureResult(), std::move(properties));
       }
       else
       {
-        return DAC::Chiptune::Ptr();
+        return {};
       }
     }
   };

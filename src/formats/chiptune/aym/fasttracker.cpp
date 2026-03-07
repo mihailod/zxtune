@@ -8,21 +8,21 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/fasttracker.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <indices.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <strings/optimize.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "strings/optimize.h"
+#include "tools/indices.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <array>
 #include <cstring>
 
@@ -32,7 +32,7 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::FastTracker");
 
-    const Char PROGRAM[] = "Fast Tracker v1.x";
+    const auto PROGRAM = "Fast Tracker v1.x"sv;
 
     const std::size_t MIN_MODULE_SIZE = 256;
     const std::size_t MAX_MODULE_SIZE = 0x3a00;
@@ -500,7 +500,7 @@ namespace Formats::Chiptune
 
       void Add(std::size_t offset, std::size_t size) const
       {
-        Dbg(" Affected range %1%..%2%", offset, offset + size);
+        Dbg(" Affected range {}..{}", offset, offset + size);
         Require(TotalRanges->AddRange(offset, size));
       }
 
@@ -530,7 +530,7 @@ namespace Formats::Chiptune
         , BaseAddr(baseAddr)
       {
         Ranges.AddService(0, sizeof(Source));
-        Dbg("Base addr is #%1$04x", BaseAddr);
+        Dbg("Base addr is #{:04x}", BaseAddr);
       }
 
       void ParseCommonProperties(Builder& builder) const
@@ -559,7 +559,7 @@ namespace Formats::Chiptune
         const std::size_t positionsStart = sizeof(Source);
         for (uint_t posIdx = 0;; ++posIdx)
         {
-          const RawPosition& pos = GetServiceObject<RawPosition>(positionsStart + sizeof(RawPosition) * posIdx);
+          const auto& pos = GetServiceObject<RawPosition>(positionsStart + sizeof(RawPosition) * posIdx);
           const uint_t patIdx = pos.PatternIndex;
           if (patIdx == 0xff)
           {
@@ -571,20 +571,20 @@ namespace Formats::Chiptune
           positions.Lines.push_back(res);
         }
         positions.Loop = Source.Loop;
-        Dbg("Positions: %1% entries, loop to %2%", positions.GetSize(), positions.GetLoop());
+        Dbg("Positions: {} entries, loop to {}", positions.GetSize(), positions.GetLoop());
         builder.SetPositions(std::move(positions));
       }
 
       void ParsePatterns(const Indices& pats, Builder& builder) const
       {
-        Dbg("Patterns: %1% to parse", pats.Count());
+        Dbg("Patterns: {} to parse", pats.Count());
         const std::size_t baseOffset = Source.PatternsOffset;
         const std::size_t minOffset = baseOffset + pats.Maximum() * sizeof(RawPattern);
         bool hasValidPatterns = false;
         for (Indices::Iterator it = pats.Items(); it; ++it)
         {
           const uint_t patIndex = *it;
-          Dbg("Parse pattern %1%", patIndex);
+          Dbg("Parse pattern {}", patIndex);
           if (ParsePattern(baseOffset, minOffset, patIndex, builder))
           {
             hasValidPatterns = true;
@@ -595,7 +595,7 @@ namespace Formats::Chiptune
 
       void ParseSamples(const Indices& samples, Builder& builder) const
       {
-        Dbg("Samples: %1% to parse", samples.Count());
+        Dbg("Samples: {} to parse", samples.Count());
         uint_t nonEmptySamplesCount = 0;
         for (Indices::Iterator it = samples.Items(); it; ++it)
         {
@@ -608,7 +608,7 @@ namespace Formats::Chiptune
           Require(src->Obj.GetLoop() <= src->Obj.GetLoopLimit());
           const std::size_t usedSize = src->GetUsedSize();
           Require(usedSize <= availSize);
-          Dbg("Parse sample %1%", samIdx);
+          Dbg("Parse sample {}", samIdx);
           Ranges.AddService(samOffset, usedSize);
           builder.SetSample(samIdx, ParseSample(*src, src->Obj.GetLoopLimit()));
           if (src->Obj.GetLoopLimit() > 1 || !src->GetLine(0).IsEmpty())
@@ -621,7 +621,7 @@ namespace Formats::Chiptune
 
       void ParseOrnaments(const Indices& ornaments, Builder& builder) const
       {
-        Dbg("Ornaments: %1% to parse", ornaments.Count());
+        Dbg("Ornaments: {} to parse", ornaments.Count());
         for (Indices::Iterator it = ornaments.Items(); it; ++it)
         {
           const uint_t ornIdx = *it;
@@ -633,7 +633,7 @@ namespace Formats::Chiptune
           Require(src->Obj.GetLoop() <= src->Obj.GetLoopLimit());
           const std::size_t usedSize = src->GetUsedSize();
           Require(usedSize <= availSize);
-          Dbg("Parse ornament %1%", ornIdx);
+          Dbg("Parse ornament {}", ornIdx);
           Ranges.AddService(ornOffset, usedSize);
           builder.SetOrnament(ornIdx, ParseOrnament(*src, src->Obj.GetLoopLimit()));
         }
@@ -646,7 +646,7 @@ namespace Formats::Chiptune
             const std::size_t usedSize = src->GetUsedSize();
             if (usedSize <= availSize)
             {
-              Dbg("Stub ornament %1%", ornIdx);
+              Dbg("Stub ornament {}", ornIdx);
               Ranges.Add(ornOffset, usedSize);
             }
           }
@@ -710,15 +710,11 @@ namespace Formats::Chiptune
       {
         struct ChannelState
         {
-          std::size_t Offset;
-          uint_t Period;
-          uint_t Counter;
+          std::size_t Offset = 0;
+          uint_t Period = 0;
+          uint_t Counter = 0;
 
-          ChannelState()
-            : Offset()
-            , Period()
-            , Counter()
-          {}
+          ChannelState() = default;
 
           void Skip(uint_t toSkip)
           {
@@ -734,7 +730,7 @@ namespace Formats::Chiptune
         std::array<ChannelState, 3> Channels;
 
         explicit ParserState(const DataCursors& src)
-          : Channels()
+
         {
           for (std::size_t idx = 0; idx != src.size(); ++idx)
           {
@@ -758,7 +754,7 @@ namespace Formats::Chiptune
 
       bool ParsePattern(std::size_t baseOffset, std::size_t minOffset, uint_t patIndex, Builder& builder) const
       {
-        const RawPattern& pat = GetServiceObject<RawPattern>(baseOffset + patIndex * sizeof(RawPattern));
+        const auto& pat = GetServiceObject<RawPattern>(baseOffset + patIndex * sizeof(RawPattern));
         PatternBuilder& patBuilder = builder.StartPattern(patIndex);
         const DataCursors rangesStarts(pat, BaseAddr);
         Require(
@@ -788,7 +784,7 @@ namespace Formats::Chiptune
           const std::size_t start = rangesStarts[chanNum];
           if (start >= Data.Size())
           {
-            Dbg("Invalid offset (%1%)", start);
+            Dbg("Invalid offset ({})", start);
           }
           else
           {
@@ -808,11 +804,7 @@ namespace Formats::Chiptune
           {
             continue;
           }
-          if (state.Offset >= Data.Size())
-          {
-            return false;
-          }
-          else if (0 == chan && 0xff == PeekByte(state.Offset))
+          if (state.Offset >= Data.Size() || (0 == chan && 0xff == PeekByte(state.Offset)))
           {
             return false;
           }
@@ -984,7 +976,6 @@ namespace Formats::Chiptune
     {
     public:
       explicit Areas(Binary::View data)
-        : BaseAddr(0)
       {
         const auto& header = *data.As<RawHeader>();
         const std::size_t firstPatternOffset = header.PatternsOffset;
@@ -1043,11 +1034,7 @@ namespace Formats::Chiptune
 
       bool CheckHeader() const
       {
-        if (sizeof(RawHeader) > GetAreaSize(HEADER) || Undefined != GetAreaSize(END))
-        {
-          return false;
-        }
-        return true;
+        return GetAreaSize(HEADER) >= sizeof(RawHeader) && Undefined == GetAreaSize(END);
       }
 
       bool CheckPositions() const
@@ -1088,7 +1075,7 @@ namespace Formats::Chiptune
       }
 
     private:
-      std::size_t BaseAddr;
+      std::size_t BaseAddr = 0;
     };
 
     bool FastCheck(const Areas& areas)
@@ -1138,7 +1125,7 @@ namespace Formats::Chiptune
         "(?05-2d|66-ff){33}"  // ornaments
         "00-1f?"              // at least one position
         "ff|00-1f"            // next position or end
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -1147,7 +1134,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MIN_MODULE_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }

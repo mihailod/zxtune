@@ -8,30 +8,31 @@
  *
  **/
 
-// local includes
 #include "module/players/tfm/tfc.h"
+
+#include "formats/chiptune/fm/tfc.h"
+#include "module/players/platforms.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
 #include "module/players/tfm/tfm_base_stream.h"
-// common includes
-#include <iterator.h>
-#include <make_ptr.h>
-// library includes
-#include <formats/chiptune/fm/tfc.h>
-#include <module/players/platforms.h>
-#include <module/players/properties_helper.h>
-#include <module/players/streaming.h>
-// std includes
+
+#include "tools/iterators.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <algorithm>
+#include <array>
 
 namespace Module::TFC
 {
-  const Char PROGRAM_PREFIX[] = "TurboFM Compiler v";
+  const auto PROGRAM_PREFIX = "TurboFM Compiler v"sv;
 
   class ChannelData
   {
   public:
-    ChannelData()
-      : Loop()
-    {}
+    ChannelData() = default;
 
     void AddFrame()
     {
@@ -62,7 +63,7 @@ namespace Module::TFC
       }
       const std::size_t start = Offsets[row];
       const std::size_t end = row != Offsets.size() - 1 ? Offsets[row + 1] : Data.size();
-      return RangeIterator<Devices::FM::Registers::const_iterator>(Data.begin() + start, Data.begin() + end);
+      return {Data.begin() + start, Data.begin() + end};
     }
 
     std::size_t GetSize() const
@@ -73,13 +74,13 @@ namespace Module::TFC
   private:
     std::vector<std::size_t> Offsets;
     Devices::FM::Registers Data;
-    std::size_t Loop;
+    std::size_t Loop = 0;
   };
 
   class ModuleData : public TFM::StreamModel
   {
   public:
-    typedef std::shared_ptr<ModuleData> RWPtr;
+    using RWPtr = std::shared_ptr<ModuleData>;
 
     uint_t GetTotalFrames() const override
     {
@@ -100,7 +101,7 @@ namespace Module::TFC
         const uint_t chip = idx < 3 ? 0 : 1;
         for (RangeIterator<Devices::FM::Registers::const_iterator> regs = Data[idx].Get(frameNum); regs; ++regs)
         {
-          result.push_back(Devices::TFM::Register(chip, *regs));
+          result.emplace_back(chip, *regs);
         }
       }
       res.swap(result);
@@ -120,14 +121,19 @@ namespace Module::TFC
   public:
     explicit DataBuilder(PropertiesHelper& props)
       : Properties(props)
+      , Meta(props)
       , Data(MakeRWPtr<ModuleData>())
-      , Channel(0)
       , Frequency()
     {}
 
-    void SetVersion(const String& version) override
+    Formats::Chiptune::MetaBuilder& GetMetaBuilder() override
     {
-      Properties.SetProgram(PROGRAM_PREFIX + version);
+      return Meta;
+    }
+
+    void SetVersion(StringView version) override
+    {
+      Properties.SetProgram(String(PROGRAM_PREFIX).append(version));
     }
 
     void SetIntFreq(uint_t freq) override
@@ -136,21 +142,6 @@ namespace Module::TFC
       {
         FrameDuration = Time::Microseconds::FromFrequency(freq);
       }
-    }
-
-    void SetTitle(const String& title) override
-    {
-      Properties.SetTitle(title);
-    }
-
-    void SetAuthor(const String& author) override
-    {
-      Properties.SetAuthor(author);
-    }
-
-    void SetComment(const String& comment) override
-    {
-      Properties.SetComment(comment);
     }
 
     void StartChannel(uint_t idx) override
@@ -207,7 +198,7 @@ namespace Module::TFC
 
     TFM::StreamModel::Ptr CaptureResult() const
     {
-      return std::move(Data);
+      return Data;
     }
 
     Time::Microseconds GetFrameDuration() const
@@ -223,8 +214,9 @@ namespace Module::TFC
 
   private:
     PropertiesHelper& Properties;
+    MetaProperties Meta;
     const ModuleData::RWPtr Data;
-    uint_t Channel;
+    uint_t Channel = 0;
     std::array<uint_t, 6> Frequency;
     Time::Microseconds FrameDuration = TFM::BASE_FRAME_DURATION;
   };

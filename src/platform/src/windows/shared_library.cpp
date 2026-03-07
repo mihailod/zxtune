@@ -8,18 +8,18 @@
  *
  **/
 
-// local includes
 #include "platform/src/shared_library_common.h"
-// common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <l10n/api.h>
-// platform includes
+
+#include "l10n/api.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <windows.h>
 
-#define FILE_TAG 326CACD8
+#include <algorithm>
 
 namespace
 {
@@ -51,7 +51,7 @@ namespace Platform::Details
       {
         return res;
       }
-      throw MakeFormattedError(THIS_LINE, translate("Failed to find symbol '%1%' in dynamic library."), name);
+      throw MakeFormattedError(THIS_LINE, translate("Failed to find symbol '{}' in dynamic library."), name);
     }
 
   private:
@@ -64,11 +64,12 @@ namespace Platform::Details
     return ::GetLastError();
   }
 
-  const String SUFFIX(".dll");
+  const auto SUFFIX = ".dll"sv;
 
-  String BuildLibraryFilename(const String& name)
+  String BuildLibraryFilename(StringView name)
   {
-    return name + SUFFIX;
+    // TODO: Concat(StringView...)
+    return String(name).append(SUFFIX);
   }
 
   Error LoadSharedLibrary(const String& fileName, SharedLibrary::Ptr& res)
@@ -78,21 +79,23 @@ namespace Platform::Details
       res = MakePtr<WindowsSharedLibrary>(handle);
       return Error();
     }
-    return MakeFormattedError(THIS_LINE, translate("Failed to load dynamic library '%1%' (error code is %2%)."),
+    return MakeFormattedError(THIS_LINE, translate("Failed to load dynamic library '{0}' (error code is {1})."),
                               fileName, GetWindowsError());
   }
 
-  String GetSharedLibraryFilename(const String& name)
+  String GetSharedLibraryFilename(StringView name)
   {
-    return name.find(SUFFIX) == name.npos ? BuildLibraryFilename(name) : name;
+    return name.find(SUFFIX) == name.npos ? BuildLibraryFilename(name) : String{name};
   }
 
   std::vector<String> GetSharedLibraryFilenames(const SharedLibrary::Name& name)
   {
     std::vector<String> res;
-    res.push_back(GetSharedLibraryFilename(name.Base()));
-    const auto& alternatives = name.WindowsAlternatives();
-    std::transform(alternatives.begin(), alternatives.end(), std::back_inserter(res), &GetSharedLibraryFilename);
+    res.emplace_back(GetSharedLibraryFilename(name.Base()));
+    for (const auto& alt : name.WindowsAlternatives())
+    {
+      res.emplace_back(GetSharedLibraryFilename(alt));
+    }
     return res;
   }
 }  // namespace Platform::Details

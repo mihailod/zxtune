@@ -10,12 +10,11 @@
 
 #pragma once
 
-// local includes
 #include "core/src/location.h"
-// library includes
-#include <analysis/result.h>
-#include <core/module_detect.h>
-#include <core/plugin.h>
+
+#include "analysis/result.h"
+#include "core/module_detect.h"
+#include "core/plugin.h"
 
 namespace Parameters
 {
@@ -27,7 +26,7 @@ namespace ZXTune
   class ArchiveCallback : public Module::DetectCallback
   {
   public:
-    virtual ~ArchiveCallback() = default;
+    ~ArchiveCallback() override = default;
 
     virtual void ProcessData(DataLocation::Ptr data) = 0;
   };
@@ -35,7 +34,7 @@ namespace ZXTune
   class ArchivePlugin : public Plugin
   {
   public:
-    typedef std::shared_ptr<const ArchivePlugin> Ptr;
+    using Ptr = std::shared_ptr<const ArchivePlugin>;
 
     static const std::vector<Ptr>& Enumerate();
 

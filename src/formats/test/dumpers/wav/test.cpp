@@ -8,17 +8,20 @@
  *
  **/
 
-#include "../../utils.h"
-#include <formats/chiptune/music/wav.h>
-#include <strings/format.h>
+#include "formats/chiptune/music/wav.h"
+#include "formats/test/utils.h"
+
+#include "strings/format.h"
+
+#include "string_view.h"
 
 namespace
 {
   using namespace Formats::Chiptune;
 
-  Char ToHex(uint_t val)
+  auto ToHex(uint_t val)
   {
-    return val >= 10 ? val - 10 + 'A' : val + '0';
+    return val >= 10 ? 'A' + (val - 10) : '0' + val;
   }
 
   String ToHex(Binary::View data)
@@ -59,6 +62,11 @@ namespace
       {
         std::cout << "Strings: " << str << std::endl;
       }
+    }
+
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
     }
 
     MetaBuilder& GetMetaBuilder() override
@@ -105,7 +113,7 @@ namespace
       case Wav::Format::PCM:
         return "pcm";
       case Wav::Format::ADPCM:
-        return "pcm";
+        return "adpcm";
       case Wav::Format::IEEE_FLOAT:
         return "float32";
       case Wav::Format::ATRAC3:
@@ -127,9 +135,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Binary::Dump> rawData(new Binary::Dump());
-    Test::OpenFile(argv[1], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[1]);
     WavBuilder builder;
     if (const auto result = Formats::Chiptune::Wav::Parse(*data, builder))
     {

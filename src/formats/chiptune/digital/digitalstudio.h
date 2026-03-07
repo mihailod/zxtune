@@ -10,22 +10,18 @@
 
 #pragma once
 
-// local includes
 #include "formats/chiptune/digital/digital.h"
-// library includes
-#include <formats/chiptune.h>
 
-namespace Formats
+#include "formats/chiptune.h"
+
+namespace Formats::Chiptune
 {
-  namespace Chiptune
+  namespace DigitalStudio
   {
-    namespace DigitalStudio
-    {
-      typedef Digital::Builder Builder;
+    using Builder = Digital::Builder;
 
-      Formats::Chiptune::Container::Ptr Parse(const Binary::Container& data, Builder& target);
-    }  // namespace DigitalStudio
+    Formats::Chiptune::Container::Ptr Parse(const Binary::Container& data, Builder& target);
+  }  // namespace DigitalStudio
 
-    Decoder::Ptr CreateDigitalStudioDecoder();
-  }  // namespace Chiptune
-}  // namespace Formats
+  Decoder::Ptr CreateDigitalStudioDecoder();
+}  // namespace Formats::Chiptune

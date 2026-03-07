@@ -1,8 +1,9 @@
-#include <sound/backends/backend_impl.h>
+#include "sound/backends/backend_impl.h"
 
 namespace Sound
 {
-  Backend::Ptr CreateBackend(Parameters::Accessor::Ptr, Module::Holder::Ptr, BackendCallback::Ptr, BackendWorker::Ptr)
+  Backend::Ptr CreateBackend(Parameters::Accessor::Ptr, const Module::Holder::Ptr&, BackendCallback::Ptr,
+                             BackendWorker::Ptr)
   {
     return {};
   }

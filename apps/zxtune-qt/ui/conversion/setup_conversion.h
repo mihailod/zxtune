@@ -10,10 +10,9 @@
 
 #pragma once
 
-// local includes
-#include "playlist/supp/conversion.h"
-#include "playlist/supp/data.h"
-// qt includes
+#include "apps/zxtune-qt/playlist/supp/conversion.h"
+#include "apps/zxtune-qt/playlist/supp/data.h"
+
 #include <QtWidgets/QDialog>
 
 namespace UI
@@ -25,13 +24,11 @@ namespace UI
     explicit SetupConversionDialog(QWidget& parent);
 
   public:
-    typedef std::shared_ptr<SetupConversionDialog> Ptr;
+    using Ptr = std::shared_ptr<SetupConversionDialog>;
 
     static Ptr Create(QWidget& parent);
 
     virtual Playlist::Item::Conversion::Options::Ptr Execute() = 0;
-  private slots:
-    virtual void UpdateDescriptions() = 0;
   };
 
   // raw format
@@ -39,5 +36,5 @@ namespace UI
   // sound formats (TBD dumps)
   Playlist::Item::Conversion::Options::Ptr GetConvertParameters(QWidget& parent);
   // universal for single item
-  Playlist::Item::Conversion::Options::Ptr GetSaveAsParameters(Playlist::Item::Data::Ptr item);
+  Playlist::Item::Conversion::Options::Ptr GetSaveAsParameters(const Playlist::Item::Data& item);
 }  // namespace UI

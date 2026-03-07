@@ -10,7 +10,6 @@
 
 #pragma once
 
-// local includes
 #include "formats/packed/pack_utils.h"
 
 // Hrust1-compatible bitstream:
@@ -21,8 +20,6 @@ class Hrust1Bitstream : public ByteStream
 public:
   Hrust1Bitstream(const uint8_t* data, std::size_t size)
     : ByteStream(data, size)
-    , Bits()
-    , Mask()
   {
     InitMask();
   }
@@ -66,6 +63,6 @@ private:
   }
 
 private:
-  uint_t Bits;
-  uint_t Mask;
+  uint_t Bits = 0;
+  uint_t Mask = 0;
 };

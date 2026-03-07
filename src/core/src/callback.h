@@ -10,8 +10,9 @@
 
 #pragma once
 
-// core includes
-#include <core/module_detect.h>
+#include "core/module_detect.h"
+
+#include "string_view.h"
 
 namespace Module
 {
@@ -23,7 +24,7 @@ namespace Module
       : Delegate(delegate)
     {}
 
-    Parameters::Container::Ptr CreateInitialProperties(const String& subpath) const override
+    Parameters::Container::Ptr CreateInitialProperties(StringView subpath) const override
     {
       return Delegate.CreateInitialProperties(subpath);
     }
@@ -34,7 +35,7 @@ namespace Module
       return Delegate.ProcessModule(location, decoder, std::move(holder));
     }
 
-    void ProcessUnknownData(const ZXTune::DataLocation& location)
+    void ProcessUnknownData(const ZXTune::DataLocation& location) override
     {
       return Delegate.ProcessUnknownData(location);
     }

@@ -8,18 +8,19 @@
  *
  **/
 
-// local includes
-#include "sound_dsound.h"
+#include "apps/zxtune-qt/ui/preferences/sound_dsound.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "sound_dsound.ui.h"
-#include "supp/options.h"
-#include "ui/tools/parameters_helpers.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <debug/log.h>
-#include <sound/backends/dsound.h>
-#include <sound/backends_parameters.h>
+
+#include "sound/backends/dsound.h"
+
+#include "debug/log.h"
+#include "sound/backends_parameters.h"
+
+#include "contract.h"
 
 namespace
 {
@@ -45,35 +46,17 @@ namespace
 
       using namespace Parameters::ZXTune::Sound::Backends::DirectSound;
       Parameters::IntegerValue::Bind(*latency, *Options, LATENCY, LATENCY_DEFAULT);
-      Require(connect(devices, SIGNAL(currentIndexChanged(const QString&)), SLOT(DeviceChanged(const QString&))));
+      Require(connect(devices, &QComboBox::currentTextChanged, this, &DirectSoundOptionsWidget::DeviceChanged));
     }
 
-    String GetBackendId() const override
+    StringView GetBackendId() const override
     {
-      static const Char ID[] = {'d', 's', 'o', 'u', 'n', 'd', '\0'};
-      return ID;
+      return "dsound"sv;
     }
 
     QString GetDescription() const override
     {
       return nameGroup->title();
-    }
-
-    void DeviceChanged(const QString& name) override
-    {
-      const String& id = FromQString(name);
-      Dbg("Selecting device '%1%'", id);
-      const auto it = std::find_if(Devices.begin(), Devices.end(),
-                                   [&name, &id](const Device& dev) { return dev.Name == name || dev.Id == id; });
-      if (it != Devices.end())
-      {
-        devices->setCurrentIndex(it - Devices.begin());
-        Options->SetValue(Parameters::ZXTune::Sound::Backends::DirectSound::DEVICE, it->Id);
-      }
-      else
-      {
-        devices->setCurrentIndex(-1);
-      }
     }
 
     // QWidget
@@ -90,20 +73,36 @@ namespace
     void SelectDevice()
     {
       using namespace Parameters::ZXTune::Sound::Backends::DirectSound;
-      String curDevice;
-      Options->FindValue(DEVICE, curDevice);
+      const auto curDevice = Parameters::GetString(*Options, DEVICE);
       DeviceChanged(ToQString(curDevice));
     }
 
     void FillDevices()
     {
       using namespace Sound;
-      for (DirectSound::Device::Iterator::Ptr availableDevices = DirectSound::EnumerateDevices();
-           availableDevices->IsValid(); availableDevices->Next())
+      for (const auto availableDevices = DirectSound::EnumerateDevices(); availableDevices->IsValid();
+           availableDevices->Next())
       {
         const DirectSound::Device::Ptr cur = availableDevices->Get();
-        Devices.push_back(Device(*cur));
+        Devices.emplace_back(*cur);
         devices->addItem(Devices.back().Name);
+      }
+    }
+
+    void DeviceChanged(const QString& name)
+    {
+      const auto& id = FromQString(name);
+      Dbg("Selecting device '{}'", id);
+      const auto it = std::find_if(Devices.begin(), Devices.end(),
+                                   [&name, &id](const Device& dev) { return dev.Name == name || dev.Id == id; });
+      if (it != Devices.end())
+      {
+        devices->setCurrentIndex(it - Devices.begin());
+        Options->SetValue(Parameters::ZXTune::Sound::Backends::DirectSound::DEVICE, it->Id);
+      }
+      else
+      {
+        devices->setCurrentIndex(-1);
       }
     }
 
@@ -112,7 +111,7 @@ namespace
 
     struct Device
     {
-      Device() {}
+      Device() = default;
 
       explicit Device(const Sound::DirectSound::Device& in)
         : Name(ToQString(in.Name()))
@@ -123,7 +122,7 @@ namespace
       String Id;
     };
 
-    typedef std::vector<Device> DevicesArray;
+    using DevicesArray = std::vector<Device>;
     DevicesArray Devices;
   };
 }  // namespace

@@ -10,22 +10,20 @@
 
 #pragma once
 
-// library includes
-#include <binary/data.h>
-#include <module/holder.h>
-#include <parameters/container.h>
-// std includes
+#include "binary/data.h"
+#include "module/holder.h"
+#include "parameters/container.h"
+
+#include "string_view.h"
+
 #include <memory>
 #include <stdexcept>
 
 // forward declarations
-namespace boost
+namespace boost::program_options
 {
-  namespace program_options
-  {
-    class options_description;
-  }
-}  // namespace boost
+  class options_description;
+}  // namespace boost::program_options
 
 class CancelError : public std::exception
 {};
@@ -36,7 +34,7 @@ public:
   virtual ~OnItemCallback() = default;
 
   virtual void ProcessItem(Binary::Data::Ptr data, Module::Holder::Ptr holder) = 0;
-  virtual void ProcessUnknownData(const String& path, const String& container, Binary::Data::Ptr data){};
+  virtual void ProcessUnknownData(StringView path, StringView container, Binary::Data::Ptr data){};
 };
 
 class SourceComponent

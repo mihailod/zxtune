@@ -10,18 +10,17 @@
 
 #pragma once
 
-// library includes
-#include <module/holder.h>
-#include <module/state.h>
-#include <sound/backend.h>
-#include <sound/chunk.h>
+#include "module/holder.h"
+#include "module/state.h"
+#include "sound/backend.h"
+#include "sound/chunk.h"
 
 namespace Sound
 {
   class BackendWorker
   {
   public:
-    typedef std::shared_ptr<BackendWorker> Ptr;
+    using Ptr = std::shared_ptr<BackendWorker>;
     virtual ~BackendWorker() = default;
 
     virtual void Startup() = 0;
@@ -36,12 +35,12 @@ namespace Sound
   class BackendWorkerFactory
   {
   public:
-    typedef std::shared_ptr<const BackendWorkerFactory> Ptr;
+    using Ptr = std::shared_ptr<const BackendWorkerFactory>;
     virtual ~BackendWorkerFactory() = default;
 
     virtual BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr holder) const = 0;
   };
 
-  Backend::Ptr CreateBackend(Parameters::Accessor::Ptr globalParams, Module::Holder::Ptr holder,
+  Backend::Ptr CreateBackend(Parameters::Accessor::Ptr globalParams, const Module::Holder::Ptr& holder,
                              BackendCallback::Ptr callback, BackendWorker::Ptr worker);
 }  // namespace Sound

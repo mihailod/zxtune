@@ -8,13 +8,11 @@
  *
  **/
 
-// local includes
 #include "formats/archived/trdos_catalogue.h"
 #include "formats/archived/trdos_utils.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <formats/packed/decoders.h>
+#include "formats/packed/decoders.h"
+
+#include "make_ptr.h"
 
 namespace Formats::Archived
 {
@@ -64,7 +62,7 @@ namespace Formats::Archived
       }
       else
       {
-        return Container::Ptr();
+        return {};
       }
     }
   }  // namespace ZXZip
@@ -76,7 +74,7 @@ namespace Formats::Archived
       : FileDecoder(Formats::Packed::CreateZXZipDecoder())
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return FileDecoder->GetDescription();
     }
@@ -90,7 +88,7 @@ namespace Formats::Archived
     {
       if (!FileDecoder->GetFormat()->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
 
       const Container::Ptr files = ZXZip::ParseArchive(*FileDecoder, data);

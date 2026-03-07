@@ -8,26 +8,23 @@
  *
  **/
 
-// local includes
 #include "module/players/xsf/usf.h"
-#include "module/players/xsf/xsf.h"
-#include "module/players/xsf/xsf_factory.h"
-// common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <debug/log.h>
-#include <module/attributes.h>
-#include <module/players/platforms.h>
-#include <module/players/streaming.h>
-#include <sound/resampler.h>
-// std includes
-#include <list>
-// 3rdparty includes
-#include <3rdparty/lazyusf2/usf/usf.h>
 
-#define FILE_TAG 59F6FD73
+#include "module/players/platforms.h"
+#include "module/players/streaming.h"
+#include "module/players/xsf/xsf.h"
+
+#include "debug/log.h"
+#include "module/attributes.h"
+#include "sound/resampler.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
+#include "3rdparty/lazyusf2/usf/usf.h"
+
+#include <list>
 
 namespace Module::USF
 {
@@ -84,7 +81,6 @@ namespace Module::USF
   {
   public:
     explicit USFEngine(const ModuleData& data)
-      : Emu()
     {
       SetupSections(data.Sections);
       if (data.Meta)
@@ -92,7 +88,7 @@ namespace Module::USF
         SetupEnvironment(*data.Meta);
       }
       DetectSoundFrequency();
-      Dbg("Used sound frequency is %1%", SoundFrequency);
+      Dbg("Used sound frequency is {}", SoundFrequency);
     }
 
     void Reset()
@@ -111,10 +107,10 @@ namespace Module::USF
       for (uint32_t doneSamples = 0; doneSamples < samples;)
       {
         const auto toRender = std::min<uint32_t>(samples - doneSamples, 1024);
-        const auto dst = safe_ptr_cast<short int*>(&result[doneSamples]);
-        if (const auto res = ::usf_render(Emu.GetRaw(), dst, toRender, nullptr))
+        auto* const dst = safe_ptr_cast<short int*>(&result[doneSamples]);
+        if (const auto* const res = ::usf_render(Emu.GetRaw(), dst, toRender, nullptr))
         {
-          throw MakeFormattedError(THIS_LINE, "USF: failed to render: %1%", res);
+          throw MakeFormattedError(THIS_LINE, "USF: failed to render: {}", res);
         }
         doneSamples += toRender;
       }
@@ -126,9 +122,9 @@ namespace Module::USF
       for (uint32_t skippedSamples = 0; skippedSamples < samples;)
       {
         const auto toSkip = std::min<uint32_t>(samples - skippedSamples, 1024);
-        if (const auto res = ::usf_render(Emu.GetRaw(), nullptr, toSkip, nullptr))
+        if (const auto* const res = ::usf_render(Emu.GetRaw(), nullptr, toSkip, nullptr))
         {
-          throw MakeFormattedError(THIS_LINE, "USF: failed to skip: %1%", res);
+          throw MakeFormattedError(THIS_LINE, "USF: failed to skip: {}", res);
         }
         skippedSamples += toSkip;
       }
@@ -150,11 +146,11 @@ namespace Module::USF
     {
       for (const auto& tag : meta.Tags)
       {
-        if (tag.first == "_enablecompare")
+        if (tag.first == "_enablecompare"sv)
         {
           ::usf_set_compare(Emu.GetRaw(), true);
         }
-        else if (tag.first == "_enablefifofull")
+        else if (tag.first == "_enablefifofull"sv)
         {
           ::usf_set_fifo_full(Emu.GetRaw(), true);
         }
@@ -165,9 +161,9 @@ namespace Module::USF
     void DetectSoundFrequency()
     {
       int32_t freq = 0;
-      if (const auto res = ::usf_render(Emu.GetRaw(), nullptr, 0, &freq))
+      if (const auto* const res = ::usf_render(Emu.GetRaw(), nullptr, 0, &freq))
       {
-        throw MakeFormattedError(THIS_LINE, "USF: failed to detect frequency: %1%", res);
+        throw MakeFormattedError(THIS_LINE, "USF: failed to detect frequency: {}", res);
       }
       Reset();
       SoundFrequency = freq;
@@ -194,13 +190,9 @@ namespace Module::USF
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto avail = State->Consume(FRAME_DURATION, looped);
+      const auto avail = State->ConsumeUpTo(FRAME_DURATION);
       return Target->Apply(Engine.Render(GetSamples(avail)));
     }
 
@@ -263,7 +255,7 @@ namespace Module::USF
       {
         tune->Meta->Dump(*properties);
       }
-      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_64.to_string());
+      properties->SetValue(ATTR_PLATFORM, Platforms::NINTENDO_64);
       return MakePtr<Holder>(std::move(tune), std::move(properties));
     }
 
@@ -323,7 +315,7 @@ namespace Module::USF
       return Holder::Create(builder.CaptureResult(), std::move(properties));
     }
 
-    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles,
+    Holder::Ptr CreateMultifileModule(const XSF::File& file, const XSF::FilesMap& additionalFiles,
                                       Parameters::Container::Ptr properties) const override
     {
       ModuleDataBuilder builder;
@@ -348,8 +340,8 @@ namespace Module::USF
     */
     static const uint_t MAX_LEVEL = 10;
 
-    static void MergeSections(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
-                              ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeSections(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
+                              uint_t level = 1)
     {
       if (!data.Dependencies.empty() && level < MAX_LEVEL)
       {
@@ -358,7 +350,7 @@ namespace Module::USF
       dst.AddSection(data.ReservedSection);
     }
 
-    void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles, ModuleDataBuilder& dst,
+    void MergeMeta(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
                    uint_t level = 1) const
     {
       if (level < MAX_LEVEL)
@@ -375,10 +367,8 @@ namespace Module::USF
     }
   };
 
-  Module::Factory::Ptr CreateFactory()
+  XSF::Factory::Ptr CreateFactory()
   {
-    return XSF::CreateFactory(MakePtr<Factory>());
+    return MakePtr<Factory>();
   }
 }  // namespace Module::USF
-
-#undef FILE_TAG

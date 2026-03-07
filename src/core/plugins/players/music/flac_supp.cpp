@@ -8,28 +8,23 @@
  *
  **/
 
-// local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-// common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/input_stream.h>
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/decoders.h>
-#include <formats/chiptune/music/flac.h>
-#include <module/players/properties_helper.h>
-#include <module/players/properties_meta.h>
-#include <module/players/streaming.h>
-#include <sound/resampler.h>
-// 3rdparty
-#define FLAC__NO_DLL
-#include <3rdparty/FLAC/stream_decoder.h>
+#include "formats/chiptune/music/flac.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
 
-#define FILE_TAG B064CB05
+#include "binary/input_stream.h"
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "sound/resampler.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
+#include "3rdparty/FLAC/stream_decoder.h"
 
 namespace Module::Flac
 {
@@ -95,14 +90,14 @@ namespace Module::Flac
   };
 
   template<uint_t width>
-  static Sound::Sample MakeMonoSample(int32_t val)
+  Sound::Sample MakeMonoSample(int32_t val)
   {
     const auto converted = SampleTraits<width>::ConvertChannel(val);
     return Sound::Sample(converted, converted);
   }
 
   template<uint_t width>
-  static Sound::Sample MakeStereoSample(int32_t left, int32_t right)
+  Sound::Sample MakeStereoSample(int32_t left, int32_t right)
   {
     return Sound::Sample(SampleTraits<width>::ConvertChannel(left), SampleTraits<width>::ConvertChannel(right));
   }
@@ -122,7 +117,7 @@ namespace Module::Flac
                                                              &DoWrite, nullptr, &DoError, this);
       if (status != FLAC__STREAM_DECODER_INIT_STATUS_OK)
       {
-        throw MakeFormattedError(THIS_LINE, "Failed to init decoder. Status: %1%",
+        throw MakeFormattedError(THIS_LINE, "Failed to create decoder. Error: {}",
                                  ::FLAC__StreamDecoderInitStatusString[status]);
       }
       Reset();
@@ -232,7 +227,7 @@ namespace Module::Flac
       const auto bits = frame->header.bits_per_sample;
       const auto samplesBefore = self.Chunk.size();
       self.Chunk.resize(samplesBefore + samples);
-      const auto target = self.Chunk.data() + samplesBefore;
+      auto* const target = self.Chunk.data() + samplesBefore;
       switch (frame->header.channels)
       {
       case 1:
@@ -253,7 +248,7 @@ namespace Module::Flac
       self.Chunk.clear();
     }
 
-    void RenderMono(const int32_t* mono, Sound::Sample* target, uint_t samples, uint_t width)
+    static void RenderMono(const int32_t* mono, Sound::Sample* target, uint_t samples, uint_t width)
     {
       switch (width)
       {
@@ -277,7 +272,8 @@ namespace Module::Flac
       }
     }
 
-    void RenderStereo(const int32_t* left, const int32_t* right, Sound::Sample* target, uint_t samples, uint_t width)
+    static void RenderStereo(const int32_t* left, const int32_t* right, Sound::Sample* target, uint_t samples,
+                             uint_t width)
     {
       switch (width)
       {
@@ -312,7 +308,7 @@ namespace Module::Flac
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(Model::Ptr data, Sound::Converter::Ptr target)
+    Renderer(const Model::Ptr& data, Sound::Converter::Ptr target)
       : Tune(data)
       , State(MakePtr<SampledState>(data->TotalSamples, data->Frequency))
       , Target(std::move(target))
@@ -323,21 +319,14 @@ namespace Module::Flac
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto loops = State->LoopCount();
       auto frame = Tune.RenderFrame();
-      State->Consume(frame.size(), looped);
-      frame = Target->Apply(std::move(frame));
-      if (State->LoopCount() != loops)
+      if (0 != State->Consume(frame.size()))
       {
         Tune.Seek(0);
       }
-      return frame;
+      return Target->Apply(std::move(frame));
     }
 
     void Reset() override
@@ -464,7 +453,7 @@ namespace Module::Flac
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create FLAC: %s", e.what());
+        Dbg("Failed to create FLAC: {}", e.what());
       }
       return {};
     }
@@ -475,14 +464,12 @@ namespace ZXTune
 {
   void RegisterFLACPlugin(PlayerPluginsRegistrator& registrator)
   {
-    const Char ID[] = {'F', 'L', 'A', 'C', 0};
+    const auto ID = "FLAC"_id;
     const uint_t CAPS = Capabilities::Module::Type::STREAM | Capabilities::Module::Device::DAC;
 
-    const auto decoder = Formats::Chiptune::CreateFLACDecoder();
-    const auto factory = MakePtr<Module::Flac::Factory>();
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, CAPS, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::CreateFLACDecoder();
+    auto factory = MakePtr<Module::Flac::Factory>();
+    auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
 }  // namespace ZXTune
-
-#undef FILE_TAG

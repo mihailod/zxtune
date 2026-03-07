@@ -2,10 +2,12 @@ library_name := vgmstream
 dirs.root := ../..
 include $(dirs.root)/make/default.mak
 
-includes.dirs += $(dirs.root)/3rdparty $(dirs.root)/3rdparty/atrac9/C/src $(dirs.root)/3rdparty/mpg123/src/libmpg123 ext_includes ext_includes/ffmpeg
+dirs.ext = $(dirs.root)/3rdparty
 
-source_dirs = src src/coding src/layout src/meta src/util
+includes.dirs += $(dirs.ext)/atrac9/C/src $(dirs.ext)/mpg123/src/libmpg123 $(dirs.ext)/ffmpeg $(dirs.ext)
 
-includes.files = config.h ext_includes/ffmpeg/libavutil/mathematics.h
+source_dirs = . base coding coding/libs layout meta util
+
+includes.files = config.h 
 
 include $(dirs.root)/makefile.mak

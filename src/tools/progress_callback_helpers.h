@@ -10,10 +10,10 @@
 
 #pragma once
 
-// common includes
-#include <progress_callback.h>
-// library includes
-#include <math/scale.h>
+#include "math/scale.h"
+#include "tools/progress_callback.h"
+
+#include "string_view.h"
 
 //! @brief Namespace is used for logging and other informational purposes
 namespace Log
@@ -32,7 +32,7 @@ namespace Log
       Delegate.OnProgress(ToPercent(current));
     }
 
-    void OnProgress(uint_t current, const String& message) override
+    void OnProgress(uint_t current, StringView message) override
     {
       Delegate.OnProgress(ToPercent(current), message);
     }
@@ -57,7 +57,7 @@ namespace Log
       Delegate.OnProgress(Scale(current));
     }
 
-    void OnProgress(uint_t current, const String& message) override
+    void OnProgress(uint_t current, StringView message) override
     {
       Delegate.OnProgress(Scale(current), message);
     }

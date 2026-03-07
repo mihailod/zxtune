@@ -8,65 +8,62 @@
  *
  **/
 
-// local includes
-#include "config.h"
-#include "console.h"
-#include "display.h"
-#include "information.h"
-#include "sound.h"
-#include "source.h"
-// common includes
-#include <error_tools.h>
-#include <progress_callback.h>
-// library includes
-#include <async/data_receiver.h>
-#include <async/src/event.h>
-#include <binary/container_factories.h>
-#include <binary/crc.h>
-#include <core/core_parameters.h>
-#include <core/plugin.h>
-#include <core/plugin_attrs.h>
-#include <io/api.h>
-#include <io/template.h>
-#include <module/attributes.h>
-#include <module/conversion/api.h>
-#include <module/conversion/types.h>
-#include <parameters/merged_accessor.h>
-#include <parameters/template.h>
-#include <platform/application.h>
-#include <platform/version/api.h>
-#include <sound/loop.h>
-#include <sound/sound_parameters.h>
-#include <time/duration.h>
-#include <time/timer.h>
-// std includes
+#include "apps/zxtune123/config.h"
+#include "apps/zxtune123/console.h"
+#include "apps/zxtune123/display.h"
+#include "apps/zxtune123/information.h"
+#include "apps/zxtune123/sound.h"
+#include "apps/zxtune123/source.h"
+
+#include "async/src/event.h"
+#include "module/conversion/api.h"
+#include "module/conversion/parameters.h"
+
+#include "async/data_receiver.h"
+#include "binary/container_factories.h"
+#include "binary/crc.h"
+#include "core/core_parameters.h"
+#include "core/plugin.h"
+#include "core/plugin_attrs.h"
+#include "io/api.h"
+#include "io/template.h"
+#include "module/attributes.h"
+#include "parameters/merged_accessor.h"
+#include "parameters/template.h"
+#include "platform/application.h"
+#include "platform/version/api.h"
+#include "sound/sound_parameters.h"
+#include "time/duration.h"
+#include "time/timer.h"
+#include "tools/progress_callback.h"
+
+#include "error_tools.h"
+#include "string_view.h"
+
+#include <boost/program_options.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <numeric>
-// boost includes
-#include <boost/program_options.hpp>
-
-#define FILE_TAG 81C76E7D
 
 namespace
 {
   String GetModuleId(const Parameters::Accessor& props)
   {
-    String res;
-    props.FindValue(Module::ATTR_FULLPATH, res);
-    return res;
+    return Parameters::GetString(props, Module::ATTR_FULLPATH);
   }
 
   String GetFilenameTemplate(const Parameters::Accessor& params)
   {
-    String nameTemplate;
-    if (!params.FindValue(String("filename"), nameTemplate))
+    auto res = Parameters::GetString(params, "filename"sv);
+    if (res.empty())
     {
       throw Error(THIS_LINE, "Output filename template is not specified.");
     }
-    return nameTemplate;
+    return res;
   }
 
   struct HolderAndData
@@ -74,7 +71,7 @@ namespace
     Module::Holder::Ptr Holder;
     Binary::Data::Ptr Data;
 
-    typedef DataReceiver<HolderAndData> Receiver;
+    using Receiver = DataReceiver<HolderAndData>;
   };
 
   class SaveEndpoint : public HolderAndData::Receiver
@@ -91,12 +88,12 @@ namespace
       try
       {
         const Parameters::Accessor::Ptr props = data.Holder->GetModuleProperties();
-        const String& id = GetModuleId(*props);
-        const String& filename =
+        const auto& id = GetModuleId(*props);
+        const auto& filename =
             FileNameTemplate->Instantiate(Parameters::FieldsSourceAdapter<Strings::SkipFieldsSource>(*props));
-        const Binary::OutputStream::Ptr stream = IO::CreateStream(filename, Params, Log::ProgressCallback::Stub());
+        const auto stream = IO::CreateStream(filename, Params, Log::ProgressCallback::Stub());
         stream->ApplyData(*data.Data);
-        Display.Message(Strings::Format("Converted '%1%' => '%2%'", id, filename));
+        Display.Message("Converted '{0}' => '{1}'", id, filename);
       }
       catch (const Error& e)
       {
@@ -112,35 +109,35 @@ namespace
     const Strings::Template::Ptr FileNameTemplate;
   };
 
-  std::unique_ptr<Module::Conversion::Parameter> CreateConversionParameters(const String& mode,
+  std::unique_ptr<Module::Conversion::Parameter> CreateConversionParameters(StringView mode,
                                                                             const Parameters::Accessor& modeParams)
   {
-    Parameters::IntType optimization = Module::Conversion::DEFAULT_OPTIMIZATION;
-    modeParams.FindValue(String("optimization"), optimization);
+    const auto optimization =
+        Parameters::GetInteger<uint_t>(modeParams, "optimization"sv, Module::Conversion::DEFAULT_OPTIMIZATION);
     std::unique_ptr<Module::Conversion::Parameter> param;
-    if (mode == "psg")
+    if (mode == "psg"sv)
     {
-      param.reset(new Module::Conversion::PSGConvertParam(optimization));
+      param = std::make_unique<Module::Conversion::PSGConvertParam>(optimization);
     }
-    else if (mode == "zx50")
+    else if (mode == "zx50"sv)
     {
-      param.reset(new Module::Conversion::ZX50ConvertParam(optimization));
+      param = std::make_unique<Module::Conversion::ZX50ConvertParam>(optimization);
     }
-    else if (mode == "txt")
+    else if (mode == "txt"sv)
     {
-      param.reset(new Module::Conversion::TXTConvertParam());
+      param = std::make_unique<Module::Conversion::TXTConvertParam>();
     }
-    else if (mode == "debugay")
+    else if (mode == "debugay"sv)
     {
-      param.reset(new Module::Conversion::DebugAYConvertParam(optimization));
+      param = std::make_unique<Module::Conversion::DebugAYConvertParam>(optimization);
     }
-    else if (mode == "aydump")
+    else if (mode == "aydump"sv)
     {
-      param.reset(new Module::Conversion::AYDumpConvertParam(optimization));
+      param = std::make_unique<Module::Conversion::AYDumpConvertParam>(optimization);
     }
-    else if (mode == "fym")
+    else if (mode == "fym"sv)
     {
-      param.reset(new Module::Conversion::FYMConvertParam(optimization));
+      param = std::make_unique<Module::Conversion::FYMConvertParam>(optimization);
     }
     else
     {
@@ -158,9 +155,9 @@ namespace
 
     void ApplyData(HolderAndData data) override
     {
-      const Parameters::IntType availSize = data.Data->Size();
-      Parameters::IntType usedSize = 0;
-      data.Holder->GetModuleProperties()->FindValue(Module::ATTR_SIZE, usedSize);
+      const auto availSize = data.Data->Size();
+      const auto usedSize =
+          Parameters::GetInteger<decltype(availSize)>(*data.Holder->GetModuleProperties(), Module::ATTR_SIZE);
       if (availSize != usedSize)
       {
         Require(availSize > usedSize);
@@ -181,7 +178,7 @@ namespace
   class ConvertEndpoint : public HolderAndData::Receiver
   {
   public:
-    ConvertEndpoint(DisplayComponent& display, const String& mode, const Parameters::Accessor& modeParams, Ptr saver)
+    ConvertEndpoint(DisplayComponent& display, StringView mode, const Parameters::Accessor& modeParams, Ptr saver)
       : Display(display)
       , ConversionParameter(CreateConversionParameters(mode, modeParams))
       , Saver(std::move(saver))
@@ -189,18 +186,17 @@ namespace
 
     void ApplyData(HolderAndData data) override
     {
-      const Module::Holder::Ptr holder = data.Holder;
-      const Parameters::Accessor::Ptr props = holder->GetModuleProperties();
+      const auto holder = data.Holder;
+      const auto props = holder->GetModuleProperties();
       if (const Binary::Data::Ptr result = Module::Convert(*holder, *ConversionParameter, props))
       {
         Saver->ApplyData({holder, result});
       }
       else
       {
-        Parameters::StringType type;
-        props->FindValue(Module::ATTR_TYPE, type);
-        const String& id = GetModuleId(*props);
-        Display.Message(Strings::Format("Skipping '%1%' (type '%2%') due to convert impossibility.", id, type));
+        const auto& type = Parameters::GetString(*props, Module::ATTR_TYPE);
+        const auto& id = GetModuleId(*props);
+        Display.Message("Skipping '{0}' (type '{1}') due to convert impossibility.", id, type);
       }
     }
 
@@ -221,14 +217,15 @@ namespace
     Convertor(const Parameters::Accessor& params, DisplayComponent& display)
       : Pipe(HolderAndData::Receiver::CreateStub())
     {
-      Parameters::StringType mode;
-      if (!params.FindValue(String("mode"), mode))
+      const auto mode = params.FindString("mode"sv);
+      if (!mode)
       {
         throw Error(THIS_LINE, "Conversion mode is not specified.");
       }
       const HolderAndData::Receiver::Ptr saver(new SaveEndpoint(display, params));
-      const HolderAndData::Receiver::Ptr target =
-          mode == "raw" ? MakePtr<TruncateDataEndpoint>(saver) : MakePtr<ConvertEndpoint>(display, mode, params, saver);
+      const HolderAndData::Receiver::Ptr target = *mode == "raw"
+                                                      ? MakePtr<TruncateDataEndpoint>(saver)
+                                                      : MakePtr<ConvertEndpoint>(display, *mode, params, saver);
       Pipe = Async::DataReceiver<HolderAndData>::Create(1, 1000, target);
     }
 
@@ -260,22 +257,22 @@ namespace
     {
       const Module::Information::Ptr info = holder->GetModuleInformation();
       const Parameters::Accessor::Ptr props = holder->GetModuleProperties();
-      String path, type;
-      props->FindValue(Module::ATTR_FULLPATH, path);
-      props->FindValue(Module::ATTR_TYPE, type);
+      const auto& path = Parameters::GetString(*props, Module::ATTR_FULLPATH);
+      const auto& type = Parameters::GetString(*props, Module::ATTR_TYPE);
 
       try
       {
         const auto total = info->Duration() * Iterations;
         BenchmarkSoundReceiver receiver;
         const auto renderer = holder->CreateRenderer(Sounder.GetSamplerate(), props);
+        const auto state = renderer->GetState();
         const Time::Timer timer;
         for (unsigned i = 0; i != Iterations; ++i)
         {
           renderer->SetPosition({});
-          for (;;)
+          while (0 == state->LoopCount())
           {
-            auto data = renderer->Render({});
+            auto data = renderer->Render();
             if (data.empty())
             {
               break;
@@ -288,8 +285,9 @@ namespace
         }
         const auto real = timer.Elapsed<>();
         const auto relSpeed = total.Divide<double>(real);
-        Display.Message(Strings::Format("x%|3$.2f|\t(%2%)\t%1%\t[0x%4$08x]\t{%5%..%6%}", path, type, relSpeed,
-                                        receiver.GetHash(), receiver.GetMinSample(), receiver.GetMaxSample()));
+        Display.Message("x{2:.2f}\t({1})\t{0}\t[0x{3:08x}]\t{{{4}..{5}, {6}}}", path, type, relSpeed,
+                        receiver.GetHash(), receiver.GetMinSample(), receiver.GetMaxSample(),
+                        receiver.GetTotalSamples());
       }
       catch (const std::exception& e)
       {
@@ -305,18 +303,18 @@ namespace
       }
     }
 
-    void ProcessUnknownData(const String& path, const String& container, Binary::Data::Ptr data) override
+    void ProcessUnknownData(StringView path, StringView container, Binary::Data::Ptr data) override
     {
       if (DumpUnknownData)
       {
-        Display.Message(Strings::Format("Unknown\t(%2%)\t%1%\t[%3%]", path, container, data->Size()));
+        Display.Message("Unknown\t({1})\t{0}\t[{2}]", path, container, data->Size());
       }
     }
 
   private:
-    void BenchmarkFail(const String& path, const String& type, std::string msg) const
+    void BenchmarkFail(StringView path, StringView type, StringView msg) const
     {
-      Display.Message(Strings::Format("Fail\t(%2%)\t%1%\t[%3%]", path, type, msg));
+      Display.Message("Fail\t({1})\t{0}\t[{2}]", path, type, msg);
     }
 
     class BenchmarkSoundReceiver
@@ -325,6 +323,7 @@ namespace
       void ApplyData(Sound::Chunk data)
       {
         Crc32 = Binary::Crc32(data, Crc32);
+        TotalSamples += data.size();
         for (const auto smp : data)
         {
           MinMax(smp.Left());
@@ -335,6 +334,11 @@ namespace
       uint32_t GetHash() const
       {
         return Crc32;
+      }
+
+      uint64_t GetTotalSamples() const
+      {
+        return TotalSamples;
       }
 
       Sound::Sample::Type GetMinSample() const
@@ -356,6 +360,7 @@ namespace
 
     private:
       uint32_t Crc32 = 0;
+      uint64_t TotalSamples = 0;
       Sound::Sample::Type MinSample = Sound::Sample::MAX;
       Sound::Sample::Type MaxSample = Sound::Sample::MIN;
     };
@@ -380,7 +385,6 @@ namespace
       , Sourcer(SourceComponent::Create(ConfigParams))
       , Sounder(SoundComponent::Create(ConfigParams))
       , Display(DisplayComponent::Create())
-      , SeekStep(10)
       , BenchmarkIterations(NO_BENCHMARK)
     {}
 
@@ -428,19 +432,19 @@ namespace
 
         String configFile;
         options_description options(
-            Strings::Format("Usage:\n%1% <Informational keys>\n%1% <Options> <files>...\n\nKeys", args[0]));
-        const Char HELP_KEY[] = "help";
-        const Char VERSION_KEY[] = "version";
-        const Char ABOUT_KEY[] = "about";
-        const Char CONFIG_KEY[] = "config";
-        const Char CONVERT_KEY[] = "convert";
+            Strings::Format("Usage:\n{0} <Informational keys>\n{0} <Options> <files>...\n\nKeys", args[0]));
+        const auto HELP_KEY = "help"s;
+        const auto VERSION_KEY = "version"s;
+        const auto ABOUT_KEY = "about"s;
+        const auto CONFIG_KEY = "config"s;
+        const auto CONVERT_KEY = "convert"s;
         {
           auto opt = options.add_options();
-          opt(HELP_KEY, "show this message");
-          opt(VERSION_KEY, "show version");
-          opt(ABOUT_KEY, "show information about program");
-          opt(CONFIG_KEY, value<String>(&configFile), "configuration file");
-          opt(CONVERT_KEY, value<String>(&ConvertParams),
+          opt(HELP_KEY.c_str(), "show this message");
+          opt(VERSION_KEY.c_str(), "show version");
+          opt(ABOUT_KEY.c_str(), "show information about program");
+          opt(CONFIG_KEY.c_str(), value<String>(&configFile), "configuration file");
+          opt(CONVERT_KEY.c_str(), value<String>(&ConvertParams),
               "Perform conversion instead of playback.\n"
               "Parameter is map with the next mandatory parameters:\n"
               " mode - specify conversion mode. Currently supported are: raw,psg,zx50,txt,aydump,fym\n"
@@ -494,7 +498,7 @@ namespace
       }
       catch (const std::exception& e)
       {
-        throw MakeFormattedError(THIS_LINE, "Error: %1%", e.what());
+        throw MakeFormattedError(THIS_LINE, "Error: {}", e.what());
       }
     }
 
@@ -582,7 +586,6 @@ namespace
         {
           break;
         }
-        Display->EndFrame();
       }
     }
 
@@ -593,7 +596,7 @@ namespace
     std::unique_ptr<SourceComponent> Sourcer;
     std::unique_ptr<SoundComponent> Sounder;
     std::unique_ptr<DisplayComponent> Display;
-    uint_t SeekStep;
+    uint_t SeekStep = 10;
     uint_t BenchmarkIterations;
     bool DumpUnknownData = false;
   };
@@ -603,7 +606,7 @@ namespace Platform
 {
   namespace Version
   {
-    extern const Char PROGRAM_NAME[] = "zxtune123";
+    const StringView PROGRAM_NAME = "zxtune123"sv;
   }
 
   std::unique_ptr<Application> Application::Create()

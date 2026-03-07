@@ -8,12 +8,12 @@
  *
  **/
 
-// local includes
-#include "operations_statistic.h"
-#include "operations_helpers.h"
-#include "storage.h"
-// common includes
-#include <make_ptr.h>
+#include "apps/zxtune-qt/playlist/supp/operations_statistic.h"
+
+#include "apps/zxtune-qt/playlist/supp/operations_helpers.h"
+#include "apps/zxtune-qt/playlist/supp/storage.h"
+
+#include "make_ptr.h"
 
 namespace
 {
@@ -42,9 +42,10 @@ namespace
   private:
     void OnItem(Playlist::Model::IndexType /*index*/, Playlist::Item::Data::Ptr data) override
     {
+      data->GetModule();
       // check for the data first to define is data valid or not
       const String type = data->GetType();
-      if (data->GetState())
+      if (data->GetState().GetIfError())
       {
         Result->AddInvalid();
       }
@@ -65,19 +66,16 @@ namespace
   };
 }  // namespace
 
-namespace Playlist
+namespace Playlist::Item
 {
-  namespace Item
+  TextResultOperation::Ptr CreateCollectStatisticOperation(StatisticTextNotification::Ptr result)
   {
-    TextResultOperation::Ptr CreateCollectStatisticOperation(StatisticTextNotification::Ptr result)
-    {
-      return MakePtr<CollectStatisticOperation>(result);
-    }
+    return MakePtr<CollectStatisticOperation>(std::move(result));
+  }
 
-    TextResultOperation::Ptr CreateCollectStatisticOperation(Playlist::Model::IndexSet::Ptr items,
-                                                             StatisticTextNotification::Ptr result)
-    {
-      return MakePtr<CollectStatisticOperation>(items, result);
-    }
-  }  // namespace Item
-}  // namespace Playlist
+  TextResultOperation::Ptr CreateCollectStatisticOperation(Playlist::Model::IndexSet::Ptr items,
+                                                           StatisticTextNotification::Ptr result)
+  {
+    return MakePtr<CollectStatisticOperation>(std::move(items), std::move(result));
+  }
+}  // namespace Playlist::Item

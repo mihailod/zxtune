@@ -1,24 +1,25 @@
-#include <binary/format_factories.h>
+#include "binary/dump.h"
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "strings/format.h"
+
+#include "pointers.h"
+#include "types.h"
+
+#include <algorithm>
 #include <bitset>
-#include <debug/log.h>
 #include <fstream>
 #include <iostream>
-#include <pointers.h>
 #include <sstream>
-#include <strings/format.h>
-#include <types.h>
 
 namespace
 {
   struct Range
   {
-    uint_t Min;
-    uint_t Max;
+    uint_t Min = 255;
+    uint_t Max = 0;
 
-    Range()
-      : Min(255)
-      , Max(0)
-    {}
+    Range() = default;
 
     void Apply(uint_t val)
     {
@@ -40,16 +41,16 @@ namespace
     {
       if (Min < Max)
       {
-        return Strings::Format("%1$02x-%2$02x ", Min, Max);
+        return Strings::Format("{0:02x}-{1:02x} ", Min, Max);
       }
       else if (Min == Max)
       {
-        return Strings::Format("%1$02x", Min);
+        return Strings::Format("{:02x}", Min);
       }
       else
       {
         assert(!"Invalid case");
-        return std::string();
+        return {};
       }
     }
   };
@@ -62,13 +63,10 @@ namespace
 
   struct BinaryMask
   {
-    uint_t Zeroes;
-    uint_t Ones;
+    uint_t Zeroes = 0;
+    uint_t Ones = 0;
 
-    BinaryMask()
-      : Zeroes()
-      , Ones()
-    {}
+    BinaryMask() = default;
 
     void Apply(uint_t val)
     {
@@ -141,9 +139,7 @@ namespace
   {
     std::bitset<256> Values;
 
-    Bitmask()
-      : Values()
-    {}
+    Bitmask() = default;
 
     void Apply(uint_t val)
     {
@@ -167,11 +163,7 @@ namespace
   class CumulativeFormat
   {
   public:
-    CumulativeFormat()
-      : Ranges()
-      , Binaries()
-      , Bitmasks()
-    {}
+    CumulativeFormat() = default;
 
     bool Add(const Binary::Dump& data)
     {
@@ -184,7 +176,7 @@ namespace
 
     std::string ToString() const
     {
-      Dbg("Result has %1% entries", Ranges.size());
+      Dbg("Result has {} entries", Ranges.size());
       if (std::all_of(Ranges.begin(), Ranges.end(), [](const Range& rng) { return rng.IsThis(); }))
       {
         Dbg("Using ranges format");
@@ -209,14 +201,14 @@ namespace
     {
       if (Ranges.empty() || len < Ranges.size())
       {
-        Dbg("Set size to %1%", len);
+        Dbg("Set size to {}", len);
         Ranges.resize(len);
         Binaries.resize(len);
         Bitmasks.resize(len);
       }
     }
 
-    void Apply(const Dump& data)
+    void Apply(const Binary::Dump& data)
     {
       const std::size_t toApply = std::min(data.size(), Ranges.size());
       for (std::size_t idx = 0; idx < toApply; ++idx)
@@ -246,7 +238,7 @@ namespace
     std::string HomogeniousToString(const std::vector<T>& vals) const
     {
       std::string result;
-      for (typename std::vector<T>::const_iterator it = vals.begin(), lim = vals.end(); it != lim; ++it)
+      for (auto it = vals.begin(), lim = vals.end(); it != lim; ++it)
       {
         result += it->ToString();
       }
@@ -261,7 +253,7 @@ namespace
       {
         const Range& rng = Ranges[idx];
         const BinaryMask& bin = Binaries[idx];
-        Dbg("Range=(%1%..%2%) Bin=(%3$02x/%4$02x)", rng.Min, rng.Max, bin.Zeroes, bin.Ones);
+        Dbg("Range=({}..{}) Bin=({:02x}/{:02x})", rng.Min, rng.Max, bin.Zeroes, bin.Ones);
         if (!rng.IsThis() && !bin.IsThis())
         {
           Dbg(" any");
@@ -273,7 +265,7 @@ namespace
           {
             if (lastAny > 3)
             {
-              result += Strings::Format("+%1%+ ", lastAny);
+              result += Strings::Format("+{}+ ", lastAny);
             }
             else
             {
@@ -287,7 +279,7 @@ namespace
           }
           const std::size_t rngWeight = rng.CountCatches();
           const std::size_t binWeight = bin.CountCatches();
-          Dbg(" range=%1% bytes bin=%2% bytes", rngWeight, binWeight);
+          Dbg(" range={} bytes bin={} bytes", rngWeight, binWeight);
           result += rngWeight <= binWeight ? rng.ToString() : bin.ToString();
         }
       }
@@ -300,7 +292,7 @@ namespace
     std::vector<Bitmask> Bitmasks;
   };
 
-  Dump Read(const std::string& name)
+  Binary::Dump Read(const std::string& name)
   {
     std::ifstream stream(name.c_str(), std::ios::binary);
     if (!stream)
@@ -310,7 +302,7 @@ namespace
     stream.seekg(0, std::ios_base::end);
     const std::size_t size = stream.tellg();
     stream.seekg(0);
-    Dump tmp(size);
+    Binary::Dump tmp(size);
     stream.read(safe_ptr_cast<char*>(tmp.data()), tmp.size());
     return tmp;
   }
@@ -330,7 +322,7 @@ int main(int argc, char* argv[])
     for (int idx = 1 + bitMask; idx < argc; ++idx)
     {
       const std::string filename = argv[idx];
-      const Dump& data = Read(filename);
+      const auto& data = Read(filename);
       if (!result.Add(data))
       {
         throw std::runtime_error("Data is too different");
@@ -338,7 +330,8 @@ int main(int argc, char* argv[])
     }
     if (bitMask)
     {
-      std::string hi, lo;
+      std::string hi;
+      std::string lo;
       for (int idx = 255; idx >= 0; --idx)
       {
         hi += ToHex(idx >> 4);
@@ -355,10 +348,10 @@ int main(int argc, char* argv[])
       for (int idx = 1; idx < argc; ++idx)
       {
         const std::string filename = argv[idx];
-        const Dump& data = Read(filename);
+        const auto& data = Read(filename);
         if (!check->Match(data))
         {
-          throw std::runtime_error(Strings::Format("Not matched for %1%", filename));
+          throw std::runtime_error(Strings::Format("Not matched for {}", filename));
         }
       }
     }

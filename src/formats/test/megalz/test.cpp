@@ -8,13 +8,13 @@
  *
  **/
 
-#include "../utils.h"
+#include "formats/test/utils.h"
 
 int main()
 {
   std::vector<std::string> tests;
-  tests.push_back("greedy.bin");
-  tests.push_back("optimal.bin");
+  tests.emplace_back("greedy.bin");
+  tests.emplace_back("optimal.bin");
 
   try
   {

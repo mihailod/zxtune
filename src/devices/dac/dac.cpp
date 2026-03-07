@@ -8,17 +8,17 @@
  *
  **/
 
-// local includes
-#include <devices/dac.h>
-#include <devices/details/freq_table.h>
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <math/numeric.h>
-#include <parameters/tracking_helper.h>
-// std includes
+#include "devices/dac.h"
+
+#include "devices/details/freq_table.h"
+
+#include "math/numeric.h"
+#include "parameters/tracking_helper.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <array>
 #include <cmath>
 
@@ -29,18 +29,20 @@ namespace Devices::DAC
   class FastSample
   {
   public:
-    typedef std::shared_ptr<const FastSample> Ptr;
-
+    FastSample(const FastSample&) = delete;
+    FastSample(FastSample&&) = default;
+    FastSample& operator=(const FastSample&) = delete;
+    FastSample& operator=(FastSample&&) = default;
     // use additional sample for interpolation
-    explicit FastSample(std::size_t idx, Sample::Ptr in)
+    explicit FastSample(std::size_t idx, const Sample& in)
       : Index(static_cast<uint_t>(idx))
-      , Data(new Sound::Sample::Type[in->Size() + 1])
-      , Size(in->Size())
-      , Loop(std::min(Size, in->Loop()))
+      , Data(new Sound::Sample::Type[in.Size() + 1])
+      , Size(in.Size())
+      , Loop(std::min(Size, in.Loop()))
     {
       for (std::size_t pos = 0; pos != Size; ++pos)
       {
-        Data[pos] = in->Get(pos);
+        Data[pos] = in.Get(pos);
       }
       Data[Size] = Data[Size - 1];
     }
@@ -48,8 +50,7 @@ namespace Devices::DAC
     FastSample()
       : Index(NO_INDEX)
       , Data(new Sound::Sample::Type[2])
-      , Size(1)
-      , Loop(1)
+
     {
       Data[0] = Data[1] = 0;
     }
@@ -59,18 +60,12 @@ namespace Devices::DAC
       return Index;
     }
 
-    typedef Math::FixedPoint<uint_t, 256> Position;
+    using Position = Math::FixedPoint<uint_t, 256>;
 
     class Iterator
     {
     public:
-      Iterator()
-        : Data()
-        , Step()
-        , Limit()
-        , Loop()
-        , Pos()
-      {}
+      Iterator() = default;
 
       bool IsValid() const
       {
@@ -145,7 +140,7 @@ namespace Devices::DAC
       }
 
     private:
-      const Sound::Sample::Type* Data;
+      const Sound::Sample::Type* Data = nullptr;
       Position Step;
       Position Limit;
       Position Loop;
@@ -154,18 +149,16 @@ namespace Devices::DAC
 
   private:
     friend class Iterator;
-    const uint_t Index;
-    const std::unique_ptr<Sound::Sample::Type[]> Data;
-    const std::size_t Size;
-    const std::size_t Loop;
+    uint_t Index;
+    std::unique_ptr<Sound::Sample::Type[]> Data;
+    std::size_t Size = 1;
+    std::size_t Loop = 1;
   };
 
   class ClockSource
   {
   public:
     ClockSource()
-      : SampleFreq()
-      , SoundFreq()
     {
       Reset();
     }
@@ -183,12 +176,12 @@ namespace Devices::DAC
 
     FastSample::Position GetStep(int_t halftones, int_t slideHz) const
     {
-      const int_t halftonesLim = Math::Clamp<int_t>(halftones, 0, Details::FreqTable::SIZE - 1);
+      const auto halftonesLim = Math::Clamp<int_t>(halftones, 0, Details::FreqTable::SIZE - 1);
       const Details::Frequency baseFreq = Details::FreqTable::GetHalftoneFrequency(0);
       const Details::Frequency freq =
           Details::FreqTable::GetHalftoneFrequency(halftonesLim) + Details::Frequency(slideHz);
       // step 1 is for first note
-      return FastSample::Position(int64_t((freq * SampleFreq).Integer()), (baseFreq * SoundFreq).Integer());
+      return {int64_t((freq * SampleFreq).Integer()), (baseFreq * SoundFreq).Integer()};
     }
 
     Stamp GetCurrentTime() const
@@ -204,70 +197,59 @@ namespace Devices::DAC
     }
 
   private:
-    uint_t SampleFreq;
-    uint_t SoundFreq;
+    uint_t SampleFreq = 0;
+    uint_t SoundFreq = 0;
     Stamp CurrentTime;
   };
 
   class SamplesStorage
   {
   public:
-    void Add(std::size_t idx, Sample::Ptr sample)
+    void Add(std::size_t idx, const Sample& sample)
     {
-      if (sample)
-      {
-        Content.resize(std::max(Content.size(), idx + 1));
-        const FastSample::Ptr fast = MakePtr<FastSample>(idx, sample);
-        Content[idx] = fast;
-      }
+      Content.resize(std::max(Content.size(), idx + 1));
+      Content[idx] = FastSample(idx, sample);
     }
 
-    FastSample::Ptr Get(std::size_t idx) const
+    const FastSample& Get(std::size_t idx) const
     {
-      static FastSample STUB;
-      if (const FastSample::Ptr val = idx < Content.size() ? Content[idx] : FastSample::Ptr())
+      static const FastSample STUB;
+      if (idx < Content.size())
       {
-        return val;
+        return Content[idx];
       }
-      return MakeSingletonPointer(STUB);
+      return STUB;
     }
 
   private:
-    std::vector<FastSample::Ptr> Content;
+    std::vector<FastSample> Content;
   };
 
-  typedef Math::FixedPoint<int, ChannelData::LevelType::PRECISION> SignedLevelType;
+  using SignedLevelType = Math::FixedPoint<int, ChannelData::LevelType::PRECISION>;
 
   // channel state type
   struct ChannelState
   {
     ChannelState()
-      : Enabled()
-      , Note()
-      , NoteSlide()
-      , FreqSlide()
+      : Level(1)
+    {}
+
+    explicit ChannelState(const FastSample& sample)
+      : Source(&sample)
       , Level(1)
     {}
 
-    explicit ChannelState(FastSample::Ptr sample)
-      : Enabled()
-      , Note()
-      , NoteSlide()
-      , FreqSlide()
-      , Source(std::move(sample))
-      , Level(1)
-    {}
-
-    bool Enabled;
-    uint_t Note;
+    bool Enabled = false;
+    uint_t Note = 0;
     // current slide in halftones
-    int_t NoteSlide;
+    int_t NoteSlide = 0;
     // current slide in Hz
-    int_t FreqSlide;
+    int_t FreqSlide = 0;
     // sample
-    FastSample::Ptr Source;
+    const FastSample* Source = nullptr;
     FastSample::Iterator Iterator;
     SignedLevelType Level;
+    bool Muted = false;
 
     void Update(const SamplesStorage& samples, const ClockSource& clock, const ChannelData& state)
     {
@@ -294,7 +276,7 @@ namespace Devices::DAC
       // sample changed
       if (const uint_t* sampleNum = state.GetSampleNum())
       {
-        Source = samples.Get(*sampleNum);
+        Source = &samples.Get(*sampleNum);
         Iterator.SetSample(*Source);
       }
       // position in sample changed
@@ -316,12 +298,12 @@ namespace Devices::DAC
 
     Sound::Sample::Type GetNearest() const
     {
-      return Enabled ? Amplify(Iterator.GetNearest()) : Sound::Sample::MID;
+      return (Enabled && !Muted) ? Amplify(Iterator.GetNearest()) : Sound::Sample::MID;
     }
 
     Sound::Sample::Type GetInterpolated(const uint_t* lookup) const
     {
-      return Enabled ? Amplify(Iterator.GetInterpolated(lookup)) : Sound::Sample::MID;
+      return (Enabled && !Muted) ? Amplify(Iterator.GetInterpolated(lookup)) : Sound::Sample::MID;
     }
 
     void Next()
@@ -442,7 +424,6 @@ namespace Devices::DAC
     RenderersSet(const Sound::FixedChannelsMixer<Channels>& mixer, ChannelState* state)
       : LQ(mixer, state)
       , MQ(mixer, state)
-      , Current()
       , State(state)
     {}
 
@@ -482,7 +463,7 @@ namespace Devices::DAC
   private:
     LQRenderer<Channels> LQ;
     MQRenderer<Channels> MQ;
-    Renderer* Current;
+    Renderer* Current = nullptr;
     ChannelState* const State;
   };
 
@@ -493,14 +474,13 @@ namespace Devices::DAC
     FixedChannelsChip(ChipParameters::Ptr params, typename Sound::FixedChannelsMixer<Channels>::Ptr mixer)
       : Params(std::move(params))
       , Mixer(std::move(mixer))
-      , Clock()
       , Renderers(*Mixer, State.data())
     {
       FixedChannelsChip::Reset();
     }
 
     /// Set sample for work
-    void SetSample(uint_t idx, Sample::Ptr sample) override
+    void SetSample(uint_t idx, const Sample& sample) override
     {
       Samples.Add(idx, sample);
     }
@@ -547,6 +527,10 @@ namespace Devices::DAC
       {
         Clock.SetFreq(Params->BaseSampleFreq(), Params->SoundFreq());
         Renderers.SetInterpolation(Params->Interpolate());
+        for (uint_t chan = 0, mask = Params->MuteMask(); chan < State.size(); ++chan, mask >>= 1)
+        {
+          State[chan].Muted = 0 != (mask & 1);
+        }
       }
     }
 

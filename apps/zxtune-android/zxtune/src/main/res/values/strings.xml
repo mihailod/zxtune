@@ -13,6 +13,8 @@
     <string name="send">Send</string>
     <string name="share">Share</string>
     <string name="sort">Sort</string>
+    <string name="properties">Properties</string>
+    <string name="sound_controls">Sound controls</string>
     <string name="delete_all_items_query">Delete all items?</string>
     <string name="delete_selected_items_query">Delete selected items?</string>
     <!-- information-related -->
@@ -45,4 +47,10 @@
     <!-- notifications -->
     <string name="notification_channel_name_events">Events</string>
     <string name="notification_channel_name_services">Services</string>
+    <!-- problems -->
+    <string name="problems">Detected problems</string>
+    <string name="problem_power_management">
+        Optimizing battery use for an application may lead to spontaneous stops while working in background mode.
+    </string>
+    <string name="problem_power_management_fixit">Set up optimization</string>
 </resources>

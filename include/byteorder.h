@@ -10,23 +10,20 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// boost includes
-#include <boost/predef/other/endian.h>
+#include "types.h"
+
+#include <bit>
+#include <cstring>
 
 //! @brief Checking if current platform is Little-Endian
 constexpr bool isLE()
 {
-#if BOOST_ENDIAN_LITTLE_BYTE
-  return true;
-#elif BOOST_ENDIAN_BIG_BYTE
-  return false
-#else
-#  error Invalid byte order
-#endif
+  static_assert(std::endian::native == std::endian::little || std::endian::native == std::endian::big,
+                "Invalid byte order");
+  return std::endian::native == std::endian::little;
 }
 
+// TODO: remove at std++23
 constexpr uint16_t swapBytes(uint16_t a)
 {
   return uint16_t(a << 8) | uint16_t(a >> 8);
@@ -40,8 +37,8 @@ constexpr uint32_t swapBytes(uint32_t a)
 
 constexpr uint64_t swapBytes(uint64_t a)
 {
-  const uint64_t a1 = ((a & 0x00ff00ff00ff00ffull) << 8) | ((a & 0xff00ff00ff00ff00ull) >> 8);
-  const uint64_t a2 = ((a1 & 0x0000ffff0000ffffull) << 16) | ((a1 & 0xffff0000ffff0000ull) >> 16);
+  const uint64_t a1 = ((a & 0x00ff00ff00ff00ffuLL) << 8) | ((a & 0xff00ff00ff00ff00uLL) >> 8);
+  const uint64_t a2 = ((a1 & 0x0000ffff0000ffffuLL) << 16) | ((a1 & 0xffff0000ffff0000uLL) >> 16);
   return (a2 << 32) | (a2 >> 32);
 }
 

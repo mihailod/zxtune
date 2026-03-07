@@ -10,9 +10,8 @@
 
 #pragma once
 
-// local includes
 #include "module/players/track_model.h"
-// std includes
+
 #include <vector>
 
 namespace Module
@@ -49,7 +48,7 @@ namespace Module
   class SimpleOrderListWithTransposition : public OrderList
   {
   public:
-    typedef std::unique_ptr<const SimpleOrderListWithTransposition<T> > Ptr;
+    using Ptr = std::unique_ptr<const SimpleOrderListWithTransposition<T>>;
 
     SimpleOrderListWithTransposition(uint_t loop, std::vector<T> positions)
       : Loop(loop)

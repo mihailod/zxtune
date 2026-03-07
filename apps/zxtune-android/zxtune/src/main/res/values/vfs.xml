@@ -43,6 +43,8 @@
     <string name="vfs_zxart_compo_oldschool">Oldschool music compo</string>
     <string name="vfs_zxart_compo_mainstream">Mainstream music compo</string>
     <string name="vfs_zxart_compo_progressive">Progressive music compo</string>
+    <string name="vfs_zxart_compo_ts">TurboSound music compo</string>
+    <string name="vfs_zxart_compo_tsfm">TSFM music compo</string>
     <string name="vfs_zxart_compo_related">Music from this event works</string>
     <!-- joshw.info Descriptions as in english wikipedia articles' title -->
     <string name="vfs_joshw_root_name" translatable="false">Josh W</string>
@@ -67,6 +69,7 @@
     <string name="vfs_joshw_psf2_name" translatable="false">PlayStation 2</string>
     <string name="vfs_joshw_psf3_name" translatable="false">PlayStation 3</string>
     <string name="vfs_joshw_psf4_name" translatable="false">PlayStation 4</string>
+    <string name="vfs_joshw_psf5_name" translatable="false">PlayStation 5</string>
     <string name="vfs_joshw_psp_name" translatable="false">PlayStation Portable</string>
     <string name="vfs_joshw_s98_name" translatable="false">NEC/Sharp PC</string>
     <string name="vfs_joshw_smd_name" translatable="false">Mega Drive/Sega CD</string>
@@ -242,6 +245,27 @@
     <!-- scene -->
     <string name="vfs_scene_root_name" translatable="false">Scene.org</string>
     <string name="vfs_scene_root_description" translatable="false">https://files.scene.org/</string>
+    <!-- ocremix -->
+    <string name="vfs_ocremix_root_name" translatable="false">OverClocked ReMix</string>
+    <string name="vfs_ocremix_root_description" translatable="false">https://ocremix.org</string>
+    <string name="vfs_ocremix_systems_name">Systems</string>
+    <string name="vfs_ocremix_organizations_name">Organizations</string>
+    <string name="vfs_ocremix_remixes_name">Remixes</string>
+    <string name="vfs_ocremix_albums_name">Albums</string>
+    <string name="vfs_ocremix_games_name">Games</string>
+    <!-- khinsider -->
+    <string name="vfs_khinsider_root_name" translatable="false">Video Game Music</string>
+    <string name="vfs_khinsider_root_description" translatable="false">https://downloads.khinsider.com</string>
+    <string name="vfs_khinsider_random_name">Song from random album</string>
+    <string name="vfs_khinsider_top_name">Top albums</string>
+    <string name="vfs_khinsider_series_name">Popular series</string>
+    <string name="vfs_khinsider_platforms_name">Platforms</string>
+    <string name="vfs_khinsider_types_name">Albums By Type</string>
+    <string name="vfs_khinsider_albumsletters_name">Albums By Letter</string>
+    <string name="vfs_khinsider_albumsyears_name">Albums By Year</string>
+    <string name="vfs_khinsider_top_new100_name">Top 100 Newly Added</string>
+    <string name="vfs_khinsider_top_40_name">Top 40</string>
+    <string name="vfs_khinsider_top_favorites_name">Most Favorites</string>
     <!-- errors -->
     <string name="network_inaccessible">Network is not accessible</string>
     <string name="failed_resolve">Failed to resolve %s</string>

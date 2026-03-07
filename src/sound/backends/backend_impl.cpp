@@ -8,25 +8,23 @@
  *
  **/
 
-// local includes
 #include "sound/backends/backend_impl.h"
-#include "sound/backends/l10n.h"
-// common includes
-#include <error_tools.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <async/worker.h>
-#include <debug/log.h>
-#include <module/players/pipeline.h>
-#include <parameters/tracking_helper.h>
-#include <sound/impl/fft_analyzer.h>
-#include <sound/render_params.h>
-#include <sound/sound_parameters.h>
-// std includes
-#include <atomic>
 
-#define FILE_TAG B3D60DB5
+#include "module/players/pipeline.h"
+#include "sound/backends/l10n.h"
+#include "sound/impl/fft_analyzer.h"
+
+#include "async/worker.h"
+#include "debug/log.h"
+#include "sound/render_params.h"
+#include "sound/sound_parameters.h"
+
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
+#include <atomic>
+#include <utility>
 
 namespace Sound::BackendBase
 {
@@ -103,7 +101,7 @@ namespace Sound::BackendBase
       return Analyzer;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
       const auto request = SeekRequest.exchange(NO_SEEK);
       if (request != NO_SEEK)
@@ -111,7 +109,7 @@ namespace Sound::BackendBase
         Delegate->SetPosition(Time::AtMillisecond(request));
       }
       Callback->OnFrame(*State);
-      auto result = Delegate->Render(looped);
+      auto result = Delegate->Render();
       Analyzer->FeedSound(result.data(), result.size());
       return result;
     }
@@ -136,34 +134,11 @@ namespace Sound::BackendBase
     const FFTAnalyzer::Ptr Analyzer;
   };
 
-  class LoopParameterAdapter
-  {
-  public:
-    explicit LoopParameterAdapter(Parameters::Accessor::Ptr params)
-      : Delegate(std::move(params))
-    {}
-
-    const LoopParameters& operator*() const
-    {
-      if (Delegate.IsChanged())
-      {
-        Value = GetLoopParameters(*Delegate);
-      }
-      return Value;
-    }
-
-  private:
-    mutable Parameters::TrackingHelper<Parameters::Accessor> Delegate;
-    mutable LoopParameters Value;
-  };
-
   class AsyncWrapper : public Async::Worker
   {
   public:
-    AsyncWrapper(Parameters::Accessor::Ptr params, BackendCallback::Ptr callback, Module::Renderer::Ptr render,
-                 BackendWorker::Ptr worker)
-      : Looped(std::move(params))
-      , Callback(std::move(callback))
+    AsyncWrapper(BackendCallback::Ptr callback, Module::Renderer::Ptr render, BackendWorker::Ptr worker)
+      : Callback(std::move(callback))
       , Renderer(std::move(render))
       , Worker(std::move(worker))
       , Playing(false)
@@ -256,7 +231,7 @@ namespace Sound::BackendBase
     {
       try
       {
-        auto data = Renderer->Render(*Looped);
+        auto data = Renderer->Render();
         if (!data.empty())
         {
           Playing = true;
@@ -280,7 +255,6 @@ namespace Sound::BackendBase
     }
 
   private:
-    const LoopParameterAdapter Looped;
     const BackendWorker::Ptr Delegate;
     const BackendCallback::Ptr Callback;
     const Module::Renderer::Ptr Renderer;
@@ -307,8 +281,8 @@ namespace Sound::BackendBase
   BackendCallback::Ptr CreateCallback(BackendCallback::Ptr callback, BackendWorker::Ptr worker)
   {
     static StubBackendCallback STUB;
-    const BackendCallback::Ptr cb = callback ? callback : MakeSingletonPointer(STUB);
-    return MakePtr<CallbackOverWorker>(cb, worker);
+    auto&& cb = callback ? std::move(callback) : MakeSingletonPointer(STUB);
+    return MakePtr<CallbackOverWorker>(std::move(cb), std::move(worker));
   }
 
   class ControlInternal : public PlaybackControl
@@ -401,17 +375,14 @@ namespace Sound::BackendBase
 
 namespace Sound
 {
-  Backend::Ptr CreateBackend(Parameters::Accessor::Ptr globalParams, Module::Holder::Ptr holder,
+  Backend::Ptr CreateBackend(Parameters::Accessor::Ptr globalParams, const Module::Holder::Ptr& holder,
                              BackendCallback::Ptr origCallback, BackendWorker::Ptr worker)
   {
-    auto origRenderer = Module::CreatePipelinedRenderer(*holder, globalParams);
+    auto origRenderer = Module::CreatePipelinedRenderer(*holder, std::move(globalParams));
     auto callback = BackendBase::CreateCallback(std::move(origCallback), worker);
     auto renderer = MakePtr<BackendBase::RendererWrapper>(std::move(origRenderer), callback);
-    auto asyncWorker =
-        MakePtr<BackendBase::AsyncWrapper>(std::move(globalParams), std::move(callback), renderer, worker);
+    auto asyncWorker = MakePtr<BackendBase::AsyncWrapper>(std::move(callback), renderer, worker);
     auto job = Async::CreateJob(std::move(asyncWorker));
     return MakePtr<BackendBase::BackendInternal>(std::move(worker), std::move(renderer), std::move(job));
   }
 }  // namespace Sound
-
-#undef FILE_TAG

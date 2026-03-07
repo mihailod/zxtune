@@ -8,17 +8,18 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/ayc.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/format_factories.h>
-// std includes
+
+#include "binary/dump.h"
+#include "binary/format_factories.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <array>
 #include <cstring>
 
@@ -56,7 +57,7 @@ namespace Formats::Chiptune
     public:
       void SetFrames(std::size_t /*count*/) override {}
       void StartChannel(uint_t /*idx*/) override {}
-      void AddValues(const Binary::Dump& /*values*/) override {}
+      void AddValues(Binary::View /*values*/) override {}
     };
 
     bool FastCheck(Binary::View rawData)
@@ -84,13 +85,13 @@ namespace Formats::Chiptune
       return true;
     }
 
-    const Char DESCRIPTION[] = "CPC AYC";
+    const auto DESCRIPTION = "CPC AYC"sv;
     const auto FORMAT =
         "?00-75"              // 10 min approx
         "01|04 2e00"          // assume first chunk is right after header
         "(01|04 ?00-80){13}"  // no more than 32k
         "ff{6}"
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -99,7 +100,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -146,7 +147,7 @@ namespace Formats::Chiptune
 
       uint_t ReadCounter()
       {
-        const uint8_t val = static_cast<uint8_t>(-ReadByte());
+        const auto val = static_cast<uint8_t>(-ReadByte());
         return val ? val : 256;
       }
 

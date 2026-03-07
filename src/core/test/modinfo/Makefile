@@ -9,16 +9,12 @@ libraries.common = analysis \
                    formats_archived_multitrack formats_chiptune formats_multitrack formats_packed_lha \
                    io \
                    l10n_stub \
-                   module module_players \
+                   module_players \
                    parameters platform \
                    sound strings \
                    tools
 
 #3rdparty
-libraries.3rdparty = asap atrac9 FLAC ffmpeg gme he ht hvl lazyusf2 lhasa lzma mgba mpg123 ogg openmpt sidplayfp sseqplayer snesspc unrar v2m vgm vgmstream vio2sf vorbis xmp z80ex zlib
-
-libraries.boost += filesystem system
-
-windows_libraries := advapi32
+libraries.3rdparty = asap atrac9 FLAC ffmpeg gme he ht hvl lazyusf2 lhasa lzma mgba mpg123 ogg openmpt opus sidplayfp sseqplayer snesspc unrar v2m vgm vgmstream vio2sf vorbis xmp z80ex zlib
 
 include $(dirs.root)/makefile.mak

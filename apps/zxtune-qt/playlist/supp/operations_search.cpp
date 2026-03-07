@@ -8,24 +8,27 @@
  *
  **/
 
-// local includes
-#include "operations_search.h"
-#include "storage.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <tools/progress_callback_helpers.h>
-// qt includes
+#include "apps/zxtune-qt/playlist/supp/operations_search.h"
+
+#include "apps/zxtune-qt/playlist/supp/storage.h"
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "tools/progress_callback_helpers.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <QtCore/QRegExp>
+
+#include <utility>
 
 namespace
 {
   class Predicate
   {
   public:
-    typedef std::shared_ptr<const Predicate> Ptr;
+    using Ptr = std::shared_ptr<const Predicate>;
     virtual ~Predicate() = default;
 
     virtual bool Match(const Playlist::Item::Data& data) const = 0;
@@ -38,7 +41,6 @@ namespace
       : Callback(cb)
       , Pred(std::move(pred))
       , Result(MakeRWPtr<Playlist::Model::IndexSet>())
-      , Done(0)
     {}
 
     void OnItem(Playlist::Model::IndexType index, Playlist::Item::Data::Ptr data) override
@@ -59,7 +61,7 @@ namespace
     Log::ProgressCallback& Callback;
     const Predicate::Ptr Pred;
     const Playlist::Model::IndexSet::RWPtr Result;
-    uint_t Done;
+    uint_t Done = 0;
   };
 
   class SearchOperation : public Playlist::Item::SelectionOperation
@@ -102,10 +104,10 @@ namespace
   class StringPredicate
   {
   public:
-    typedef std::shared_ptr<const StringPredicate> Ptr;
+    using Ptr = std::shared_ptr<const StringPredicate>;
     virtual ~StringPredicate() = default;
 
-    virtual bool Match(const String& str) const = 0;
+    virtual bool Match(StringView str) const = 0;
   };
 
   class ScopePredicateDispatcher : public Predicate
@@ -134,7 +136,7 @@ namespace
   class EmptyStringPredicate : public StringPredicate
   {
   public:
-    bool Match(const String& str) const override
+    bool Match(StringView str) const override
     {
       return str.empty();
     }
@@ -143,12 +145,12 @@ namespace
   class SimpleStringPredicate : public StringPredicate
   {
   public:
-    SimpleStringPredicate(const QString& pat, bool caseSensitive)
-      : Pattern(pat)
+    SimpleStringPredicate(QString pat, bool caseSensitive)
+      : Pattern(std::move(pat))
       , Mode(caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive)
     {}
 
-    bool Match(const String& str) const override
+    bool Match(StringView str) const override
     {
       return ToQString(str).contains(Pattern, Mode);
     }
@@ -165,7 +167,7 @@ namespace
       : Pattern(val, caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive)
     {}
 
-    bool Match(const String& str) const override
+    bool Match(StringView str) const override
     {
       return ToQString(str).contains(Pattern);
     }
@@ -196,20 +198,17 @@ namespace
   }
 }  // namespace
 
-namespace Playlist
+namespace Playlist::Item
 {
-  namespace Item
+  SelectionOperation::Ptr CreateSearchOperation(const Search::Data& data)
   {
-    SelectionOperation::Ptr CreateSearchOperation(const Search::Data& data)
-    {
-      const Predicate::Ptr pred = CreatePredicate(data);
-      return MakePtr<SearchOperation>(pred);
-    }
+    const Predicate::Ptr pred = CreatePredicate(data);
+    return MakePtr<SearchOperation>(pred);
+  }
 
-    SelectionOperation::Ptr CreateSearchOperation(Playlist::Model::IndexSet::Ptr items, const Search::Data& data)
-    {
-      const Predicate::Ptr pred = CreatePredicate(data);
-      return MakePtr<SearchOperation>(items, pred);
-    }
-  }  // namespace Item
-}  // namespace Playlist
+  SelectionOperation::Ptr CreateSearchOperation(Playlist::Model::IndexSet::Ptr items, const Search::Data& data)
+  {
+    auto pred = CreatePredicate(data);
+    return MakePtr<SearchOperation>(std::move(items), std::move(pred));
+  }
+}  // namespace Playlist::Item

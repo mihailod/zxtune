@@ -47,7 +47,7 @@ class DatabaseTest {
 
     @Test
     fun `test empty database`() {
-        testVisitor<Catalog.AuthorsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Author>> { visitor ->
             assertFalse(underTest.queryAuthors(visitor))
         }
         testVisitor<Catalog.FoundTracksVisitor> { visitor ->
@@ -59,7 +59,6 @@ class DatabaseTest {
     fun `test queryAuthors`() = testQueryObjects(
         addObject = ::addAuthor,
         queryObjects = underTest::queryAuthors,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, author -> visitor.accept(author) }
     )
 
@@ -69,7 +68,6 @@ class DatabaseTest {
         addGroup = ::makeAuthor,
         addObjectToGroup = underTest::addAuthorTrack,
         queryObjects = underTest::queryAuthorTracks,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, track -> visitor.accept(track) }
     )
 
@@ -83,7 +81,6 @@ class DatabaseTest {
             underTest.findTracks("3", visitor)
             makeTrack(3)
         },
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, author, track -> visitor.accept(author, track) }
     )
 
@@ -91,6 +88,6 @@ class DatabaseTest {
     private fun addTrack(id: Int) = makeTrack(id).also(underTest::addTrack)
 }
 
-private fun makeAuthor(id: Int) = Author(id, "author$id")
+private fun makeAuthor(id: Int) = Author(id, "author$id", hasPhoto = 0 == id % 2)
 private fun makeTrack(id: Int) = Track(id, "track$id", duration = 0, date = 0)
 

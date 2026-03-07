@@ -8,17 +8,16 @@
  *
  **/
 
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/container_base.h>
-#include <binary/crc.h>
-#include <binary/format_factories.h>
-#include <formats/multitrack.h>
-// std includes
+#include "binary/container_base.h"
+#include "binary/crc.h"
+#include "binary/format_factories.h"
+#include "formats/multitrack.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <array>
 #include <cstring>
 #include <utility>
@@ -27,7 +26,7 @@ namespace Formats::Multitrack
 {
   namespace KSSX
   {
-    typedef std::array<uint8_t, 4> SignatureType;
+    using SignatureType = std::array<uint8_t, 4>;
 
     struct RawHeader
     {
@@ -69,9 +68,9 @@ namespace Formats::Multitrack
         "?"          // extra banks
         "00|0c-10"   // extra header size
         "%0x0xxxxx"  // extra chips
-        ""_sv;
+        ""sv;
 
-    const Char DESCRIPTION[] = "KSS Extended Music Format";
+    const auto DESCRIPTION = "KSS Extended Music Format"sv;
 
     const ExtraHeader STUB_EXTRA_HEADER = {~uint32_t(0), 0, 0, 0};
 
@@ -116,7 +115,7 @@ namespace Formats::Multitrack
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -138,7 +137,7 @@ namespace Formats::Multitrack
           return {};
         }
         const std::size_t availSize = rawData.Size();
-        const RawHeader* const hdr = safe_ptr_cast<const RawHeader*>(rawData.Start());
+        const auto* const hdr = safe_ptr_cast<const RawHeader*>(rawData.Start());
         const ExtraHeader* const extraHdr = hdr->ExtraHeaderSize != 0 ? safe_ptr_cast<const ExtraHeader*>(hdr + 1)
                                                                       : &STUB_EXTRA_HEADER;
         if (extraHdr->LastTrack > MAX_TRACKS_COUNT - 1 || extraHdr->Reserved != 0)

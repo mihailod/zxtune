@@ -10,31 +10,27 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// library includes
-#include <formats/chiptune.h>
+#include "formats/chiptune.h"
 
-namespace Formats
+#include "types.h"
+
+namespace Formats::Chiptune
 {
-  namespace Chiptune
+  namespace PSG
   {
-    namespace PSG
+    class Builder
     {
-      class Builder
-      {
-      public:
-        typedef std::shared_ptr<Builder> Ptr;
-        virtual ~Builder() = default;
+    public:
+      using Ptr = std::shared_ptr<Builder>;
+      virtual ~Builder() = default;
 
-        virtual void AddChunks(std::size_t count) = 0;
-        virtual void SetRegister(uint_t reg, uint_t val) = 0;
-      };
+      virtual void AddChunks(std::size_t count) = 0;
+      virtual void SetRegister(uint_t reg, uint_t val) = 0;
+    };
 
-      Formats::Chiptune::Container::Ptr Parse(const Binary::Container& data, Builder& target);
-      Builder& GetStubBuilder();
-    }  // namespace PSG
+    Formats::Chiptune::Container::Ptr Parse(const Binary::Container& data, Builder& target);
+    Builder& GetStubBuilder();
+  }  // namespace PSG
 
-    Decoder::Ptr CreatePSGDecoder();
-  }  // namespace Chiptune
-}  // namespace Formats
+  Decoder::Ptr CreatePSGDecoder();
+}  // namespace Formats::Chiptune

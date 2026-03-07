@@ -10,7 +10,6 @@
 
 #pragma once
 
-// qt includes
 #include <QtWidgets/QWidget>
 
 namespace UI
@@ -23,10 +22,5 @@ namespace UI
 
   public:
     static SoundSettingsWidget* Create(QWidget& parent);
-  private slots:
-    virtual void ChangeSoundFrequency(int idx) = 0;
-    virtual void SelectBackend(int idx) = 0;
-    virtual void MoveBackendUp() = 0;
-    virtual void MoveBackendDown() = 0;
   };
 }  // namespace UI

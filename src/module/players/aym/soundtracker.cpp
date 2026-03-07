@@ -8,15 +8,14 @@
  *
  **/
 
-// local includes
 #include "module/players/aym/soundtracker.h"
+
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
-// common includes
-#include <make_ptr.h>
-#include <module/players/platforms.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
+
+#include "make_ptr.h"
 
 namespace Module::SoundTracker
 {
@@ -30,7 +29,7 @@ namespace Module::SoundTracker
   using Formats::Chiptune::SoundTracker::Sample;
   using Formats::Chiptune::SoundTracker::Ornament;
 
-  typedef SimpleOrderListWithTransposition<Formats::Chiptune::SoundTracker::PositionEntry> OrderListWithTransposition;
+  using OrderListWithTransposition = SimpleOrderListWithTransposition<Formats::Chiptune::SoundTracker::PositionEntry>;
 
   using ModuleData = AYM::ModuleData<OrderListWithTransposition, Sample, Ornament>;
 
@@ -176,7 +175,6 @@ namespace Module::SoundTracker
     explicit EnvelopeState(uint_t& type, uint_t& tone)
       : Type(type)
       , Tone(tone)
-      , Enabled(0)
     {}
 
     void Reset()
@@ -231,18 +229,15 @@ namespace Module::SoundTracker
   private:
     uint_t& Type;
     uint_t& Tone;
-    uint_t Enabled;
+    uint_t Enabled = 0;
   };
 
   struct StateCursor
   {
-    int_t CountDown;
-    uint_t Position;
+    int_t CountDown = -1;
+    uint_t Position = 0;
 
-    StateCursor()
-      : CountDown(-1)
-      , Position(0)
-    {}
+    StateCursor() = default;
 
     void Next(const Sample& sample)
     {
@@ -276,7 +271,6 @@ namespace Module::SoundTracker
   {
     explicit ChannelState(ModuleData::Ptr data, uint_t& envType, uint_t& envTone)
       : Data(std::move(data))
-      , Note()
       , CurSample(GetStubSample())
       , CurOrnament(GetStubOrnament())
       , EnvState(envType, envTone)
@@ -370,7 +364,7 @@ namespace Module::SoundTracker
 
   private:
     const ModuleData::Ptr Data;
-    uint_t Note;
+    uint_t Note = 0;
     StateCursor Cursor;
     const Sample* CurSample;
     const Ornament* CurOrnament;
@@ -385,8 +379,6 @@ namespace Module::SoundTracker
       , StateA(Data, EnvType, EnvTone)
       , StateB(Data, EnvType, EnvTone)
       , StateC(Data, EnvType, EnvTone)
-      , EnvType()
-      , EnvTone()
     {}
 
     void Reset() override
@@ -411,17 +403,17 @@ namespace Module::SoundTracker
     void SwitchToNewLine(const TrackModelState& state)
     {
       assert(0 == state.Quirk());
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
-        if (const auto chan = line->GetChannel(0))
+        if (const auto* const chan = line->GetChannel(0))
         {
           StateA.SetNewState(*chan);
         }
-        if (const auto chan = line->GetChannel(1))
+        if (const auto* const chan = line->GetChannel(1))
         {
           StateB.SetNewState(*chan);
         }
-        if (const auto chan = line->GetChannel(2))
+        if (const auto* const chan = line->GetChannel(2))
         {
           StateC.SetNewState(*chan);
         }
@@ -462,7 +454,7 @@ namespace Module::SoundTracker
     ChannelState StateA;
     ChannelState StateB;
     ChannelState StateC;
-    uint_t EnvType, EnvTone;
+    uint_t EnvType = 0, EnvTone = 0;
   };
 
   class Factory : public AYM::Factory
@@ -480,7 +472,6 @@ namespace Module::SoundTracker
       if (const auto container = Decoder->Parse(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
         return MakePtr<AYM::TrackingChiptune<ModuleData, DataRenderer>>(dataBuilder.CaptureResult(),
                                                                         std::move(properties));
       }

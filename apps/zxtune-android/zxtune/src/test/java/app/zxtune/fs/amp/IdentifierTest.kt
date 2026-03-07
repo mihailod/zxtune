@@ -106,7 +106,7 @@ private fun testParse(
     country: Country? = null,
     group: Group? = null,
     author: Author? = null,
-    track: Track? = null
+    track: Track? = null,
 ) {
     testAnalyze(
         uri = uri,
@@ -116,7 +116,7 @@ private fun testParse(
         country = country,
         group = group,
         author = author,
-        track = track
+        track = track,
     )
     var builder = when {
         handleLetter != null -> Identifier.forHandleLetter(handleLetter)
@@ -142,7 +142,7 @@ private fun testAnalyze(
     country: Country? = null,
     group: Group? = null,
     author: Author? = null,
-    track: Track? = null
+    track: Track? = null,
 ) = Uri.parse(uri).let { url ->
     val path = url.pathSegments
     assertEquals("isFromRoot", isFromRoot, Identifier.isFromRoot(url))

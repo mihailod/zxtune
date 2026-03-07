@@ -8,24 +8,25 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/globaltracker.h"
+
 #include "formats/chiptune/container.h"
 #include "formats/chiptune/metainfo.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <indices.h>
-#include <iterator.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <strings/format.h>
-#include <strings/optimize.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "strings/format.h"
+#include "strings/optimize.h"
+#include "tools/indices.h"
+#include "tools/iterators.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
+#include <algorithm>
 #include <array>
 #include <cstring>
 
@@ -35,7 +36,7 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::GlobalTracker");
 
-    const Char EDITOR[] = "Global Tracker v1.%1%";
+    constexpr auto EDITOR = "Global Tracker v1.{}"sv;
 
     const std::size_t MIN_SIZE = 1500;
     const std::size_t MAX_SIZE = 0x2800;
@@ -87,12 +88,12 @@ namespace Formats::Chiptune
 
     struct RawOrnament : RawObject
     {
-      typedef int8_t Line;
+      using Line = int8_t;
 
       Line GetLine(uint_t idx) const
       {
-        const int8_t* const src = safe_ptr_cast<const int8_t*>(this + 1);
-        uint8_t offset = static_cast<uint8_t>(idx * sizeof(Line));
+        const auto* const src = safe_ptr_cast<const int8_t*>(this + 1);
+        auto offset = static_cast<uint8_t>(idx * sizeof(Line));
         return src[offset];
       }
 
@@ -219,8 +220,6 @@ namespace Formats::Chiptune
         , UsedPatterns(0, MAX_PATTERNS_COUNT - 1)
         , UsedSamples(0, MAX_SAMPLES_COUNT - 1)
         , UsedOrnaments(0, MAX_ORNAMENTS_COUNT - 1)
-        , NonEmptyPatterns(false)
-        , NonEmptySamples(false)
       {
         UsedSamples.Insert(0);
         UsedOrnaments.Insert(0);
@@ -340,15 +339,9 @@ namespace Formats::Chiptune
         {
           return false;
         }
-        for (uint_t idx = 0; idx != smp.Lines.size(); ++idx)
-        {
-          const Sample::Line& line = smp.Lines[idx];
-          if ((!line.ToneMask && line.Level) || !line.NoiseMask)
-          {
-            return true;  // has envelope or tone with volume
-          }
-        }
-        return false;
+        // has envelope or tone with volume
+        return std::any_of(smp.Lines.begin(), smp.Lines.end(),
+                           [](const auto& line) { return (!line.ToneMask && line.Level) || !line.NoiseMask; });
       }
 
     private:
@@ -356,8 +349,8 @@ namespace Formats::Chiptune
       Indices UsedPatterns;
       Indices UsedSamples;
       Indices UsedOrnaments;
-      bool NonEmptyPatterns;
-      bool NonEmptySamples;
+      bool NonEmptyPatterns = false;
+      bool NonEmptySamples = false;
     };
 
     class RangesMap
@@ -383,7 +376,7 @@ namespace Formats::Chiptune
 
       void Add(std::size_t offset, std::size_t size) const
       {
-        Dbg(" Affected range %1%..%2%", offset, offset + size);
+        Dbg(" Affected range {}..{}", offset, offset + size);
         Require(TotalRanges->AddRange(offset, size));
       }
 
@@ -432,7 +425,7 @@ namespace Formats::Chiptune
 
       void ParsePositions(Builder& builder) const
       {
-        const uint8_t* const begin = safe_ptr_cast<const uint8_t*>(&Source);
+        const auto* const begin = safe_ptr_cast<const uint8_t*>(&Source);
         const uint8_t* const posStart = Source.Positions;
         const uint8_t* const posEnd = posStart + Source.Length;
         Ranges.AddService(posStart - begin, posEnd - posStart);
@@ -441,18 +434,18 @@ namespace Formats::Chiptune
         positions.Lines.resize(posEnd - posStart);
         std::transform(posStart, posEnd, positions.Lines.begin(), [](auto b) { return b / sizeof(RawPattern); });
         positions.Loop = std::min<uint_t>(Source.Loop, positions.Lines.size());
-        Dbg("Positions: %1% entries, loop to %2%", positions.GetSize(), positions.GetLoop());
+        Dbg("Positions: {} entries, loop to {}", positions.GetSize(), positions.GetLoop());
         builder.SetPositions(std::move(positions));
       }
 
       void ParsePatterns(const Indices& pats, Builder& builder) const
       {
-        Dbg("Patterns: %1% to parse", pats.Count());
+        Dbg("Patterns: {} to parse", pats.Count());
         bool hasValidPatterns = false;
         for (Indices::Iterator it = pats.Items(); it; ++it)
         {
           const uint_t patIndex = *it;
-          Dbg("Parse pattern %1%", patIndex);
+          Dbg("Parse pattern {}", patIndex);
           if (ParsePattern(patIndex, builder))
           {
             hasValidPatterns = true;
@@ -463,8 +456,9 @@ namespace Formats::Chiptune
 
       void ParseSamples(const Indices& samples, Builder& builder) const
       {
-        bool hasValidSamples = false, hasPartialSamples = false;
-        Dbg("Samples: %1% to parse", samples.Count());
+        bool hasValidSamples = false;
+        bool hasPartialSamples = false;
+        Dbg("Samples: {} to parse", samples.Count());
         const std::size_t minOffset = HeaderSize;
         const std::size_t maxOffset = Data.Size();
         for (Indices::Iterator it = samples.Items(); it; ++it)
@@ -479,14 +473,14 @@ namespace Formats::Chiptune
           const std::size_t usedSize = src->GetUsedSize();
           if (usedSize <= availSize)
           {
-            Dbg("Parse sample %1%", samIdx);
+            Dbg("Parse sample {}", samIdx);
             Ranges.Add(samOffset, usedSize);
             ParseSample(*src, src->GetSize(), result);
             hasValidSamples = true;
           }
           else
           {
-            Dbg("Parse partial sample %1%", samIdx);
+            Dbg("Parse partial sample {}", samIdx);
             Ranges.Add(samOffset, availSize);
             const uint_t availLines = (availSize - sizeof(*src)) / sizeof(RawSample::Line);
             ParseSample(*src, availLines, result);
@@ -499,7 +493,7 @@ namespace Formats::Chiptune
 
       void ParseOrnaments(const Indices& ornaments, Builder& builder) const
       {
-        Dbg("Ornaments: %1% to parse", ornaments.Count());
+        Dbg("Ornaments: {} to parse", ornaments.Count());
         for (Indices::Iterator it = ornaments.Items(); it; ++it)
         {
           const uint_t ornIdx = *it;
@@ -513,13 +507,13 @@ namespace Formats::Chiptune
               const std::size_t usedSize = src->GetUsedSize();
               if (usedSize <= availSize)
               {
-                Dbg("Parse ornament %1%", ornIdx);
+                Dbg("Parse ornament {}", ornIdx);
                 Ranges.Add(ornOffset, usedSize);
                 ParseOrnament(*src, src->GetSize(), result);
               }
               else
               {
-                Dbg("Parse partial ornament %1%", ornIdx);
+                Dbg("Parse partial ornament {}", ornIdx);
                 Ranges.Add(ornOffset, availSize);
                 const uint_t availLines = (availSize - sizeof(*src)) / sizeof(RawOrnament::Line);
                 ParseOrnament(*src, availLines, result);
@@ -527,12 +521,12 @@ namespace Formats::Chiptune
             }
             else
             {
-              Dbg("Stub ornament %1%", ornIdx);
+              Dbg("Stub ornament {}", ornIdx);
             }
           }
           else
           {
-            Dbg("Parse invalid ornament %1%", ornIdx);
+            Dbg("Parse invalid ornament {}", ornIdx);
             result.Lines.push_back(*Data.As<RawOrnament::Line>());
           }
           builder.SetOrnament(ornIdx, std::move(result));
@@ -608,15 +602,11 @@ namespace Formats::Chiptune
       {
         struct ChannelState
         {
-          std::size_t Offset;
-          uint_t Period;
-          uint_t Counter;
+          std::size_t Offset = 0;
+          uint_t Period = 0;
+          uint_t Counter = 0;
 
-          ChannelState()
-            : Offset()
-            , Period()
-            , Counter()
-          {}
+          ChannelState() = default;
 
           void Skip(uint_t toSkip)
           {
@@ -632,7 +622,6 @@ namespace Formats::Chiptune
         std::array<ChannelState, 3> Channels;
 
         explicit ParserState(const DataCursors& src)
-          : Channels()
         {
           for (std::size_t idx = 0; idx != src.size(); ++idx)
           {
@@ -682,7 +671,7 @@ namespace Formats::Chiptune
           const std::size_t start = rangesStarts[chanNum];
           if (start >= Data.Size())
           {
-            Dbg("Invalid offset (%1%)", start);
+            Dbg("Invalid offset ({})", start);
           }
           else
           {
@@ -702,11 +691,7 @@ namespace Formats::Chiptune
           {
             continue;
           }
-          if (state.Offset >= Data.Size())
-          {
-            return false;
-          }
-          else if (0 == chan && 0xff == PeekByte(state.Offset))
+          if (state.Offset >= Data.Size() || (0 == chan && 0xff == PeekByte(state.Offset)))
           {
             return false;
           }
@@ -940,7 +925,7 @@ namespace Formats::Chiptune
       return true;
     }
 
-    const Char DESCRIPTION[] = "Global Tracker v1.x";
+    const auto DESCRIPTION = "Global Tracker v1.x"sv;
     const auto FORMAT =
         "03-0f"     // uint8_t Tempo;
         "???"       // uint8_t ID[3];
@@ -953,7 +938,7 @@ namespace Formats::Chiptune
         "01-ff"     // uint8_t Length;
         "00-fe"     // uint8_t Loop;
         "*6&00-ba"  // uint8_t Positions[1];
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -962,7 +947,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }

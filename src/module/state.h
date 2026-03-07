@@ -10,12 +10,11 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// library includes
-#include <time/duration.h>
-#include <time/instant.h>
-// std includes
+#include "time/duration.h"
+#include "time/instant.h"
+
+#include "types.h"
+
 #include <memory>
 
 namespace Module
@@ -25,7 +24,7 @@ namespace Module
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<const State> Ptr;
+    using Ptr = std::shared_ptr<const State>;
 
     virtual ~State() = default;
 

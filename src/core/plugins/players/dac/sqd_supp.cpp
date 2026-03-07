@@ -8,24 +8,20 @@
  *
  **/
 
-// local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/dac/dac_plugin.h"
-// library includes
-#include <core/plugin_attrs.h>
-#include <formats/chiptune/digital/sqdigitaltracker.h>
-#include <module/players/dac/sqdigitaltracker.h>
+#include "formats/chiptune/digital/sqdigitaltracker.h"
+#include "module/players/dac/sqdigitaltracker.h"
+
+#include "core/plugin_attrs.h"
 
 namespace ZXTune
 {
   void RegisterSQDSupport(PlayerPluginsRegistrator& registrator)
   {
-    // plugin attributes
-    const Char ID[] = {'S', 'Q', 'D', 0};
-
-    const Formats::Chiptune::Decoder::Ptr decoder = Formats::Chiptune::CreateSQDigitalTrackerDecoder();
-    const Module::DAC::Factory::Ptr factory = Module::SQDigitalTracker::CreateFactory();
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::CreateSQDigitalTrackerDecoder();
+    auto factory = Module::SQDigitalTracker::CreateFactory();
+    auto plugin = CreatePlayerPlugin("SQD"_id, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
 }  // namespace ZXTune

@@ -8,22 +8,22 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/digital/v2m.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <math/numeric.h>
+
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "math/numeric.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
 
 namespace Formats::Chiptune
 {
   namespace V2m
   {
-    const Char DESCRIPTION[] = "Farbrausch V2 Synthesizer System";
+    const auto DESCRIPTION = "Farbrausch V2 Synthesizer System"sv;
 
     class Format
     {
@@ -41,7 +41,7 @@ namespace Formats::Chiptune
             return CreateCalculatingCrcContainer(subData, 0, subData->Size());
           }
         }
-        return Container::Ptr();
+        return {};
       }
 
     private:
@@ -88,7 +88,7 @@ namespace Formats::Chiptune
           return false;
         }
         Stream.Skip(patchMapSize);
-        if (const auto speech = Stream.PeekRawData(sizeof(uint32_t)))
+        if (const auto* const speech = Stream.PeekRawData(sizeof(uint32_t)))
         {
           const auto pos = Stream.GetPosition();
           const uint_t speechSize = Stream.Read<le_uint32_t>();
@@ -177,7 +177,7 @@ namespace Formats::Chiptune
               usecs = safe_ptr_cast<const le_uint32_t*>(Delays + 3 * GdNum)[gdIdx];
             }
           }
-          return Time::Milliseconds(totalTime);
+          return Time::Milliseconds{static_cast<uint_t>(totalTime)};
         }
       };
     };
@@ -190,7 +190,7 @@ namespace Formats::Chiptune
       }
       catch (const std::exception&)
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
 
@@ -215,7 +215,7 @@ namespace Formats::Chiptune
         "%xxx00000 00-01 0000"  // timediv
         "? 01-ff ? 00"          // maxtime
         "01-06 000000"          // gdnum
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -224,7 +224,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -247,7 +247,7 @@ namespace Formats::Chiptune
         }
         else
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
       }
 

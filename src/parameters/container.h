@@ -10,9 +10,8 @@
 
 #pragma once
 
-// library includes
-#include <parameters/accessor.h>
-#include <parameters/modifier.h>
+#include "parameters/accessor.h"
+#include "parameters/modifier.h"
 
 namespace Parameters
 {
@@ -24,7 +23,7 @@ namespace Parameters
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<Container> Ptr;
+    using Ptr = std::shared_ptr<Container>;
 
     static Ptr Create();
     static Ptr Clone(const Parameters::Accessor& source);

@@ -10,38 +10,42 @@
 
 #pragma once
 
-// library includes
-#include <module/holder.h>
-#include <sound/backend.h>
-#include <time/duration.h>
-// std includes
+#include "module/holder.h"
+#include "sound/backend.h"
+#include "strings/format.h"
+#include "time/duration.h"
+
+#include "string_view.h"
+
 #include <memory>
 
 // forward declarations
-namespace boost
+namespace boost::program_options
 {
-  namespace program_options
-  {
-    class options_description;
-  }
-}  // namespace boost
+  class options_description;
+}  // namespace boost::program_options
 
 class DisplayComponent
 {
 public:
-  typedef std::unique_ptr<DisplayComponent> Ptr;
+  using Ptr = std::unique_ptr<DisplayComponent>;
 
   virtual ~DisplayComponent() = default;
 
   // commandline-related part
   virtual const boost::program_options::options_description& GetOptionsDescription() const = 0;
 
-  virtual void Message(const String& msg) = 0;
+  template<class... P>
+  void Message(Strings::FormatString<P...> msg, P&&... params)
+  {
+    Message(Strings::Format(msg, std::forward<P>(params)...));
+  }
+
+  virtual void Message(StringView msg) = 0;
   virtual void SetModule(Module::Holder::Ptr module, Sound::Backend::Ptr player) = 0;
 
   // begin frame, returns current position
   virtual Time::AtMillisecond BeginFrame(Sound::PlaybackControl::State state) = 0;
-  virtual void EndFrame() = 0;
 
   static Ptr Create();
 };

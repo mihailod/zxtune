@@ -8,16 +8,17 @@
  *
  **/
 
-// local includes
 #include "benchmark.h"
+
 #include "ay.h"
 #include "mixer.h"
 #include "z80.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-// boost includes
-#include <boost/format.hpp>
+
+#include "binary/dump.h"
+#include "strings/format.h"
+
+#include "contract.h"
+#include "make_ptr.h"
 
 namespace Benchmark
 {
@@ -182,7 +183,7 @@ namespace Benchmark
 
       std::string Name() const override
       {
-        return (boost::format("%u-channels") % Channels).str();
+        return Strings::Format("{}-channels", Channels);
       }
 
       double Execute() const override

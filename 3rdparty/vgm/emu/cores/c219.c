@@ -83,6 +83,7 @@ static DEVDEF_RWFUNC devFunc[] =
 static DEV_DEF devDef =
 {
 	"C219", "MAME", FCC_MAME,
+	16,  // Channels
 	
 	device_start_c219,
 	device_stop_c219,
@@ -287,7 +288,7 @@ static void c219_fetch_sample(c219_state *chip, UINT32 vid)
 			}
 			else
 			{
-				v->key=0;
+				v->key = 0;
 				v->sample = 0;
 			}
 		}

@@ -8,23 +8,26 @@
  *
  **/
 
-// local includes
-#include "properties_dialog.h"
-#include "playlist/supp/capabilities.h"
-#include "playlist/ui/table_view.h"
+#include "apps/zxtune-qt/playlist/ui/desktop/properties_dialog.h"
+
+#include "apps/zxtune-qt/playlist/supp/capabilities.h"
+#include "apps/zxtune-qt/playlist/ui/table_view.h"
+#include "apps/zxtune-qt/ui/preferences/aym.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "properties_dialog.ui.h"
-#include "ui/preferences/aym.h"
-#include "ui/tools/parameters_helpers.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-#include <error.h>
-#include <make_ptr.h>
-// library includes
-#include <core/core_parameters.h>
-#include <module/attributes.h>
-#include <parameters/merged_accessor.h>
-// qt includes
+
+#include "core/core_parameters.h"
+#include "debug/log.h"
+#include "module/attributes.h"
+#include "parameters/delegated.h"
+#include "parameters/merged_accessor.h"
+
+#include "contract.h"
+#include "error.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QLabel>
@@ -34,38 +37,48 @@
 
 namespace
 {
-  class ItemPropertiesContainer : public Parameters::Container
+  const Debug::Stream Dbg("Playlist::UI::PropertiesDialog");
+
+  class QImageView : public QLabel
+  {
+  public:
+    QImageView(QWidget* parent)
+      : QLabel(parent)
+    {
+      setScaledContents(false);
+      setMinimumSize(200, 200);
+      setAlignment(Qt::AlignCenter);
+    }
+
+    void LoadImage(Binary::View pic)
+    {
+      // TODO: move load/resize/convert to another thread
+      if (!Image.loadFromData(pic.As<uchar>(), pic.Size()))
+      {
+        Dbg("Failed to load image!");
+        return;
+      }
+    }
+
+    void resizeEvent(QResizeEvent*) override
+    {
+      if (!Image.isNull())
+      {
+        setPixmap(Image.scaled(size(), Qt::KeepAspectRatio));
+      }
+    }
+
+  private:
+    QPixmap Image;
+  };
+
+  class ItemPropertiesContainer : public Parameters::Delegated<Parameters::Container, Parameters::Accessor::Ptr>
   {
   public:
     ItemPropertiesContainer(Parameters::Container::Ptr adjusted, Parameters::Accessor::Ptr merged)
-      : Adjusted(std::move(adjusted))
-      , Merged(std::move(merged))
+      : Parameters::Delegated<Parameters::Container, Parameters::Accessor::Ptr>(std::move(merged))
+      , Adjusted(std::move(adjusted))
     {}
-
-    uint_t Version() const override
-    {
-      return Merged->Version();
-    }
-
-    bool FindValue(Parameters::Identifier name, Parameters::IntType& val) const override
-    {
-      return Merged->FindValue(name, val);
-    }
-
-    bool FindValue(Parameters::Identifier name, Parameters::StringType& val) const override
-    {
-      return Merged->FindValue(name, val);
-    }
-
-    bool FindValue(Parameters::Identifier name, Parameters::DataType& val) const override
-    {
-      return Merged->FindValue(name, val);
-    }
-
-    void Process(Parameters::Visitor& visitor) const override
-    {
-      return Merged->Process(visitor);
-    }
 
     void SetValue(Parameters::Identifier name, Parameters::IntType val) override
     {
@@ -89,7 +102,6 @@ namespace
 
   private:
     const Parameters::Container::Ptr Adjusted;
-    const Parameters::Accessor::Ptr Merged;
   };
 
   class PropertiesDialogImpl
@@ -97,23 +109,26 @@ namespace
     , public Playlist::UI::Ui_PropertiesDialog
   {
   public:
-    explicit PropertiesDialogImpl(QWidget& parent, Playlist::Item::Data::Ptr item)
+    explicit PropertiesDialogImpl(QWidget& parent, const Playlist::Item::Data& item)
       : Playlist::UI::PropertiesDialog(parent)
     {
       // setup self
       setupUi(this);
-      setWindowTitle(ToQString(item->GetFullPath()));
+      setWindowTitle(ToQString(item.GetFullPath()));
 
-      Properties = MakePtr<ItemPropertiesContainer>(item->GetAdjustedParameters(), item->GetModuleProperties());
+      Properties = MakePtr<ItemPropertiesContainer>(item.GetAdjustedParameters(), item.GetModuleProperties());
 
-      FillProperties(item->GetCapabilities());
-      itemsLayout->addItem(new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding),
-                           itemsLayout->rowCount(), 0);
+      FillProperties(item.GetCapabilities());
 
-      Require(connect(buttons, SIGNAL(clicked(QAbstractButton*)), SLOT(ButtonClicked(QAbstractButton*))));
+      auto* filler = new QImageView(this);
+      itemsLayout->addWidget(filler, itemsLayout->rowCount(), 0, 1, itemsLayout->columnCount());
+      LoadPicture(filler);
+
+      Require(connect(buttons, &QDialogButtonBox::clicked, this, &PropertiesDialogImpl::ButtonClicked));
     }
 
-    void ButtonClicked(QAbstractButton* button) override
+  private:
+    void ButtonClicked(QAbstractButton* button)
     {
       switch (buttons->buttonRole(button))
       {
@@ -124,7 +139,6 @@ namespace
       }
     }
 
-  private:
     void FillProperties(const Playlist::Item::Capabilities& caps)
     {
       AddStringProperty(Playlist::UI::PropertiesDialog::tr("Title"), Module::ATTR_TITLE);
@@ -180,14 +194,14 @@ namespace
 
     void AddStringProperty(const QString& title, Parameters::Identifier name)
     {
-      const auto wid = new QLineEdit(this);
+      auto* const wid = new QLineEdit(this);
       Parameters::Value* const value = Parameters::StringValue::Bind(*wid, *Properties, name, Parameters::StringType());
       AddProperty(title, wid, value);
     }
 
     void AddSetProperty(const QString& title, Parameters::Identifier name, const QStringList& values)
     {
-      const auto wid = new QComboBox(this);
+      auto* const wid = new QComboBox(this);
       wid->addItems(values);
       Parameters::Value* const value = Parameters::IntegerValue::Bind(*wid, *Properties, name, -1);
       AddProperty(title, wid, value);
@@ -195,38 +209,46 @@ namespace
 
     void AddIntegerProperty(const QString& title, const Parameters::IntegerTraits& traits)
     {
-      const auto wid = new QLineEdit(this);
+      auto* const wid = new QLineEdit(this);
       Parameters::Value* const value = Parameters::BigIntegerValue::Bind(*wid, *Properties, traits);
       AddProperty(title, wid, value);
     }
 
     void AddProperty(const QString& title, QWidget* widget, Parameters::Value* value)
     {
-      const auto resetButton = new QToolButton(this);
+      auto* const resetButton = new QToolButton(this);
       resetButton->setArrowType(Qt::DownArrow);
       resetButton->setToolTip(Playlist::UI::PropertiesDialog::tr("Reset value"));
       const int row = itemsLayout->rowCount();
       itemsLayout->addWidget(new QLabel(title, this), row, 0);
       itemsLayout->addWidget(widget, row, 1);
       itemsLayout->addWidget(resetButton, row, 2);
-      Require(value->connect(this, SIGNAL(ResetToDefaults()), SLOT(Reset())));
-      Require(value->connect(resetButton, SIGNAL(clicked()), SLOT(Reset())));
+      Require(connect(this, &Playlist::UI::PropertiesDialog::ResetToDefaults, value, &Parameters::Value::Reset));
+      Require(connect(resetButton, &QToolButton::clicked, value, &Parameters::Value::Reset));
     }
 
     void AddStrings(Parameters::Identifier name)
     {
-      Parameters::StringType value;
-      if (Properties->FindValue(name, value))
+      if (const auto value = Properties->FindString(name))
       {
-        const auto strings = new QTextBrowser(this);
+        auto* const strings = new QTextEdit(this);
         QFont font;
         font.setFamily(QString::fromLatin1("Courier New"));
         strings->setFont(font);
         strings->setLineWrapMode(QTextEdit::NoWrap);
+        strings->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Maximum);
 
         const int row = itemsLayout->rowCount();
         itemsLayout->addWidget(strings, row, 0, 1, itemsLayout->columnCount());
-        strings->setText(ToQString(value));
+        strings->setText(ToQString(*value));
+      }
+    }
+
+    void LoadPicture(QImageView* target)
+    {
+      if (const auto pic = Properties->FindData(Module::ATTR_PICTURE))
+      {
+        target->LoadImage(*pic);
       }
     }
 
@@ -235,31 +257,29 @@ namespace
   };
 }  // namespace
 
-namespace Playlist
+namespace Playlist::UI
 {
-  namespace UI
+  PropertiesDialog::PropertiesDialog(QWidget& parent)
+    : QDialog(&parent)
+  {}
+
+  PropertiesDialog::Ptr PropertiesDialog::Create(QWidget& parent, const Item::Data& item)
   {
-    PropertiesDialog::PropertiesDialog(QWidget& parent)
-      : QDialog(&parent)
-    {}
+    return MakePtr<PropertiesDialogImpl>(parent, item);
+  }
 
-    PropertiesDialog::Ptr PropertiesDialog::Create(QWidget& parent, Item::Data::Ptr item)
+  void ExecutePropertiesDialog(QWidget& parent, Model::Ptr model, const Model::IndexSet& scope)
+  {
+    if (scope.size() != 1)
     {
-      return MakePtr<PropertiesDialogImpl>(parent, item);
+      return;
     }
-
-    void ExecutePropertiesDialog(QWidget& parent, Model::Ptr model, Model::IndexSet::Ptr scope)
+    const Item::Data::Ptr item = model->GetItem(*scope.begin());
+    const auto& state = item->GetState();
+    if (state.IsReady() && !state.GetIfError())
     {
-      if (scope->size() != 1)
-      {
-        return;
-      }
-      const Item::Data::Ptr item = model->GetItem(*scope->begin());
-      if (!item->GetState())
-      {
-        const PropertiesDialog::Ptr dialog = PropertiesDialog::Create(parent, item);
-        dialog->exec();
-      }
+      const PropertiesDialog::Ptr dialog = PropertiesDialog::Create(parent, *item);
+      dialog->exec();
     }
-  }  // namespace UI
-}  // namespace Playlist
+  }
+}  // namespace Playlist::UI

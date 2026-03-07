@@ -10,11 +10,11 @@
 
 #pragma once
 
-// common includes
-#include <iterator.h>
-#include <types.h>
+#include "string_view.h"
+#include "types.h"
 
-// forward declarations
+#include <span>
+
 class Error;
 
 namespace IO
@@ -24,15 +24,13 @@ namespace IO
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<const Provider> Ptr;
-    //! Iterator type
-    typedef ObjectIterator<Provider::Ptr> Iterator;
+    using Ptr = std::shared_ptr<const Provider>;
 
     //! Virtual destructor
     virtual ~Provider() = default;
 
     //! Provider's identifier
-    virtual String Id() const = 0;
+    virtual StringView Id() const = 0;
     //! Description in any form
     virtual String Description() const = 0;
     //! Actuality status
@@ -40,5 +38,5 @@ namespace IO
   };
 
   //! @brief Enumerating supported %IO providers
-  Provider::Iterator::Ptr EnumerateProviders();
+  std::span<const Provider::Ptr> EnumerateProviders();
 }  // namespace IO

@@ -8,35 +8,33 @@
  *
  **/
 
-// local includes
 #include "sound/backends/backend_impl.h"
 #include "sound/backends/l10n.h"
 #include "sound/backends/oss.h"
 #include "sound/backends/storage.h"
-// common includes
-#include <byteorder.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <debug/log.h>
-#include <sound/backend_attrs.h>
-#include <sound/backends_parameters.h>
-#include <sound/render_params.h>
-#include <sound/sound_parameters.h>
-// platform-specific includes
-#include <errno.h>
+
+#include "debug/log.h"
+#include "sound/backends_parameters.h"
+#include "sound/render_params.h"
+#include "sound/sound_parameters.h"
+
+#include "byteorder.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/soundcard.h>
 #include <sys/stat.h>
 #include <unistd.h>
-// std includes
+
 #include <algorithm>
+#include <array>
+#include <cerrno>
 #include <cstring>
 #include <mutex>
-
-#define FILE_TAG 69200152
 
 namespace Sound::Oss
 {
@@ -49,21 +47,18 @@ namespace Sound::Oss
   class AutoDescriptor
   {
   public:
-    AutoDescriptor()
-      : Handle(-1)
+    AutoDescriptor() = default;
+
+    explicit AutoDescriptor(StringView name)
+      : Name(name)
     {}
 
-    explicit AutoDescriptor(String name)
-      : Name(std::move(name))
-      , Handle(-1)
-    {}
-
-    AutoDescriptor(String name, int mode)
-      : Name(std::move(name))
+    AutoDescriptor(StringView name, int mode)
+      : Name(name)
       , Handle(::open(Name.c_str(), mode, 0))
     {
       CheckResult(Valid(), THIS_LINE);
-      Dbg("Opened device '%1%'", Name);
+      Dbg("Opened device '{}'", Name);
     }
 
     AutoDescriptor(const AutoDescriptor&) = delete;
@@ -93,7 +88,7 @@ namespace Sound::Oss
     {
       if (Valid())
       {
-        Dbg("Close device '%1%'", Name);
+        Dbg("Close device '{}'", Name);
         int tmpHandle = -1;
         std::swap(Handle, tmpHandle);
         Name.clear();
@@ -137,7 +132,7 @@ namespace Sound::Oss
     {
       if (!res)
       {
-        throw MakeFormattedError(loc, translate("Error in OSS backend while working with device '%1%': %2%."), Name,
+        throw MakeFormattedError(loc, translate("Error in OSS backend while working with device '{0}': {1}."), Name,
                                  ::strerror(errno));
       }
     }
@@ -145,7 +140,7 @@ namespace Sound::Oss
   private:
     String Name;
     // leave handle as int
-    int Handle;
+    int Handle = -1;
   };
 
   class SoundFormat
@@ -243,16 +238,14 @@ namespace Sound::Oss
 
     String GetDeviceName() const
     {
-      Parameters::StringType strVal = Parameters::ZXTune::Sound::Backends::Oss::DEVICE_DEFAULT;
-      Accessor.FindValue(Parameters::ZXTune::Sound::Backends::Oss::DEVICE, strVal);
-      return strVal;
+      using namespace Parameters::ZXTune::Sound::Backends::Oss;
+      return Parameters::GetString(Accessor, DEVICE, DEVICE_DEFAULT);
     }
 
     String GetMixerName() const
     {
-      Parameters::StringType strVal = Parameters::ZXTune::Sound::Backends::Oss::MIXER_DEFAULT;
-      Accessor.FindValue(Parameters::ZXTune::Sound::Backends::Oss::MIXER, strVal);
-      return strVal;
+      using namespace Parameters::ZXTune::Sound::Backends::Oss;
+      return Parameters::GetString(Accessor, MIXER, MIXER_DEFAULT);
     }
 
   private:
@@ -264,7 +257,6 @@ namespace Sound::Oss
   public:
     explicit BackendWorker(Parameters::Accessor::Ptr params)
       : Params(std::move(params))
-      , Format(-1)
       , VolumeController(new VolumeControl(StateMutex, MixHandle))
     {}
 
@@ -315,7 +307,7 @@ namespace Sound::Oss
       }
       assert(DevHandle.Valid());
       std::size_t toWrite(buffer.size() * sizeof(buffer.front()));
-      const uint8_t* data(safe_ptr_cast<const uint8_t*>(buffer.data()));
+      const auto* data(safe_ptr_cast<const uint8_t*>(buffer.data()));
       while (toWrite)
       {
         const int res = DevHandle.WriteAsync(data, toWrite * sizeof(*data));
@@ -335,22 +327,22 @@ namespace Sound::Oss
       static_assert(8 == Sample::BITS || 16 == Sample::BITS, "Incompatible sound sample bits count");
       int tmp = 0;
       tmpDevice.Ioctl(SNDCTL_DSP_GETFMTS, &tmp, THIS_LINE);
-      Dbg("Supported formats %1%", tmp);
+      Dbg("Supported formats {}", tmp);
       const SoundFormat format(tmp);
       if (!format.IsSupported())
       {
         throw Error(THIS_LINE, translate("No suitable formats supported by OSS."));
       }
       tmp = format.Get();
-      Dbg("Setting format to %1%", tmp);
+      Dbg("Setting format to {}", tmp);
       tmpDevice.Ioctl(SNDCTL_DSP_SETFMT, &tmp, THIS_LINE);
 
       tmp = Sample::CHANNELS;
-      Dbg("Setting channels to %1%", tmp);
+      Dbg("Setting channels to {}", tmp);
       tmpDevice.Ioctl(SNDCTL_DSP_CHANNELS, &tmp, THIS_LINE);
 
       tmp = sound->SoundFreq();
-      Dbg("Setting frequency to %1%", tmp);
+      Dbg("Setting frequency to {}", tmp);
       tmpDevice.Ioctl(SNDCTL_DSP_SPEED, &tmp, THIS_LINE);
 
       device.Swap(tmpDevice);
@@ -363,7 +355,7 @@ namespace Sound::Oss
     std::mutex StateMutex;
     AutoDescriptor MixHandle;
     AutoDescriptor DevHandle;
-    int Format;
+    int Format = -1;
     const VolumeControl::Ptr VolumeController;
   };
 
@@ -384,9 +376,7 @@ namespace Sound
 {
   void RegisterOssBackend(BackendsStorage& storage)
   {
-    const BackendWorkerFactory::Ptr factory = MakePtr<Oss::BackendWorkerFactory>();
-    storage.Register(Oss::BACKEND_ID, Oss::BACKEND_DESCRIPTION, Oss::CAPABILITIES, factory);
+    auto factory = MakePtr<Oss::BackendWorkerFactory>();
+    storage.Register(Oss::BACKEND_ID, Oss::BACKEND_DESCRIPTION, Oss::CAPABILITIES, std::move(factory));
   }
 }  // namespace Sound
-
-#undef FILE_TAG

@@ -10,28 +10,26 @@
 
 #pragma once
 
-// local includes
-#include "operations.h"
+#include "apps/zxtune-qt/playlist/supp/operations.h"
 
-namespace Playlist
+#include "string_view.h"
+
+namespace Playlist::Item
 {
-  namespace Item
+  class StatisticTextNotification : public Playlist::TextNotification
   {
-    class StatisticTextNotification : public Playlist::TextNotification
-    {
-    public:
-      typedef std::shared_ptr<StatisticTextNotification> Ptr;
+  public:
+    using Ptr = std::shared_ptr<StatisticTextNotification>;
 
-      virtual void AddInvalid() = 0;
-      virtual void AddValid() = 0;
-      virtual void AddType(const String& type) = 0;
-      virtual void AddDuration(const Time::Milliseconds& duration) = 0;
-      virtual void AddSize(std::size_t size) = 0;
-      virtual void AddPath(const String& path) = 0;
-    };
+    virtual void AddInvalid() = 0;
+    virtual void AddValid() = 0;
+    virtual void AddType(StringView type) = 0;
+    virtual void AddDuration(const Time::Milliseconds& duration) = 0;
+    virtual void AddSize(std::size_t size) = 0;
+    virtual void AddPath(StringView path) = 0;
+  };
 
-    TextResultOperation::Ptr CreateCollectStatisticOperation(StatisticTextNotification::Ptr result);
-    TextResultOperation::Ptr CreateCollectStatisticOperation(Playlist::Model::IndexSet::Ptr items,
-                                                             StatisticTextNotification::Ptr result);
-  }  // namespace Item
-}  // namespace Playlist
+  TextResultOperation::Ptr CreateCollectStatisticOperation(StatisticTextNotification::Ptr result);
+  TextResultOperation::Ptr CreateCollectStatisticOperation(Playlist::Model::IndexSet::Ptr items,
+                                                           StatisticTextNotification::Ptr result);
+}  // namespace Playlist::Item

@@ -8,9 +8,12 @@
  *
  **/
 
-#include "../../utils.h"
-#include <formats/chiptune/music/oggvorbis.h>
-#include <strings/format.h>
+#include "formats/chiptune/music/oggvorbis.h"
+#include "formats/test/utils.h"
+
+#include "strings/format.h"
+
+#include "string_view.h"
 
 namespace
 {
@@ -44,6 +47,16 @@ namespace
       }
     }
 
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
+    }
+
+    void SetPicture(Binary::View content) override
+    {
+      std::cout << "Picture: " << content.Size() << " bytes" << std::endl;
+    }
+
     MetaBuilder& GetMetaBuilder() override
     {
       return *this;
@@ -72,9 +85,10 @@ namespace
       std::cout << "Setup: " << data.Size() << " bytes" << std::endl;
     }
 
-    void AddFrame(std::size_t offset, uint_t samplesCount, Binary::View data) override
+    void AddFrame(std::size_t offset, uint64_t positionInFrames, Binary::View data) override
     {
-      std::cout << Strings::Format("Frame: @%1%(0x%1$08x) %2% samples, %3% bytes\n", offset, samplesCount, data.Size());
+      std::cout << Strings::Format("Frame: @{0} (0x{0:08x}) at frame {1}, {2} bytes\n", offset, positionInFrames,
+                                   data.Size());
     }
   };
 }  // namespace
@@ -87,9 +101,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Binary::Dump> rawData(new Binary::Dump());
-    Test::OpenFile(argv[1], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[1]);
     OggBuilder builder;
     if (const auto result = Formats::Chiptune::OggVorbis::Parse(*data, builder))
     {

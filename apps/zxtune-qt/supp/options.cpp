@@ -8,26 +8,30 @@
  *
  **/
 
-// local includes
-#include "options.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <parameters/convert.h>
-#include <parameters/merged_accessor.h>
-#include <parameters/src/names_set.h>
-#include <parameters/tools.h>
-#include <parameters/tracking.h>
-// std includes
-#include <functional>
-#include <mutex>
-#include <set>
-// qt includes
+#include "apps/zxtune-qt/supp/options.h"
+
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "parameters/src/names_set.h"
+
+#include "binary/container_factories.h"
+#include "parameters/convert.h"
+#include "parameters/delegated.h"
+#include "parameters/merged_accessor.h"
+#include "parameters/tools.h"
+#include "parameters/tracking.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+#include "string_view.h"
+
 #include <QtCore/QCoreApplication>
 #include <QtCore/QSettings>
+
+#include <mutex>
+#include <set>
+#include <utility>
 
 namespace
 {
@@ -38,66 +42,62 @@ namespace
   class SettingsContainer : public Container
   {
   public:
-    SettingsContainer()
-      : VersionValue()
-    {}
+    SettingsContainer() = default;
 
     uint_t Version() const override
     {
       return VersionValue;
     }
 
-    bool FindValue(Identifier name, IntType& val) const override
+    std::optional<IntType> FindInteger(Identifier name) const override
     {
       const Value value(Storage, name);
       if (!value.IsValid())
       {
-        return false;
+        return std::nullopt;
       }
       const QVariant& var = value.Get();
       const QVariant::Type type = var.type();
       if (type == QVariant::String)
       {
-        return ConvertFromString(FromQString(var.toString()), val);
+        return ConvertIntegerFromString(FromQString(var.toString()));
       }
       else if (type == QVariant::LongLong || type == QVariant::Int)
       {
-        val = var.toLongLong();
-        return true;
+        return var.toLongLong();
       }
-      return false;
+      return std::nullopt;
     }
 
-    bool FindValue(Identifier name, StringType& val) const override
+    std::optional<StringType> FindString(Identifier name) const override
     {
       const Value value(Storage, name);
       if (!value.IsValid())
       {
-        return false;
+        return std::nullopt;
       }
       const QVariant& var = value.Get();
       if (var.type() == QVariant::String)
       {
-        return ConvertFromString(FromQString(var.toString()), val);
+        return ConvertStringFromString(FromQString(var.toString()));
       }
-      return false;
+      return std::nullopt;
     }
 
-    bool FindValue(Identifier name, DataType& val) const override
+    Binary::Data::Ptr FindData(Identifier name) const override
     {
       const Value value(Storage, name);
       if (!value.IsValid())
       {
-        return false;
+        return {};
       }
       const QVariant& var = value.Get();
       if (var.type() == QVariant::ByteArray)
       {
         const QByteArray& arr = var.toByteArray();
-        val.assign(arr.data(), arr.data() + arr.size());
-        return true;
+        return Binary::CreateContainer(Binary::View(arr.data(), arr.size()));
       }
-      return false;
+      return {};
     }
 
     void Process(Visitor& /*visitor*/) const override
@@ -136,15 +136,15 @@ namespace
     }
 
   private:
-    typedef std::shared_ptr<QSettings> SettingsPtr;
-    typedef std::map<QString, SettingsPtr> SettingsStorage;
+    using SettingsPtr = std::shared_ptr<QSettings>;
+    using SettingsStorage = std::map<QString, SettingsPtr>;
 
     class Value
     {
     public:
       Value(SettingsStorage& storage, Identifier name)
         : Storage(storage)
-        , FullName(name)
+        , FullName(std::move(name))
       {}
 
       bool IsValid() const
@@ -194,7 +194,7 @@ namespace
         const QString fullKey = GetKeyName(FullName);
         const QString rootNamespace = fullKey.section(PATH_SEPARATOR, 0, 0);
         ParamName = fullKey.section(PATH_SEPARATOR, 1);
-        const SettingsStorage::const_iterator it = Storage.find(rootNamespace);
+        const auto it = Storage.find(rootNamespace);
         if (it != Storage.end())
         {
           Setup = it->second;
@@ -214,7 +214,7 @@ namespace
     };
 
   private:
-    uint_t VersionValue;
+    uint_t VersionValue = 0;
     mutable SettingsStorage Storage;
   };
 
@@ -231,58 +231,58 @@ namespace
       return Temporary->Version();
     }
 
-    bool FindValue(Identifier name, IntType& val) const override
+    std::optional<IntType> FindInteger(Identifier name) const override
     {
-      if (Temporary->FindValue(name, val))
+      if (auto tmp = Temporary->FindInteger(name))
       {
-        return true;
+        return tmp;
       }
       else if (Removed.Has(name))
       {
-        return false;
+        return std::nullopt;
       }
-      else if (Persistent->FindValue(name, val))
+      else if (auto pers = Persistent->FindInteger(name))
       {
-        Temporary->SetValue(name, val);
-        return true;
+        Temporary->SetValue(name, *pers);
+        return pers;
       }
-      return false;
+      return std::nullopt;
     }
 
-    bool FindValue(Identifier name, StringType& val) const override
+    std::optional<StringType> FindString(Identifier name) const override
     {
-      if (Temporary->FindValue(name, val))
+      if (auto tmp = Temporary->FindString(name))
       {
-        return true;
+        return tmp;
       }
       else if (Removed.Has(name))
       {
-        return false;
+        return std::nullopt;
       }
-      else if (Persistent->FindValue(name, val))
+      else if (auto pers = Persistent->FindString(name))
       {
-        Temporary->SetValue(name, val);
-        return true;
+        Temporary->SetValue(name, *pers);
+        return pers;
       }
-      return false;
+      return std::nullopt;
     }
 
-    bool FindValue(Identifier name, DataType& val) const override
+    Binary::Data::Ptr FindData(Identifier name) const override
     {
-      if (Temporary->FindValue(name, val))
+      if (auto res = Temporary->FindData(name))
       {
-        return true;
+        return res;
       }
       else if (Removed.Has(name))
       {
-        return false;
+        return {};
       }
-      else if (Persistent->FindValue(name, val))
+      auto res = Persistent->FindData(name);
+      if (res)
       {
-        Temporary->SetValue(name, val);
-        return true;
+        Temporary->SetValue(name, *res);
       }
-      return false;
+      return res;
     }
 
     void Process(Visitor& visitor) const override
@@ -330,13 +330,13 @@ namespace
   class CompositeModifier : public Modifier
   {
   public:
-    typedef std::shared_ptr<void> Subscription;
+    using Subscription = std::shared_ptr<void>;
 
     Subscription Subscribe(Modifier::Ptr delegate)
     {
       const std::lock_guard<std::mutex> lock(Guard);
       Delegates.insert(delegate);
-      return Subscription(this, std::bind(&CompositeModifier::Unsubscribe, std::placeholders::_1, delegate));
+      return {this, [delegate = std::move(delegate)](auto&& owner) { owner->Unsubscribe(delegate); }};
     }
 
     void SetValue(Identifier name, IntType val) override
@@ -376,7 +376,7 @@ namespace
     }
 
   private:
-    void Unsubscribe(Modifier::Ptr delegate)
+    void Unsubscribe(const Modifier::Ptr& delegate)
     {
       const std::lock_guard<std::mutex> lock(Guard);
       Delegates.erase(delegate);
@@ -384,7 +384,7 @@ namespace
 
   private:
     mutable std::mutex Guard;
-    typedef std::set<Modifier::Ptr> ModifiersSet;
+    using ModifiersSet = std::set<Modifier::Ptr>;
     mutable ModifiersSet Delegates;
   };
 
@@ -408,7 +408,7 @@ namespace
 
     void SetValue(Identifier name, Binary::View /*val*/) override
     {
-      CopyExistingValue<DataType>(*Stored, *Changed, name);
+      CopyExistingData(*Stored, *Changed, name);
     }
 
     void RemoveValue(Identifier /*name*/) override {}
@@ -418,45 +418,20 @@ namespace
     const Container::Ptr Changed;
   };
 
-  class SettingsSnapshot : public Accessor
+  class SettingsSnapshot : public DelegatedAccessor
   {
   public:
     SettingsSnapshot(Accessor::Ptr delegate, CompositeModifier::Subscription subscription)
-      : Delegate(std::move(delegate))
+      : DelegatedAccessor(std::move(delegate))
       , Subscription(std::move(subscription))
     {}
 
-    uint_t Version() const override
-    {
-      return Delegate->Version();
-    }
-
-    bool FindValue(Identifier name, IntType& val) const override
-    {
-      return Delegate->FindValue(name, val);
-    }
-
-    bool FindValue(Identifier name, StringType& val) const override
-    {
-      return Delegate->FindValue(name, val);
-    }
-
-    bool FindValue(Identifier name, DataType& val) const override
-    {
-      return Delegate->FindValue(name, val);
-    }
-
-    void Process(Visitor& visitor) const override
-    {
-      return Delegate->Process(visitor);
-    }
-
     static Accessor::Ptr Create(Accessor::Ptr stored, CompositeModifier& modifiers)
     {
-      const Container::Ptr changed = Container::Create();
-      const Accessor::Ptr delegate = CreateMergedAccessor(changed, stored);
-      const Modifier::Ptr callback = MakePtr<CopyOnWrite>(stored, changed);
-      return MakePtr<SettingsSnapshot>(delegate, modifiers.Subscribe(callback));
+      auto changed = Container::Create();
+      auto delegate = CreateMergedAccessor(changed, stored);
+      auto callback = MakePtr<CopyOnWrite>(std::move(stored), std::move(changed));
+      return MakePtr<SettingsSnapshot>(std::move(delegate), modifiers.Subscribe(std::move(callback)));
     }
 
   public:

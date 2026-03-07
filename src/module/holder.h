@@ -10,10 +10,9 @@
 
 #pragma once
 
-// library includes
-#include <module/information.h>
-#include <module/renderer.h>
-#include <parameters/accessor.h>
+#include "module/information.h"
+#include "module/renderer.h"
+#include "parameters/accessor.h"
 
 namespace Module
 {
@@ -22,7 +21,7 @@ namespace Module
   {
   public:
     //! @brief Pointer type
-    typedef std::shared_ptr<const Holder> Ptr;
+    using Ptr = std::shared_ptr<const Holder>;
 
     virtual ~Holder() = default;
 

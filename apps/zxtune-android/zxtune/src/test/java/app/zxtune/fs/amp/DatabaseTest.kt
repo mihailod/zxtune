@@ -6,7 +6,10 @@ import app.zxtune.fs.DatabaseTestUtils.testFindObjects
 import app.zxtune.fs.DatabaseTestUtils.testQueryObjects
 import app.zxtune.fs.DatabaseTestUtils.testVisitor
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,10 +50,10 @@ class DatabaseTest {
 
     @Test
     fun `test empty database`() {
-        testVisitor<Catalog.AuthorsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Author>> { visitor ->
             assertFalse(underTest.queryAuthors("", visitor))
         }
-        testVisitor<Catalog.GroupsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Group>> { visitor ->
             assertFalse(underTest.queryGroups(visitor))
         }
         testVisitor<Catalog.FoundTracksVisitor> { visitor ->
@@ -65,10 +68,9 @@ class DatabaseTest {
         val upper = addAuthor(2, 'Z')
         val lower = addAuthor(3, 'a')
 
-        testVisitor<Catalog.AuthorsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Author>> { visitor ->
             assertTrue(underTest.queryAuthors("", visitor))
             inOrder(visitor).run {
-                verify(visitor).setCountHint(4)
                 verify(visitor).accept(digit)
                 verify(visitor).accept(sign)
                 verify(visitor).accept(upper)
@@ -76,32 +78,29 @@ class DatabaseTest {
             }
         }
 
-        testVisitor<Catalog.AuthorsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Author>> { visitor ->
             assertTrue(underTest.queryAuthors(Catalog.NON_LETTER_FILTER, visitor))
             inOrder(visitor).run {
-                verify(visitor).setCountHint(2)
                 verify(visitor).accept(digit)
                 verify(visitor).accept(sign)
             }
         }
 
-        testVisitor<Catalog.AuthorsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Author>> { visitor ->
             assertTrue(underTest.queryAuthors("A", visitor))
             inOrder(visitor).run {
-                verify(visitor).setCountHint(1)
                 verify(visitor).accept(lower)
             }
         }
 
-        testVisitor<Catalog.AuthorsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Author>> { visitor ->
             assertTrue(underTest.queryAuthors("Z", visitor))
             inOrder(visitor).run {
-                verify(visitor).setCountHint(1)
                 verify(visitor).accept(upper)
             }
         }
 
-        testVisitor<Catalog.AuthorsVisitor> { visitor ->
+        testVisitor<Catalog.Visitor<Author>> { visitor ->
             assertFalse(underTest.queryAuthors("M", visitor))
         }
     }
@@ -112,7 +111,6 @@ class DatabaseTest {
         addGroup = ::makeCountry,
         addObjectToGroup = underTest::addCountryAuthor,
         queryObjects = underTest::queryAuthors,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, author -> visitor.accept(author) }
     )
 
@@ -122,7 +120,6 @@ class DatabaseTest {
         addGroup = ::makeGroup,
         addObjectToGroup = underTest::addGroupAuthor,
         queryObjects = underTest::queryAuthors,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, author -> visitor.accept(author) }
     )
 
@@ -132,7 +129,6 @@ class DatabaseTest {
         addGroup = ::makeAuthor,
         addObjectToGroup = underTest::addAuthorTrack,
         queryObjects = underTest::queryTracks,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, track -> visitor.accept(track) }
     )
 
@@ -140,7 +136,6 @@ class DatabaseTest {
     fun `test queryGroups`() = testQueryObjects(
         addObject = ::addGroup,
         queryObjects = underTest::queryGroups,
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, group -> visitor.accept(group) }
     )
 
@@ -154,7 +149,6 @@ class DatabaseTest {
             underTest.findTracks("3", visitor)
             makeTrack(3)
         },
-        checkCountHint = { visitor, hint -> visitor.setCountHint(hint) },
         checkAccept = { visitor, author, track -> visitor.accept(author, track) }
     )
 

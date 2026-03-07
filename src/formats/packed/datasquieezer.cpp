@@ -10,23 +10,17 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-#include <math/numeric.h>
-// std includes
-#include <algorithm>
-#include <functional>
-#include <iterator>
-#include <numeric>
+
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+#include "math/numeric.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
 
 namespace Formats::Packed
 {
@@ -34,7 +28,7 @@ namespace Formats::Packed
   {
     const std::size_t MAX_DECODED_SIZE = 0xc000;
 
-    const Char DESCRIPTION[] = "DataSqueezer v4.x";
+    const auto DESCRIPTION = "DataSqueezer v4.x"sv;
     /*
        classic depacker
        bitstream:
@@ -155,7 +149,7 @@ namespace Formats::Packed
                       "d9"        // exx
                       "c9"        // ret
                   */
-        ""_sv;
+        ""sv;
 
     struct RawHeader
     {
@@ -208,8 +202,6 @@ namespace Formats::Packed
       Bitstream(const uint8_t* data, std::size_t size)
         : Data(data)
         , Pos(Data + size)
-        , Bits()
-        , Mask(0)
       {}
 
       uint_t GetBit()
@@ -247,8 +239,8 @@ namespace Formats::Packed
     private:
       const uint8_t* const Data;
       const uint8_t* Pos;
-      uint_t Bits;
-      uint_t Mask;
+      uint_t Bits = 0;
+      uint_t Mask = 0;
     };
 
     class Container
@@ -285,11 +277,7 @@ namespace Formats::Packed
           return false;
         }
         const uint_t usedSize = GetUsedSize();
-        if (Size < usedSize)
-        {
-          return false;
-        }
-        return true;
+        return Size >= usedSize;
       }
 
       uint_t GetUsedSize() const
@@ -316,8 +304,6 @@ namespace Formats::Packed
         : IsValid(container.FastCheck())
         , Header(container.GetHeader())
         , Stream(Header.Data, Header.SizeOfPacked)
-        , Result(new Binary::Dump())
-        , Decoded(*Result)
       {
         if (IsValid)
         {
@@ -325,30 +311,30 @@ namespace Formats::Packed
         }
       }
 
-      std::unique_ptr<Binary::Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid ? std::move(Result) : std::unique_ptr<Binary::Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
 
     private:
       bool DecodeData()
       {
         const uint_t unpackedSize = Header.LastOfDepacked - Header.DepackedLimit;
-        Decoded.reserve(unpackedSize);
+        Decoded = Binary::DataBuilder(unpackedSize);
         try
         {
-          while (Decoded.size() < unpackedSize)
+          while (Decoded.Size() < unpackedSize)
           {
             if (!Stream.GetBit())
             {
-              Decoded.push_back(Stream.Get8Bits());
+              Decoded.AddByte(Stream.Get8Bits());
             }
             else if (!DecodeCmd())
             {
               return false;
             }
           }
-          std::reverse(Decoded.begin(), Decoded.end());
+          Reverse(Decoded);
           return true;
         }
         catch (const std::exception&)
@@ -420,15 +406,14 @@ namespace Formats::Packed
       void CopySingleBytes()
       {
         const uint_t count = 14 + Stream.GetBits(5);
-        std::generate_n(std::back_inserter(Decoded), count, std::bind(&Bitstream::Get8Bits, &Stream));
+        Generate(Decoded, count, [stream = &Stream] { return stream->Get8Bits(); });
       }
 
     private:
       bool IsValid;
       const RawHeader& Header;
       Bitstream Stream;
-      std::unique_ptr<Binary::Dump> Result;
-      Binary::Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
   }  // namespace DataSquieezer
 
@@ -439,7 +424,7 @@ namespace Formats::Packed
       : Depacker(Binary::CreateFormat(DataSquieezer::DEPACKER_PATTERN, DataSquieezer::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return DataSquieezer::DESCRIPTION;
     }
@@ -453,12 +438,12 @@ namespace Formats::Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const DataSquieezer::Container container(rawData.Start(), rawData.Size());
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       DataSquieezer::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), container.GetUsedSize());

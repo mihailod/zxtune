@@ -8,25 +8,26 @@
  *
  **/
 
-// local includes
 #include "io/providers/network_provider.h"
+
 #include "io/impl/l10n.h"
 #include "io/providers/enumerator.h"
 #include "io/providers/gates/curl_api.h"
-// common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-#include <progress_callback.h>
-// library includes
-#include <binary/container_factories.h>
-#include <debug/log.h>
-#include <io/providers_parameters.h>
-#include <parameters/accessor.h>
-// std includes
-#include <cstring>
 
-#define FILE_TAG 18F46494
+#include "binary/container_factories.h"
+#include "binary/data_builder.h"
+#include "debug/log.h"
+#include "io/providers_parameters.h"
+#include "parameters/accessor.h"
+#include "tools/progress_callback.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <cstring>
+#include <utility>
 
 namespace IO::Network
 {
@@ -41,9 +42,7 @@ namespace IO::Network
 
     String GetHttpUseragent() const
     {
-      String res;
-      Accessor.FindValue(Parameters::ZXTune::IO::Providers::Network::Http::USERAGENT, res);
-      return res;
+      return Parameters::GetString(Accessor, Parameters::ZXTune::IO::Providers::Network::Http::USERAGENT);
     }
 
   private:
@@ -59,7 +58,7 @@ namespace IO::Network
       : Api(std::move(api))
       , Object(Api->curl_easy_init())
     {
-      Dbg("Curl(%1%): created", Object);
+      Dbg("Curl({}): created", Object);
     }
 
     ~CurlObject()
@@ -67,7 +66,7 @@ namespace IO::Network
       if (Object)
       {
         Api->curl_easy_cleanup(Object);
-        Dbg("Curl(%1%): destroyed", Object);
+        Dbg("Curl({}): destroyed", Object);
       }
     }
 
@@ -93,7 +92,7 @@ namespace IO::Network
     {
       if (code != CURLE_OK)
       {
-        throw MakeFormattedError(loc, translate("Network error happends: %1%"), Api->curl_easy_strerror(code));
+        throw MakeFormattedError(loc, translate("Network error happends: {}"), Api->curl_easy_strerror(code));
       }
     }
 
@@ -111,16 +110,16 @@ namespace IO::Network
   {
   public:
     explicit RemoteResource(Curl::Api::Ptr api)
-      : Object(api)
+      : Object(std::move(api))
     {
       Object.SetOption(CURLOPT_DEBUGFUNCTION, reinterpret_cast<void*>(&DebugCallback), THIS_LINE);
       Object.SetOption(CURLOPT_VERBOSE, 1, THIS_LINE);
       Object.SetOption(CURLOPT_WRITEFUNCTION, reinterpret_cast<void*>(&WriteCallback), THIS_LINE);
     }
 
-    void SetSource(const String& url)
+    void SetSource(StringView url)
     {
-      Object.SetOption(CURLOPT_URL, url.c_str(), THIS_LINE);
+      Object.SetOption(CURLOPT_URL, String{url}.c_str(), THIS_LINE);
     }
 
     void SetOptions(const ProviderParameters& params)
@@ -143,17 +142,16 @@ namespace IO::Network
     // TODO: pass callback to handle progress and other
     Binary::Container::Ptr Download()
     {
-      std::unique_ptr<Binary::Dump> result(new Binary::Dump());
-      result->reserve(INITIAL_SIZE);
-      Object.SetOption<void*>(CURLOPT_WRITEDATA, result.get(), THIS_LINE);
+      Binary::DataBuilder result(INITIAL_SIZE);
+      Object.SetOption<void*>(CURLOPT_WRITEDATA, &result, THIS_LINE);
       Object.Perform(THIS_LINE);
       long retCode = 0;
       Object.GetInfo(CURLINFO_RESPONSE_CODE, &retCode, THIS_LINE);
       if (IsHttpErrorCode(retCode))
       {
-        throw MakeFormattedError(THIS_LINE, translate("Http error happends: %1%."), retCode);
+        throw MakeFormattedError(THIS_LINE, translate("Http error happends: {}."), retCode);
       }
-      return Binary::CreateContainer(std::move(result));
+      return result.CaptureResult();
     }
 
   private:
@@ -170,13 +168,13 @@ namespace IO::Network
       switch (type)
       {
       case CURLINFO_TEXT:
-        Dbg("Curl(%1%): %2%", obj, str);
+        Dbg("Curl({}): {}", obj, str);
         break;
       case CURLINFO_HEADER_IN:
-        Dbg("Curl(%1%): -> %2%", obj, str);
+        Dbg("Curl({}): -> {}", obj, str);
         break;
       case CURLINFO_HEADER_OUT:
-        Dbg("Curl(%1%): <- %2%", obj, str);
+        Dbg("Curl({}): <- {}", obj, str);
         break;
       default:
         break;
@@ -184,21 +182,19 @@ namespace IO::Network
       return 0;
     }
 
-    static size_t WriteCallback(const char* ptr, size_t size, size_t nmemb, Binary::Dump* result)
+    static size_t WriteCallback(const char* ptr, size_t size, size_t nmemb, Binary::DataBuilder* result)
     {
       const std::size_t toSave = size * nmemb;
-      const std::size_t prevSize = result->size();
-      result->resize(prevSize + toSave);
-      std::memcpy(result->data() + prevSize, ptr, toSave);
+      result->Add(Binary::View{ptr, toSave});
       return toSave;
     }
 
     static int ProgressCallback(void* data, double dlTotal, double dlNow, double /*ulTotal*/, double /*ulNow*/)
     {
-      if (dlTotal)  // 0 for source files with unknown size
+      if (dlTotal != 0.0)  // 0 for source files with unknown size
       {
-        Log::ProgressCallback* const cb = static_cast<Log::ProgressCallback*>(data);
-        const uint_t progress = static_cast<uint_t>(dlNow * 100 / dlTotal);
+        auto* const cb = static_cast<Log::ProgressCallback*>(data);
+        const auto progress = static_cast<uint_t>(dlNow * 100 / dlTotal);
         cb->OnProgress(progress);
       }
       return 0;
@@ -209,25 +205,25 @@ namespace IO::Network
   };
 
   // uri-related constants
-  const Char SCHEME_SIGN[] = {':', '/', '/', 0};
-  const Char SCHEME_HTTP[] = {'h', 't', 't', 'p', 0};
-  const Char SCHEME_HTTPS[] = {'h', 't', 't', 'p', 's', 0};
-  const Char SCHEME_FTP[] = {'f', 't', 'p', 0};
-  const Char SUBPATH_DELIMITER = '#';
+  const auto SCHEME_SIGN = "://"sv;
+  const auto SCHEME_HTTP = "http"sv;
+  const auto SCHEME_HTTPS = "https"sv;
+  const auto SCHEME_FTP = "ftp"sv;
 
-  const Char* ALL_SCHEMES[] = {
-      SCHEME_HTTP,
-      SCHEME_HTTPS,
-      SCHEME_FTP,
-  };
+  const auto SUBPATH_DELIMITER = '#';
+
+  auto IsSupportedScheme(StringView scheme)
+  {
+    return scheme == SCHEME_HTTP || scheme == SCHEME_HTTPS || scheme == SCHEME_FTP;
+  }
 
   class RemoteIdentifier : public Identifier
   {
   public:
-    RemoteIdentifier(String scheme, String path, String subpath)
-      : SchemeValue(std::move(scheme))
-      , PathValue(std::move(path))
-      , SubpathValue(std::move(subpath))
+    RemoteIdentifier(StringView scheme, StringView path, StringView subpath)
+      : SchemeValue(scheme)
+      , PathValue(path)
+      , SubpathValue(subpath)
       , FullValue(Serialize())
     {
       Require(!SchemeValue.empty() && !PathValue.empty());
@@ -251,13 +247,13 @@ namespace IO::Network
     String Filename() const override
     {
       // filename usually is useless on remote schemes
-      return String();
+      return {};
     }
 
     String Extension() const override
     {
       // filename usually is useless on remote schemes
-      return String();
+      return {};
     }
 
     String Subpath() const override
@@ -265,7 +261,7 @@ namespace IO::Network
       return SubpathValue;
     }
 
-    Ptr WithSubpath(const String& subpath) const override
+    Ptr WithSubpath(StringView subpath) const override
     {
       return MakePtr<RemoteIdentifier>(SchemeValue, PathValue, subpath);
     }
@@ -295,10 +291,9 @@ namespace IO::Network
   public:
     explicit DataProvider(Curl::Api::Ptr api)
       : Api(std::move(api))
-      , SupportedSchemes(ALL_SCHEMES, std::end(ALL_SCHEMES))
     {}
 
-    String Id() const override
+    StringView Id() const override
     {
       return PROVIDER_IDENTIFIER;
     }
@@ -310,40 +305,34 @@ namespace IO::Network
 
     Error Status() const override
     {
-      return Error();
+      return {};
     }
 
-    Strings::Set Schemes() const override
+    Identifier::Ptr Resolve(StringView uri) const override
     {
-      return SupportedSchemes;
-    }
-
-    Identifier::Ptr Resolve(const String& uri) const override
-    {
-      const String schemeSign(SCHEME_SIGN);
-      const String::size_type schemePos = uri.find(schemeSign);
-      if (String::npos == schemePos)
+      const auto schemePos = uri.find(SCHEME_SIGN);
+      if (uri.npos == schemePos)
       {
         // scheme is required
-        return Identifier::Ptr();
+        return {};
       }
-      const String::size_type hierPos = schemePos + schemeSign.size();
-      const String::size_type subPos = uri.find_first_of(SUBPATH_DELIMITER, hierPos);
+      const auto hierPos = schemePos + SCHEME_SIGN.size();
+      const auto subPos = uri.find_first_of(SUBPATH_DELIMITER, hierPos);
 
-      const String scheme = uri.substr(0, schemePos);
-      const String hier = String::npos == subPos ? uri.substr(hierPos) : uri.substr(hierPos, subPos - hierPos);
-      if (hier.empty() || !SupportedSchemes.count(scheme))
+      const auto scheme = uri.substr(0, schemePos);
+      const auto hier = uri.npos == subPos ? uri.substr(hierPos) : uri.substr(hierPos, subPos - hierPos);
+      if (hier.empty() || !IsSupportedScheme(scheme))  // TODO
       {
         // scheme and hierarchy part is mandatory
-        return Identifier::Ptr();
+        return {};
       }
       // Path should include scheme and all possible parameters
-      const String path = String::npos == subPos ? uri : uri.substr(0, subPos);
-      const String subpath = String::npos == subPos ? String() : uri.substr(subPos + 1);
+      const auto path = uri.npos == subPos ? uri : uri.substr(0, subPos);
+      const auto subpath = uri.npos == subPos ? StringView() : uri.substr(subPos + 1);
       return MakePtr<RemoteIdentifier>(scheme, path, subpath);
     }
 
-    Binary::Container::Ptr Open(const String& path, const Parameters::Accessor& params,
+    Binary::Container::Ptr Open(StringView path, const Parameters::Accessor& params,
                                 Log::ProgressCallback& cb) const override
     {
       try
@@ -357,11 +346,11 @@ namespace IO::Network
       }
       catch (const Error& e)
       {
-        throw MakeFormattedError(THIS_LINE, translate("Failed to open network resource '%1%'."), path).AddSuberror(e);
+        throw MakeFormattedError(THIS_LINE, translate("Failed to open network resource '{}'."), path).AddSuberror(e);
       }
     }
 
-    Binary::OutputStream::Ptr Create(const String& /*path*/, const Parameters::Accessor& /*params*/,
+    Binary::OutputStream::Ptr Create(StringView /*path*/, const Parameters::Accessor& /*params*/,
                                      Log::ProgressCallback& /*cb*/) const override
     {
       throw Error(THIS_LINE, translate("Not supported."));
@@ -369,7 +358,6 @@ namespace IO::Network
 
   private:
     const Curl::Api::Ptr Api;
-    const Strings::Set SupportedSchemes;
   };
 }  // namespace IO::Network
 
@@ -377,16 +365,16 @@ namespace IO
 {
   DataProvider::Ptr CreateNetworkDataProvider(Curl::Api::Ptr api)
   {
-    return MakePtr<Network::DataProvider>(api);
+    return MakePtr<Network::DataProvider>(std::move(api));
   }
 
   void RegisterNetworkProvider(ProvidersEnumerator& enumerator)
   {
     try
     {
-      const Curl::Api::Ptr api = Curl::LoadDynamicApi();
-      Network::Dbg("Detected CURL library %1%", api->curl_version());
-      enumerator.RegisterProvider(CreateNetworkDataProvider(api));
+      auto api = Curl::LoadDynamicApi();
+      Network::Dbg("Detected CURL library {}", api->curl_version());
+      enumerator.RegisterProvider(CreateNetworkDataProvider(std::move(api)));
     }
     catch (const Error& e)
     {
@@ -395,5 +383,3 @@ namespace IO
     }
   }
 }  // namespace IO
-
-#undef FILE_TAG

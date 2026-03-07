@@ -10,7 +10,6 @@
 
 #pragma once
 
-// std includes
 #include <functional>
 #include <variant>
 
@@ -18,11 +17,6 @@ template<class T>
 class Lazy
 {
 public:
-  template<class F>
-  Lazy(F&& factory)
-    : Storage{std::forward<F>(factory)}
-  {}
-
   template<class F, class... P>
   Lazy(F&& func, P&&... p)
     : Storage{std::bind(std::forward<F>(func), std::forward<P>(p)...)}
@@ -30,7 +24,7 @@ public:
 
   Lazy(const Lazy&) = delete;
   Lazy& operator=(const Lazy&) = delete;
-  Lazy(Lazy&&) = default;
+  Lazy(Lazy&&) noexcept = default;
 
   operator bool() const
   {

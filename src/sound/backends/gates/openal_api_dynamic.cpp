@@ -1,259 +1,223 @@
 /**
-*
-* @file
-*
-* @brief  OpenAL subsystem API gate implementation
-*
-* @author vitamin.caig@gmail.com
-*
-**/
+ *
+ * @file
+ *
+ * @brief  OpenAL subsystem API gate implementation
+ *
+ * @author vitamin.caig@gmail.com
+ *
+ **/
 
-//local includes
 #include "sound/backends/gates/openal_api.h"
-//common includes
-#include <make_ptr.h>
-//library includes
-#include <debug/log.h>
-#include <platform/shared_library_adapter.h>
 
-namespace Sound
+#include "debug/log.h"
+#include "platform/shared_library_adapter.h"
+
+#include "make_ptr.h"
+#include "string_view.h"
+
+namespace Sound::OpenAl
 {
-  namespace OpenAl
+  class LibraryName : public Platform::SharedLibrary::Name
   {
-    class LibraryName : public Platform::SharedLibrary::Name
+  public:
+    LibraryName() = default;
+
+    StringView Base() const override
     {
-    public:
-      LibraryName()
-      {
-      }
-
-      String Base() const override
-      {
-        return "openal";
-      }
-      
-      std::vector<String> PosixAlternatives() const override
-      {
-        static const String ALTERNATIVES[] =
-        {
-          "libopenal.so.1",
-          "OpenAL.framework/OpenAL"
-        };
-        return std::vector<String>(ALTERNATIVES, std::end(ALTERNATIVES));
-      }
-      
-      std::vector<String> WindowsAlternatives() const override
-      {
-        static const String ALTERNATIVES[] =
-        {
-          "OpenAL32.dll"
-        };
-        return std::vector<String>(ALTERNATIVES, std::end(ALTERNATIVES));
-      }
-    };
-
-
-    class DynamicApi : public Api
-    {
-    public:
-      explicit DynamicApi(Platform::SharedLibrary::Ptr lib)
-        : Lib(lib)
-      {
-        Debug::Log("Sound::Backend::OpenAL", "Library loaded");
-      }
-
-      ~DynamicApi() override
-      {
-        Debug::Log("Sound::Backend::OpenAL", "Library unloaded");
-      }
-
-      
-      ALCdevice* alcOpenDevice(const ALCchar* devicename) override
-      {
-        static const char NAME[] = "alcOpenDevice";
-        typedef ALCdevice* ( *FunctionType)(const ALCchar*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(devicename);
-      }
-      
-      ALCboolean alcCloseDevice(ALCdevice* device) override
-      {
-        static const char NAME[] = "alcCloseDevice";
-        typedef ALCboolean ( *FunctionType)(ALCdevice*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(device);
-      }
-      
-      ALCcontext* alcCreateContext(ALCdevice* device, ALCint* attrlist) override
-      {
-        static const char NAME[] = "alcCreateContext";
-        typedef ALCcontext* ( *FunctionType)(ALCdevice*, ALCint*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(device, attrlist);
-      }
-      
-      ALCboolean alcMakeContextCurrent(ALCcontext* context) override
-      {
-        static const char NAME[] = "alcMakeContextCurrent";
-        typedef ALCboolean ( *FunctionType)(ALCcontext*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(context);
-      }
-      
-      ALCcontext* alcGetCurrentContext() override
-      {
-        static const char NAME[] = "alcGetCurrentContext";
-        typedef ALCcontext* ( *FunctionType)();
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func();
-      }
-      
-      void alcDestroyContext(ALCcontext* context) override
-      {
-        static const char NAME[] = "alcDestroyContext";
-        typedef void ( *FunctionType)(ALCcontext*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(context);
-      }
-      
-      void alGenBuffers(ALsizei n, ALuint* buffers) override
-      {
-        static const char NAME[] = "alGenBuffers";
-        typedef void ( *FunctionType)(ALsizei, ALuint*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(n, buffers);
-      }
-      
-      void alDeleteBuffers(ALsizei n, ALuint* buffers) override
-      {
-        static const char NAME[] = "alDeleteBuffers";
-        typedef void ( *FunctionType)(ALsizei, ALuint*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(n, buffers);
-      }
-      
-      void alBufferData(ALuint buffer, ALenum format, const ALvoid* data, ALsizei size, ALsizei freq) override
-      {
-        static const char NAME[] = "alBufferData";
-        typedef void ( *FunctionType)(ALuint, ALenum, const ALvoid*, ALsizei, ALsizei);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(buffer, format, data, size, freq);
-      }
-      
-      void alGenSources(ALsizei n, ALuint* sources) override
-      {
-        static const char NAME[] = "alGenSources";
-        typedef void ( *FunctionType)(ALsizei, ALuint*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(n, sources);
-      }
-      
-      void alDeleteSources(ALsizei n, ALuint *sources) override
-      {
-        static const char NAME[] = "alDeleteSources";
-        typedef void ( *FunctionType)(ALsizei, ALuint *);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(n, sources);
-      }
-      
-      void alSourceQueueBuffers(ALuint source, ALsizei n, ALuint* buffers) override
-      {
-        static const char NAME[] = "alSourceQueueBuffers";
-        typedef void ( *FunctionType)(ALuint, ALsizei, ALuint*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(source, n, buffers);
-      }
-      
-      void alSourceUnqueueBuffers(ALuint source, ALsizei n, ALuint* buffers) override
-      {
-        static const char NAME[] = "alSourceUnqueueBuffers";
-        typedef void ( *FunctionType)(ALuint, ALsizei, ALuint*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(source, n, buffers);
-      }
-      
-      void alSourcePlay(ALuint source) override
-      {
-        static const char NAME[] = "alSourcePlay";
-        typedef void ( *FunctionType)(ALuint);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(source);
-      }
-      
-      void alSourceStop(ALuint source) override
-      {
-        static const char NAME[] = "alSourceStop";
-        typedef void ( *FunctionType)(ALuint);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(source);
-      }
-      
-      void alSourcePause(ALuint source) override
-      {
-        static const char NAME[] = "alSourcePause";
-        typedef void ( *FunctionType)(ALuint);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(source);
-      }
-      
-      void alGetSourcei(ALuint source, ALenum pname, ALint* value) override
-      {
-        static const char NAME[] = "alGetSourcei";
-        typedef void ( *FunctionType)(ALuint, ALenum, ALint*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(source, pname, value);
-      }
-      
-      void alSourcef(ALuint source, ALenum pname, ALfloat value) override
-      {
-        static const char NAME[] = "alSourcef";
-        typedef void ( *FunctionType)(ALuint, ALenum, ALfloat);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(source, pname, value);
-      }
-      
-      void alGetSourcef(ALuint source, ALenum pname, ALfloat* value) override
-      {
-        static const char NAME[] = "alGetSourcef";
-        typedef void ( *FunctionType)(ALuint, ALenum, ALfloat*);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(source, pname, value);
-      }
-      
-      const ALchar* alGetString(ALenum param) override
-      {
-        static const char NAME[] = "alGetString";
-        typedef const ALchar* ( *FunctionType)(ALenum);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(param);
-      }
-      
-      const ALCchar* alcGetString(ALCdevice* device, ALenum param) override
-      {
-        static const char NAME[] = "alcGetString";
-        typedef const ALCchar* ( *FunctionType)(ALCdevice*, ALenum);
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func(device, param);
-      }
-      
-      ALenum alGetError(void) override
-      {
-        static const char NAME[] = "alGetError";
-        typedef ALenum ( *FunctionType)();
-        const FunctionType func = Lib.GetSymbol<FunctionType>(NAME);
-        return func();
-      }
-      
-    private:
-      const Platform::SharedLibraryAdapter Lib;
-    };
-
-
-    Api::Ptr LoadDynamicApi()
-    {
-      static const LibraryName NAME;
-      const Platform::SharedLibrary::Ptr lib = Platform::SharedLibrary::Load(NAME);
-      return MakePtr<DynamicApi>(lib);
+      return "openal"sv;
     }
+
+    std::vector<StringView> PosixAlternatives() const override
+    {
+      return {"libopenal.so.1"sv, "OpenAL.framework/OpenAL"sv};
+    }
+
+    std::vector<StringView> WindowsAlternatives() const override
+    {
+      return {"OpenAL32.dll"sv};
+    }
+  };
+
+  class DynamicApi : public Api
+  {
+  public:
+    explicit DynamicApi(Platform::SharedLibrary::Ptr lib)
+      : Lib(std::move(lib))
+    {
+      Debug::Log("Sound::Backend::OpenAL", "Library loaded");
+    }
+
+    ~DynamicApi() override
+    {
+      Debug::Log("Sound::Backend::OpenAL", "Library unloaded");
+    }
+
+    // clang-format off
+
+    ALCdevice* alcOpenDevice(const ALCchar* devicename) override
+    {
+      using FunctionType = decltype(&::alcOpenDevice);
+      const auto func = Lib.GetSymbol<FunctionType>("alcOpenDevice");
+      return func(devicename);
+    }
+
+    ALCboolean alcCloseDevice(ALCdevice* device) override
+    {
+      using FunctionType = decltype(&::alcCloseDevice);
+      const auto func = Lib.GetSymbol<FunctionType>("alcCloseDevice");
+      return func(device);
+    }
+
+    ALCcontext* alcCreateContext(ALCdevice* device, ALCint* attrlist) override
+    {
+      using FunctionType = decltype(&::alcCreateContext);
+      const auto func = Lib.GetSymbol<FunctionType>("alcCreateContext");
+      return func(device, attrlist);
+    }
+
+    ALCboolean alcMakeContextCurrent(ALCcontext* context) override
+    {
+      using FunctionType = decltype(&::alcMakeContextCurrent);
+      const auto func = Lib.GetSymbol<FunctionType>("alcMakeContextCurrent");
+      return func(context);
+    }
+
+    ALCcontext* alcGetCurrentContext() override
+    {
+      using FunctionType = decltype(&::alcGetCurrentContext);
+      const auto func = Lib.GetSymbol<FunctionType>("alcGetCurrentContext");
+      return func();
+    }
+
+    void alcDestroyContext(ALCcontext* context) override
+    {
+      using FunctionType = decltype(&::alcDestroyContext);
+      const auto func = Lib.GetSymbol<FunctionType>("alcDestroyContext");
+      return func(context);
+    }
+
+    void alGenBuffers(ALsizei n, ALuint* buffers) override
+    {
+      using FunctionType = decltype(&::alGenBuffers);
+      const auto func = Lib.GetSymbol<FunctionType>("alGenBuffers");
+      return func(n, buffers);
+    }
+
+    void alDeleteBuffers(ALsizei n, ALuint* buffers) override
+    {
+      using FunctionType = decltype(&::alDeleteBuffers);
+      const auto func = Lib.GetSymbol<FunctionType>("alDeleteBuffers");
+      return func(n, buffers);
+    }
+
+    void alBufferData(ALuint buffer, ALenum format, const ALvoid* data, ALsizei size, ALsizei freq) override
+    {
+      using FunctionType = decltype(&::alBufferData);
+      const auto func = Lib.GetSymbol<FunctionType>("alBufferData");
+      return func(buffer, format, data, size, freq);
+    }
+
+    void alGenSources(ALsizei n, ALuint* sources) override
+    {
+      using FunctionType = decltype(&::alGenSources);
+      const auto func = Lib.GetSymbol<FunctionType>("alGenSources");
+      return func(n, sources);
+    }
+
+    void alDeleteSources(ALsizei n, ALuint *sources) override
+    {
+      using FunctionType = decltype(&::alDeleteSources);
+      const auto func = Lib.GetSymbol<FunctionType>("alDeleteSources");
+      return func(n, sources);
+    }
+
+    void alSourceQueueBuffers(ALuint source, ALsizei n, ALuint* buffers) override
+    {
+      using FunctionType = decltype(&::alSourceQueueBuffers);
+      const auto func = Lib.GetSymbol<FunctionType>("alSourceQueueBuffers");
+      return func(source, n, buffers);
+    }
+
+    void alSourceUnqueueBuffers(ALuint source, ALsizei n, ALuint* buffers) override
+    {
+      using FunctionType = decltype(&::alSourceUnqueueBuffers);
+      const auto func = Lib.GetSymbol<FunctionType>("alSourceUnqueueBuffers");
+      return func(source, n, buffers);
+    }
+
+    void alSourcePlay(ALuint source) override
+    {
+      using FunctionType = decltype(&::alSourcePlay);
+      const auto func = Lib.GetSymbol<FunctionType>("alSourcePlay");
+      return func(source);
+    }
+
+    void alSourceStop(ALuint source) override
+    {
+      using FunctionType = decltype(&::alSourceStop);
+      const auto func = Lib.GetSymbol<FunctionType>("alSourceStop");
+      return func(source);
+    }
+
+    void alSourcePause(ALuint source) override
+    {
+      using FunctionType = decltype(&::alSourcePause);
+      const auto func = Lib.GetSymbol<FunctionType>("alSourcePause");
+      return func(source);
+    }
+
+    void alGetSourcei(ALuint source, ALenum pname, ALint* value) override
+    {
+      using FunctionType = decltype(&::alGetSourcei);
+      const auto func = Lib.GetSymbol<FunctionType>("alGetSourcei");
+      return func(source, pname, value);
+    }
+
+    void alSourcef(ALuint source, ALenum pname, ALfloat value) override
+    {
+      using FunctionType = decltype(&::alSourcef);
+      const auto func = Lib.GetSymbol<FunctionType>("alSourcef");
+      return func(source, pname, value);
+    }
+
+    void alGetSourcef(ALuint source, ALenum pname, ALfloat* value) override
+    {
+      using FunctionType = decltype(&::alGetSourcef);
+      const auto func = Lib.GetSymbol<FunctionType>("alGetSourcef");
+      return func(source, pname, value);
+    }
+
+    const ALchar* alGetString(ALenum param) override
+    {
+      using FunctionType = decltype(&::alGetString);
+      const auto func = Lib.GetSymbol<FunctionType>("alGetString");
+      return func(param);
+    }
+
+    const ALCchar* alcGetString(ALCdevice* device, ALenum param) override
+    {
+      using FunctionType = decltype(&::alcGetString);
+      const auto func = Lib.GetSymbol<FunctionType>("alcGetString");
+      return func(device, param);
+    }
+
+    ALenum alGetError() override
+    {
+      using FunctionType = decltype(&::alGetError);
+      const auto func = Lib.GetSymbol<FunctionType>("alGetError");
+      return func();
+    }
+
+    // clang-format on
+  private:
+    const Platform::SharedLibraryAdapter Lib;
+  };
+
+  Api::Ptr LoadDynamicApi()
+  {
+    static const LibraryName NAME;
+    auto lib = Platform::SharedLibrary::Load(NAME);
+    return MakePtr<DynamicApi>(std::move(lib));
   }
-}
+}  // namespace Sound::OpenAl

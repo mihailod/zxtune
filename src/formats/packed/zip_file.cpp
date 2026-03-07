@@ -8,21 +8,20 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/zip_supp.h"
-// common includes
-#include <error.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/compression/zlib_stream.h>
-#include <binary/data_builder.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <debug/log.h>
-#include <formats/packed.h>
-// std includes
+
+#include "binary/compression/zlib_stream.h"
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "debug/log.h"
+#include "formats/packed.h"
+
+#include "error.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <algorithm>
 #include <cassert>
 #include <memory>
@@ -33,13 +32,13 @@ namespace Formats::Packed
   {
     const Debug::Stream Dbg("Formats::Packed::Zip");
 
-    const Char DESCRIPTION[] = "ZIP";
+    const auto DESCRIPTION = "ZIP"sv;
     const auto HEADER_PATTERN =
         "504b0304"             // uint32_t Signature;
         "?00"                  // uint16_t VersionToExtract;
         "%0000xxx0 %0000x000"  // uint16_t Flags;
         "%0000x00x 00"         // uint16_t CompressionMethod;
-        ""_sv;
+        ""sv;
 
     class Container
     {
@@ -115,7 +114,7 @@ namespace Formats::Packed
         }
         else
         {
-          Dbg("Restore %1% bytes", DestSize);
+          Dbg("Restore {} bytes", DestSize);
           return Data;
         }
       }
@@ -135,7 +134,7 @@ namespace Formats::Packed
 
       Binary::Container::Ptr Decompress() const override
       {
-        Dbg("Inflate %1% -> %2%", Data->Size(), DestSize);
+        Dbg("Inflate {} -> {}", Data->Size(), DestSize);
         try
         {
           Binary::DataInputStream input(*Data);
@@ -146,7 +145,7 @@ namespace Formats::Packed
         }
         catch (const Error& e)
         {
-          Dbg("Failed to inflate: %1%", e.ToString());
+          Dbg("Failed to inflate: {}", e.ToString());
         }
         catch (const std::exception&)
         {
@@ -256,9 +255,9 @@ namespace Formats::Packed
       assert(0 != (header.Flags & FILE_ATTRIBUTES_IN_FOOTER));
 
       const uint32_t signature = LocalFileFooter::SIGNATURE;
-      const uint8_t* const rawSignature = safe_ptr_cast<const uint8_t*>(&signature);
+      const auto* const rawSignature = safe_ptr_cast<const uint8_t*>(&signature);
 
-      const uint8_t* const seekStart = safe_ptr_cast<const uint8_t*>(&header);
+      const auto* const seekStart = safe_ptr_cast<const uint8_t*>(&header);
       const uint8_t* const seekEnd = seekStart + size;
       for (const uint8_t* seekPos = seekStart; seekPos < seekEnd;)
       {
@@ -291,7 +290,7 @@ namespace Formats::Packed
         {
           return std::unique_ptr<const CompressedFile>(new StreamedFile(hdr, *footer));
         }
-        return std::unique_ptr<const CompressedFile>();
+        return {};
       }
       else
       {
@@ -307,7 +306,7 @@ namespace Formats::Packed
       : Depacker(Binary::CreateFormat(Zip::HEADER_PATTERN, sizeof(Zip::LocalFileHeader)))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Zip::DESCRIPTION;
     }
@@ -321,14 +320,14 @@ namespace Formats::Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const Zip::Container container(rawData);
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
-      Zip::DispatchedDataDecoder decoder(container);
+      const Zip::DispatchedDataDecoder decoder(container);
       return CreateContainer(decoder.Decompress(), container.GetFile().GetPackedSize());
     }
 

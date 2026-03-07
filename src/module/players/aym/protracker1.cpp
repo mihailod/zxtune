@@ -8,19 +8,20 @@
  *
  **/
 
-// local includes
 #include "module/players/aym/protracker1.h"
+
+#include "formats/chiptune/aym/protracker1.h"
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <formats/chiptune/aym/protracker1.h>
-#include <math/numeric.h>
-#include <module/players/platforms.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
+
+#include "math/numeric.h"
+
+#include "make_ptr.h"
+
+#include <array>
 
 namespace Module::ProTracker1
 {
@@ -144,22 +145,14 @@ namespace Module::ProTracker1
 
   struct ChannelState
   {
-    ChannelState()
-      : Enabled(false)
-      , Envelope(false)
-      , Note()
-      , SampleNum(0)
-      , PosInSample(0)
-      , OrnamentNum(0)
-      , Volume(15)
-    {}
-    bool Enabled;
-    bool Envelope;
-    uint_t Note;
-    uint_t SampleNum;
-    uint_t PosInSample;
-    uint_t OrnamentNum;
-    uint_t Volume;
+    ChannelState() = default;
+    bool Enabled = false;
+    bool Envelope = false;
+    uint_t Note = 0;
+    uint_t SampleNum = 0;
+    uint_t PosInSample = 0;
+    uint_t OrnamentNum = 0;
+    uint_t Volume = 15;
   };
 
   class DataRenderer : public AYM::DataRenderer
@@ -186,11 +179,11 @@ namespace Module::ProTracker1
   private:
     void GetNewLineState(const TrackModelState& state, AYM::TrackBuilder& track)
     {
-      if (const auto line = state.LineObject())
+      if (const auto* const line = state.LineObject())
       {
         for (uint_t chan = 0; chan != PlayerState.size(); ++chan)
         {
-          if (const auto src = line->GetChannel(chan))
+          if (const auto* const src = line->GetChannel(chan))
           {
             GetNewChannelState(*src, PlayerState[chan], track);
           }
@@ -198,7 +191,7 @@ namespace Module::ProTracker1
       }
     }
 
-    void GetNewChannelState(const Cell& src, ChannelState& dst, AYM::TrackBuilder& track)
+    static void GetNewChannelState(const Cell& src, ChannelState& dst, AYM::TrackBuilder& track)
     {
       if (const bool* enabled = src.GetEnabled())
       {
@@ -262,7 +255,7 @@ namespace Module::ProTracker1
       const Ornament& curOrnament = Data->Ornaments.Get(dst.OrnamentNum);
 
       // apply tone
-      const int_t halftones = Math::Clamp<int_t>(int_t(dst.Note) + curOrnament.GetLine(dst.PosInSample), 0, 95);
+      const auto halftones = Math::Clamp<int_t>(int_t(dst.Note) + curOrnament.GetLine(dst.PosInSample), 0, 95);
       channel.SetTone(halftones, curSampleLine.Vibrato + (halftones == 46));
       if (curSampleLine.ToneMask)
       {
@@ -307,7 +300,6 @@ namespace Module::ProTracker1
       if (const auto container = Formats::Chiptune::ProTracker1::Parse(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
         return MakePtr<AYM::TrackingChiptune<ModuleData, DataRenderer>>(dataBuilder.CaptureResult(),
                                                                         std::move(properties));
       }

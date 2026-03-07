@@ -1,22 +1,21 @@
 package app.zxtune.fs.vgmrips
 
 import android.content.Context
+import androidx.core.util.Consumer
 import app.zxtune.fs.http.MultisourceHttpProvider
 import app.zxtune.utils.ProgressCallback
 import java.io.IOException
 
 interface Catalog {
 
-    fun interface Visitor<T> {
-        fun accept(obj: T)
-    }
+    fun interface Visitor<T> : Consumer<T>
 
     interface Grouping {
         @Throws(IOException::class)
         fun query(visitor: Visitor<Group>)
 
         @Throws(IOException::class)
-        fun queryPacks(id: String, visitor: Visitor<Pack>, progress: ProgressCallback)
+        fun queryPacks(id: Group.Id, visitor: Visitor<Pack>, progress: ProgressCallback)
     }
 
     fun companies(): Grouping
@@ -25,10 +24,10 @@ interface Catalog {
     fun systems(): Grouping
 
     @Throws(IOException::class)
-    fun findPack(id: String, visitor: Visitor<Track>): Pack?
+    fun findPack(id: Pack.Id): Pack?
 
     @Throws(IOException::class)
-    fun findRandomPack(visitor: Visitor<Track>): Pack?
+    fun findRandomPack(visitor: Visitor<FilePath>): Pack?
 
     companion object {
         @JvmStatic

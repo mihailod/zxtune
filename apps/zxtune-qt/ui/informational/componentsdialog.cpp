@@ -8,23 +8,25 @@
  *
  **/
 
-// local includes
-#include "componentsdialog.h"
+#include "apps/zxtune-qt/ui/informational/componentsdialog.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "componentsdialog.ui.h"
-#include "supp/options.h"
-#include "ui/utils.h"
-// library includes
-#include <core/plugin.h>
-#include <core/plugin_attrs.h>
-#include <io/provider.h>
-#include <sound/backend_attrs.h>
-#include <sound/service.h>
-#include <strings/format.h>
-// std includes
-#include <utility>
-// qt includes
+
+#include "core/plugin.h"
+#include "core/plugin_attrs.h"
+#include "io/provider.h"
+#include "sound/backend_attrs.h"
+#include "sound/service.h"
+#include "strings/format.h"
+
+#include "string_view.h"
+
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDialog>
+
+#include <utility>
 
 namespace
 {
@@ -115,13 +117,11 @@ namespace
     void AddPlayerPlugin(const ZXTune::Plugin& plugin)
     {
       const uint_t deviceType = plugin.Capabilities() & ZXTune::Capabilities::Module::Device::MASK;
-      for (std::map<uint_t, QTreeWidgetItem*>::const_iterator it = PlayersByDeviceType.begin(),
-                                                              lim = PlayersByDeviceType.end();
-           it != lim; ++it)
+      for (const auto& it : PlayersByDeviceType)
       {
-        if (0 != (deviceType & it->first))
+        if (0 != (deviceType & it.first))
         {
-          AddPlayerPluginItem(plugin, *it->second);
+          AddPlayerPluginItem(plugin, *it.second);
           return;
         }
       }
@@ -133,8 +133,8 @@ namespace
       using namespace ZXTune::Capabilities::Module;
       // root
       const uint_t caps = plugin.Capabilities();
-      const String& title = Strings::Format("[%s] %s", plugin.Id(), plugin.Description());
-      QTreeWidgetItem* const pluginItem = new QTreeWidgetItem(&root, QStringList(ToQString(title)));
+      const auto& title = Strings::Format("[{}] {}", plugin.Id(), plugin.Description());
+      auto* const pluginItem = new QTreeWidgetItem(&root, QStringList(ToQString(title)));
       FillModuleType(caps & Type::MASK, *pluginItem);
       // conversion
       if (const uint_t convCaps = caps & Conversion::MASK)
@@ -150,7 +150,7 @@ namespace
       }
     }
 
-    void FillModuleType(uint_t type, QTreeWidgetItem& root)
+    static void FillModuleType(uint_t type, QTreeWidgetItem& root)
     {
       using namespace ZXTune::Capabilities::Module::Type;
       AddCapability(1 << type, 1 << TRACK, root, QT_TRANSLATE_NOOP("ComponentsDialog", "Track structure"));
@@ -159,7 +159,7 @@ namespace
       AddCapability(1 << type, 1 << MULTI, root, QT_TRANSLATE_NOOP("ComponentsDialog", "Multistructure"));
     }
 
-    void FillConversionCapabilities(uint_t caps, QTreeWidgetItem& root)
+    static void FillConversionCapabilities(uint_t caps, QTreeWidgetItem& root)
     {
       using namespace ZXTune::Capabilities::Module::Conversion;
       AddCapability(caps, OUT, root, QT_TRANSLATE_NOOP("ComponentsDialog", "Streamed .out format"));
@@ -171,7 +171,7 @@ namespace
       AddCapability(caps, FYM, root, QT_TRANSLATE_NOOP("ComponentsDialog", "Compressed .fym format"));
     }
 
-    void FillModuleTraits(uint_t traits, QTreeWidgetItem& root)
+    static void FillModuleTraits(uint_t traits, QTreeWidgetItem& root)
     {
       using namespace ZXTune::Capabilities::Module::Traits;
       AddCapability(traits, MULTIFILE, root, QT_TRANSLATE_NOOP("ComponentsDialog", "Multiple files layout"));
@@ -193,15 +193,15 @@ namespace
     void AddContainerPluginItem(const ZXTune::Plugin& plugin, QTreeWidgetItem& root)
     {
       const uint_t caps = plugin.Capabilities();
-      const String& description = plugin.Description();
+      const auto& description = plugin.Description();
 
       // root
-      QTreeWidgetItem* const pluginItem = new QTreeWidgetItem(&root, QStringList(ToQString(description)));
+      auto* const pluginItem = new QTreeWidgetItem(&root, QStringList(ToQString(description)));
       // capabilities
       FillContainerTraits(caps, *pluginItem);
     }
 
-    void FillContainerTraits(uint_t caps, QTreeWidgetItem& root) const
+    static void FillContainerTraits(uint_t caps, QTreeWidgetItem& root)
     {
       using namespace ZXTune::Capabilities::Container::Traits;
       AddCapability(caps, DIRECTORIES, root, QT_TRANSLATE_NOOP("ComponentsDialog", "Directories support"));
@@ -235,9 +235,9 @@ namespace
   }
 
   template<class T>
-  QTreeWidgetItem* CreateRootItem(T& root, const String& description, const Error& status)
+  QTreeWidgetItem* CreateRootItem(T& root, StringView description, const Error& status)
   {
-    QTreeWidgetItem* const item = new QTreeWidgetItem(&root, QStringList(ToQString(description)));
+    auto* const item = new QTreeWidgetItem(&root, QStringList(ToQString(description)));
     item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
     if (status)
     {
@@ -291,7 +291,7 @@ namespace
       // root
       QTreeWidgetItem* const backendItem = CreateRootItem(root, backend.Description(), backend.Status());
       // features
-      if (uint_t features = backend.Capabilities() & Sound::CAP_FEAT_MASK)
+      if (const uint_t features = backend.Capabilities() & Sound::CAP_FEAT_MASK)
       {
         QTreeWidgetItem* const featuresItem =
             CreateTreeWidgetItem(backendItem, QT_TRANSLATE_NOOP("ComponentsDialog", "Features"));
@@ -299,7 +299,7 @@ namespace
       }
     }
 
-    void FillBackendFeatures(uint_t feats, QTreeWidgetItem& root)
+    static void FillBackendFeatures(uint_t feats, QTreeWidgetItem& root)
     {
       AddCapability(feats, Sound::CAP_FEAT_HWVOLUME, root,
                     QT_TRANSLATE_NOOP("ComponentsDialog", "Hardware volume control"));
@@ -355,11 +355,9 @@ namespace
     void FillBackendsTree()
     {
       BackendsTreeHelper tree(*backendsTree);
-      const Sound::Service::Ptr svc = Sound::CreateGlobalService(GlobalOptions::Instance().Get());
-      for (Sound::BackendInformation::Iterator::Ptr backends = svc->EnumerateBackends(); backends->IsValid();
-           backends->Next())
+      const auto svc = Sound::CreateGlobalService(GlobalOptions::Instance().Get());
+      for (const auto& backend : svc->EnumerateBackends())
       {
-        const Sound::BackendInformation::Ptr backend = backends->Get();
         tree.AddBackend(*backend);
       }
     }
@@ -367,10 +365,8 @@ namespace
     void FillProvidersTree()
     {
       ProvidersTreeHelper tree(*providersTree);
-
-      for (IO::Provider::Iterator::Ptr providers = IO::EnumerateProviders(); providers->IsValid(); providers->Next())
+      for (const auto& provider : IO::EnumerateProviders())
       {
-        const IO::Provider::Ptr provider = providers->Get();
         tree.AddProvider(*provider);
       }
     }

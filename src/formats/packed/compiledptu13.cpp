@@ -8,17 +8,16 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/protracker3_detail.h"
 #include "formats/chiptune/metainfo.h"
 #include "formats/packed/container.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+
 #include <array>
 
 namespace Formats::Packed
@@ -59,7 +58,7 @@ namespace Formats::Packed
 
     static_assert(sizeof(RawHeader) * alignof(RawHeader) == 202, "Invalid layout");
 
-    const Char DESCRIPTION[] = "Pro Tracker Utility v1.3 player";
+    const auto DESCRIPTION = "Pro Tracker Utility v1.3 player"sv;
 
     const auto FORMAT =
         "21??"    // ld hl,xxxx +0x665
@@ -90,7 +89,7 @@ namespace Formats::Packed
         "d1"      // pop de
         "e1"      // pop hl
         "22??"    // ld (xxxx),hl
-        ""_sv;
+        ""sv;
 
     uint_t GetPatternsCount(const RawHeader& hdr, std::size_t maxSize)
     {
@@ -113,7 +112,7 @@ namespace Formats::Packed
           Binary::CreateFormat(CompiledPTU13::FORMAT, CompiledPTU13::PLAYER_SIZE + sizeof(CompiledPTU13::RawHeader)))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return CompiledPTU13::DESCRIPTION;
     }
@@ -131,7 +130,7 @@ namespace Formats::Packed
       const Binary::View data(rawData);
       if (!Player->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       const std::size_t playerSize = CompiledPTU13::PLAYER_SIZE;
       const auto& rawPlayer = *data.As<CompiledPTU13::RawPlayer>();
@@ -139,7 +138,7 @@ namespace Formats::Packed
       if (positionsAddr < playerSize + offsetof(CompiledPTU13::RawHeader, Positions))
       {
         Dbg("Invalid compile addr");
-        return Container::Ptr();
+        return {};
       }
       const uint_t dataAddr = positionsAddr - offsetof(CompiledPTU13::RawHeader, Positions);
       const auto modData = data.SubView(playerSize, CompiledPTU13::MAX_MODULE_SIZE);
@@ -148,10 +147,10 @@ namespace Formats::Packed
       if (!patternsCount)
       {
         Dbg("Invalid patterns count");
-        return Container::Ptr();
+        return {};
       }
       const uint_t compileAddr = dataAddr - playerSize;
-      Dbg("Detected player compiled at %1% (#%1$04x) with %2% patterns", compileAddr, patternsCount);
+      Dbg("Detected player compiled at #%{:04x}) with {} patterns", compileAddr, patternsCount);
       const auto builder = Formats::Chiptune::PatchedDataBuilder::Create(modData);
       // fix patterns/samples/ornaments offsets
       for (uint_t idx = offsetof(CompiledPTU13::RawHeader, PatternsOffset);
@@ -171,7 +170,7 @@ namespace Formats::Packed
         return CreateContainer(std::move(fixedParsed), totalSize);
       }
       Dbg("Failed to parse fixed module");
-      return Container::Ptr();
+      return {};
     }
 
   private:

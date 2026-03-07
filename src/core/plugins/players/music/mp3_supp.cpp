@@ -8,28 +8,22 @@
  *
  **/
 
-// local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-// common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/decoders.h>
-#include <formats/chiptune/music/mp3.h>
-#include <module/players/properties_helper.h>
-#include <module/players/properties_meta.h>
-#include <module/players/streaming.h>
-#include <sound/resampler.h>
-// 3rdparty
-#define MINIMP3_IMPLEMENTATION
-#define MINIMP3_NONSTANDARD_BUT_LOGICAL
-#include <3rdparty/minimp3/minimp3.h>
+#include "formats/chiptune/music/mp3.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
 
-#define FILE_TAG 04123EA8
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "sound/resampler.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
+#include "3rdparty/minimp3/minimp3.h"
 
 namespace Module::Mp3
 {
@@ -72,16 +66,8 @@ namespace Module::Mp3
     FrameSound() = default;
     FrameSound(const FrameSound&) = delete;
     FrameSound& operator=(const FrameSound&) = delete;
-    FrameSound(FrameSound&& rh) noexcept  // = default
-      : Frequency(rh.Frequency)
-      , Data(std::move(rh.Data))
-    {}
-    FrameSound& operator=(FrameSound&& rh) noexcept
-    {
-      Frequency = rh.Frequency;
-      Data = std::move(rh.Data);
-      return *this;
-    }
+    FrameSound(FrameSound&& rh) noexcept = default;
+    FrameSound& operator=(FrameSound&& rh) noexcept = default;
 
     Sound::Sample::Type* GetTarget()
     {
@@ -91,17 +77,24 @@ namespace Module::Mp3
 
     void Finalize(uint_t resultSamples, const mp3dec_frame_info_t& info)
     {
-      if (1 == info.channels)
+      if (resultSamples)
       {
-        const auto pcm = GetTarget();
-        for (std::size_t idx = resultSamples; idx != 0; --idx)
+        if (1 == info.channels)
         {
-          const auto mono = pcm[idx - 1];
-          Data[idx - 1] = Sound::Sample(mono, mono);
+          auto* const pcm = GetTarget();
+          for (std::size_t idx = resultSamples; idx != 0; --idx)
+          {
+            const auto mono = pcm[idx - 1];
+            Data[idx - 1] = Sound::Sample(mono, mono);
+          }
         }
+        Data.resize(resultSamples);
+        Frequency = info.hz;
       }
-      Data.resize(resultSamples);
-      Frequency = info.hz;
+      else
+      {
+        Data.clear();
+      }
     }
   };
 
@@ -174,7 +167,7 @@ namespace Module::Mp3
         }
         else if (!info.frame_bytes)
         {
-          Dbg("Failed to decode frame for seek @0x%1$08x", offset);
+          Dbg("Failed to decode frame for seek @0x{:08x}", offset);
           break;
         }
       }
@@ -211,6 +204,11 @@ namespace Module::Mp3
       }
     }
 
+    Sound::Chunk MakeStub(Time::Microseconds duration)
+    {
+      return Sound::Chunk(TargetFreq * duration.Get() / duration.PER_SECOND);
+    }
+
   private:
     Sound::Converter& GetTarget(uint_t freq)
     {
@@ -234,7 +232,7 @@ namespace Module::Mp3
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(Model::Ptr data, uint_t samplerate)
+    Renderer(const Model::Ptr& data, uint_t samplerate)
       : Tune(data)
       , State(MakePtr<TimedState>(data->Duration))
       , Target(samplerate)
@@ -245,25 +243,20 @@ namespace Module::Mp3
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
+      // assume that rendered duration is lesser or equal to reported
       auto frame = Tune.RenderNextFrame();
       if (frame.Data.empty())
       {
-        State->Consume({}, looped);
-        if (State->IsValid())
-        {
-          Tune.Reset();
-          frame = Tune.RenderNextFrame();
-        }
+        // premature end, force end/loop
+        const auto avail = State->ConsumeRest();
+        Tune.Reset();
+        return Target.MakeStub(avail);
       }
       const auto rendered = Time::Microseconds::FromRatio(frame.Data.size(), frame.Frequency);
       const auto loops = State->LoopCount();
-      State->Consume(rendered, looped);
+      State->ConsumeUpTo(rendered);
       if (loops != State->LoopCount())
       {
         Tune.Reset();
@@ -361,7 +354,7 @@ namespace Module::Mp3
       }
       else
       {
-        Dbg("Built %1% seek points", Data->Lookup.size());
+        Dbg("Built {} seek points", Data->Lookup.size());
         Data->Lookup.shrink_to_fit();
         return Data;
       }
@@ -395,7 +388,7 @@ namespace Module::Mp3
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create MP3: %s", e.what());
+        Dbg("Failed to create MP3: {}", e.what());
       }
       return {};
     }
@@ -406,14 +399,12 @@ namespace ZXTune
 {
   void RegisterMP3Plugin(PlayerPluginsRegistrator& registrator)
   {
-    const Char ID[] = {'M', 'P', '3', 0};
+    const auto ID = "MP3"_id;
     const uint_t CAPS = Capabilities::Module::Type::STREAM | Capabilities::Module::Device::DAC;
 
-    const auto decoder = Formats::Chiptune::CreateMP3Decoder();
-    const auto factory = MakePtr<Module::Mp3::Factory>();
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, CAPS, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::CreateMP3Decoder();
+    auto factory = MakePtr<Module::Mp3::Factory>();
+    auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
 }  // namespace ZXTune
-
-#undef FILE_TAG

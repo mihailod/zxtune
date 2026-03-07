@@ -10,29 +10,25 @@
 
 #pragma once
 
-// local includes
 #include "module/players/aym/aym_chiptune.h"
-// library includes
-#include <module/holder.h>
 
-namespace Module
+#include "module/holder.h"
+
+namespace Module::AYM
 {
-  namespace AYM
+  class Holder : public Module::Holder
   {
-    class Holder : public Module::Holder
-    {
-    public:
-      typedef std::shared_ptr<const Holder> Ptr;
+  public:
+    using Ptr = std::shared_ptr<const Holder>;
 
-      using Module::Holder::CreateRenderer;
-      virtual AYM::Chiptune::Ptr GetChiptune() const = 0;
+    using Module::Holder::CreateRenderer;
+    virtual AYM::Chiptune::Ptr GetChiptune() const = 0;
 
-      // TODO: move to another place
-      virtual void Dump(Devices::AYM::Device& dev) const = 0;
-    };
+    // TODO: move to another place
+    virtual void Dump(Devices::AYM::Device& dev) const = 0;
+  };
 
-    Holder::Ptr CreateHolder(Chiptune::Ptr chiptune);
+  Holder::Ptr CreateHolder(Chiptune::Ptr chiptune);
 
-    Devices::AYM::Chip::Ptr CreateChip(uint_t samplerate, Parameters::Accessor::Ptr params);
-  }  // namespace AYM
-}  // namespace Module
+  Devices::AYM::Chip::Ptr CreateChip(uint_t samplerate, Parameters::Accessor::Ptr params);
+}  // namespace Module::AYM

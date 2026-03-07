@@ -10,11 +10,10 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// library includes
-#include <time/duration.h>
-// std includes
+#include "time/duration.h"
+
+#include "types.h"
+
 #include <memory>
 
 namespace Module
@@ -24,7 +23,7 @@ namespace Module
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<const Information> Ptr;
+    using Ptr = std::shared_ptr<const Information>;
 
     virtual ~Information() = default;
 

@@ -10,25 +10,24 @@
 
 #pragma once
 
-// local includes
 #include "sound/backends/backend_impl.h"
-// library includes
-#include <binary/output_stream.h>
-#include <sound/receiver.h>
+
+#include "binary/output_stream.h"
+#include "sound/receiver.h"
 
 namespace Sound
 {
   namespace File
   {
-    constexpr const Char TITLE_TAG[] = "TITLE";
-    constexpr const Char AUTHOR_TAG[] = "ARTIST";
-    constexpr const Char COMMENT_TAG[] = "COMMENT";
+    constexpr auto TITLE_TAG = "TITLE"sv;
+    constexpr auto AUTHOR_TAG = "ARTIST"sv;
+    constexpr auto COMMENT_TAG = "COMMENT"sv;
   }  // namespace File
 
   class FileStream : public Receiver
   {
   public:
-    typedef std::shared_ptr<FileStream> Ptr;
+    using Ptr = std::shared_ptr<FileStream>;
 
     virtual void SetTitle(const String& title) = 0;
     virtual void SetAuthor(const String& author) = 0;
@@ -39,10 +38,10 @@ namespace Sound
   class FileStreamFactory
   {
   public:
-    typedef std::shared_ptr<const FileStreamFactory> Ptr;
+    using Ptr = std::shared_ptr<const FileStreamFactory>;
     virtual ~FileStreamFactory() = default;
 
-    virtual String GetId() const = 0;
+    virtual BackendId GetId() const = 0;
     virtual FileStream::Ptr CreateStream(Binary::OutputStream::Ptr stream) const = 0;
   };
 

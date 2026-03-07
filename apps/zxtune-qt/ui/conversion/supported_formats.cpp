@@ -8,20 +8,20 @@
  *
  **/
 
-// local includes
-#include "supported_formats.h"
-#include "parameters.h"
-#include "supp/options.h"
+#include "apps/zxtune-qt/ui/conversion/supported_formats.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/conversion/parameters.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "supported_formats.ui.h"
-#include "ui/tools/parameters_helpers.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <sound/service.h>
-// std includes
-#include <set>
-// qt includes
+
+#include "sound/service.h"
+#include "strings/map.h"
+
+#include "contract.h"
+#include "string_view.h"
+
 #include <QtWidgets/QRadioButton>
 
 namespace
@@ -31,12 +31,10 @@ namespace
   public:
     explicit FileBackendsSet(Parameters::Accessor::Ptr options)
     {
-      const Sound::Service::Ptr service = Sound::CreateFileService(options);
-      for (Sound::BackendInformation::Iterator::Ptr backends = service->EnumerateBackends(); backends->IsValid();
-           backends->Next())
+      const auto service = Sound::CreateFileService(std::move(options));
+      for (const auto& info : service->EnumerateBackends())
       {
-        const Sound::BackendInformation::Ptr info = backends->Get();
-        Ids.insert(std::make_pair(info->Id(), info->Status()));
+        Ids.emplace(info->Id(), info->Status());
       }
     }
 
@@ -53,21 +51,19 @@ namespace
       return result;
     }
 
-    Error GetStatus(const String& id) const
+    Error GetStatus(StringView id) const
     {
-      const Id2Status::const_iterator it = Ids.find(id);
-      return it != Ids.end() ? it->second : Error();  // TODO
+      return Ids.Get(id);
     }
 
   private:
-    typedef std::map<String, Error> Id2Status;
-    Id2Status Ids;
+    Strings::ValueMap<Error> Ids;
   };
 
-  const Char TYPE_WAV[] = {'w', 'a', 'v', 0};
-  const Char TYPE_MP3[] = {'m', 'p', '3', 0};
-  const Char TYPE_OGG[] = {'o', 'g', 'g', 0};
-  const Char TYPE_FLAC[] = {'f', 'l', 'a', 'c', 0};
+  const auto TYPE_WAV = "wav"sv;
+  const auto TYPE_MP3 = "mp3"sv;
+  const auto TYPE_OGG = "ogg"sv;
+  const auto TYPE_FLAC = "flac"sv;
 
   class SupportedFormats
     : public UI::SupportedFormatsWidget
@@ -100,7 +96,7 @@ namespace
       selectWAV->setChecked(true);
     }
 
-    String GetSelectedId() const override
+    StringView GetSelectedId() const override
     {
       for (const auto& id2b : Buttons)
       {
@@ -125,11 +121,11 @@ namespace
     }
 
   private:
-    typedef std::map<String, QRadioButton*> IdToButton;
+    using IdToButton = std::map<StringView, QRadioButton*>;
 
     void SetupButton(IdToButton::value_type but)
     {
-      Require(connect(but.second, SIGNAL(toggled(bool)), SIGNAL(SettingsChanged())));
+      Require(connect(but.second, &QRadioButton::toggled, this, [this](bool) { emit SettingsChanged(); }));
       if (const Error status = Backends.GetStatus(but.first))
       {
         but.second->setEnabled(false);

@@ -8,17 +8,17 @@
  *
  **/
 
-// local includes
 #include "core/plugins/players/dac/dac_plugin.h"
+
 #include "core/plugins/players/plugin.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <core/plugin_attrs.h>
-#include <module/players/dac/dac_base.h>
-#include <module/players/dac/dac_parameters.h>
-#include <sound/mixer_factory.h>
-// std includes
+#include "module/players/dac/dac_base.h"
+#include "module/players/dac/dac_parameters.h"
+
+#include "core/plugin_attrs.h"
+#include "sound/mixer_factory.h"
+
+#include "make_ptr.h"
+
 #include <utility>
 
 namespace Module
@@ -26,7 +26,7 @@ namespace Module
   template<unsigned Channels>
   Devices::DAC::Chip::Ptr CreateChip(uint_t samplerate, Parameters::Accessor::Ptr params)
   {
-    typedef Sound::FixedChannelsMatrixMixer<Channels> MixerType;
+    using MixerType = Sound::FixedChannelsMatrixMixer<Channels>;
     auto mixer = MixerType::Create();
     auto pollParams = Sound::CreateMixerNotificationParameters(std::move(params), mixer);
     auto chipParams = Module::DAC::CreateChipParameters(samplerate, std::move(pollParams));
@@ -103,11 +103,11 @@ namespace Module
 
 namespace ZXTune
 {
-  PlayerPlugin::Ptr CreatePlayerPlugin(const String& id, Formats::Chiptune::Decoder::Ptr decoder,
+  PlayerPlugin::Ptr CreatePlayerPlugin(PluginId id, Formats::Chiptune::Decoder::Ptr decoder,
                                        Module::DAC::Factory::Ptr factory)
   {
-    const Module::Factory::Ptr modFactory = MakePtr<Module::DACFactory>(factory);
+    auto modFactory = MakePtr<Module::DACFactory>(std::move(factory));
     const uint_t caps = Capabilities::Module::Type::TRACK | Capabilities::Module::Device::DAC;
-    return CreatePlayerPlugin(id, caps, decoder, modFactory);
+    return CreatePlayerPlugin(id, caps, std::move(decoder), std::move(modFactory));
   }
 }  // namespace ZXTune

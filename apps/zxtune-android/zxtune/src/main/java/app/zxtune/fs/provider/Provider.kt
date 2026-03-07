@@ -8,12 +8,11 @@ import android.os.ParcelFileDescriptor
 import androidx.annotation.VisibleForTesting
 import app.zxtune.Logger
 import app.zxtune.MainApplication
-import java.io.FileNotFoundException
+import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
 
 class Provider @VisibleForTesting internal constructor(
-    private val resolver: Resolver,
-    private val schema: SchemaSource
+    private val resolver: Resolver, private val schema: SchemaSource
 ) : ContentProvider() {
     private val operations = ConcurrentHashMap<Uri, Operation>()
 
@@ -27,6 +26,11 @@ class Provider @VisibleForTesting internal constructor(
         notifications = NotificationsSource(this)
         true
     } ?: false
+
+    override fun shutdown() {
+        notifications.shutdown()
+        super.shutdown()
+    }
 
     override fun query(
         uri: Uri,
@@ -47,7 +51,7 @@ class Provider @VisibleForTesting internal constructor(
 
     private fun query(uri: Uri, projection: Array<String>?, signal: CancellationSignal?) =
         runCatching {
-            if (Query.TYPE_NOTIFICATION == Query.getUriType(uri)) {
+            if (Query.Type.NOTIFICATION == Query.getUriType(uri)) {
                 queryNotification(uri)
             } else {
                 val op = createOperation(uri, projection, makeCallback(uri, signal))
@@ -93,49 +97,48 @@ class Provider @VisibleForTesting internal constructor(
     }
 
     private fun createOperation(
-        uri: Uri,
-        projection: Array<String>?,
-        callback: AsyncQueryOperation.Callback
+        uri: Uri, projection: Array<String>?, callback: AsyncQueryOperation.Callback
     ): AsyncQueryOperation {
         val path = Query.getPathFrom(uri)
         return when (Query.getUriType(uri)) {
-            Query.TYPE_RESOLVE -> ResolveOperation(path, resolver, schema, callback)
-            Query.TYPE_LISTING -> ListingOperation(path, resolver, schema, callback)
-            Query.TYPE_PARENTS -> ParentsOperation(path, resolver, schema)
-            Query.TYPE_SEARCH -> SearchOperation(
-                path,
-                resolver,
-                schema,
-                callback,
-                Query.getQueryFrom(uri)
+            Query.Type.RESOLVE -> ResolveOperation(path, resolver, schema, callback)
+            Query.Type.LISTING -> ListingOperation(path, resolver, schema, callback)
+            Query.Type.PARENTS -> ParentsOperation(path, resolver, schema)
+            Query.Type.SEARCH -> SearchOperation(
+                path, resolver, schema, callback, Query.getQueryFrom(uri)
             )
-            Query.TYPE_FILE -> FileOperation(path, resolver, projection)
+
+            Query.Type.FILE -> FileOperation(path, Query.getSizeFrom(uri), resolver, projection)
             else -> throw UnsupportedOperationException("Unsupported uri $uri")
         }
     }
 
-    override fun getType(uri: Uri) = Query.mimeTypeOf(uri)
+    override fun getType(uri: Uri) = Query.getUriType(uri)?.mime
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
 
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<String>?) = 0
 
     override fun update(
-        uri: Uri,
-        values: ContentValues?,
-        selection: String?,
-        selectionArgs: Array<String>?
+        uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<String>?
     ): Int = 0
 
-    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
-        try {
-            if (Query.getUriType(uri) == Query.TYPE_FILE) {
-                return FileOperation(Query.getPathFrom(uri), resolver, null).openFile(mode)
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+        require(Query.getUriType(uri) == Query.Type.FILE)
+        require("r" == mode) { "Invalid mode: $mode" }
+        val path = Query.getPathFrom(uri)
+        val size = Query.getSizeFrom(uri)
+        return openPipeHelper(
+            path, "application/octet", null, null
+        ) { out, _, _, _, _ ->
+            runCatching {
+                FileOutputStream(out.fileDescriptor).use {
+                    FileOperation(path, size, resolver, null).consumeContent(it.channel)
+                }
+            }.onFailure {
+                LOG.w(it) { "Failed to open file for $uri" }
             }
-        } catch (e: Exception) {
-            LOG.w(e) { "Failed to open file $uri" }
         }
-        throw FileNotFoundException(uri.toString())
     }
 
     companion object {

@@ -8,27 +8,20 @@
  *
  **/
 
-// local includes
 #include "sound/backends/file_backend.h"
 #include "sound/backends/gates/mp3_api.h"
 #include "sound/backends/l10n.h"
 #include "sound/backends/mp3.h"
 #include "sound/backends/storage.h"
-// common includes
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/dump.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <sound/backend_attrs.h>
-#include <sound/backends_parameters.h>
-#include <sound/render_params.h>
-// std includes
-#include <algorithm>
-#include <functional>
 
-#define FILE_TAG 3B251603
+#include "binary/dump.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "sound/backends_parameters.h"
+#include "sound/render_params.h"
+
+#include "error_tools.h"
+#include "make_ptr.h"
 
 namespace Sound::Mp3
 {
@@ -39,13 +32,13 @@ namespace Sound::Mp3
   const uint_t QUALITY_MIN = 0;
   const uint_t QUALITY_MAX = 9;
 
-  typedef std::shared_ptr<lame_global_flags> LameContextPtr;
+  using LameContextPtr = std::shared_ptr<lame_global_flags>;
 
   void CheckLameCall(int res, Error::LocationRef loc)
   {
     if (res < 0)
     {
-      throw MakeFormattedError(loc, translate("Error in MP3 backend: %1%."), res);
+      throw MakeFormattedError(loc, translate("Error in MP3 backend: {}."), res);
     }
   }
 
@@ -130,7 +123,7 @@ namespace Sound::Mp3
     void ResizeBuffer()
     {
       Encoded.resize(Encoded.size() * 2);
-      Dbg("Increase buffer to %1% bytes", Encoded.size());
+      Dbg("Increase buffer to {} bytes", Encoded.size());
     }
 
   private:
@@ -140,19 +133,19 @@ namespace Sound::Mp3
     Binary::Dump Encoded;
   };
 
-  enum BitrateMode
+  enum class BitrateMode
   {
-    MODE_CBR,
-    MODE_VBR,
-    MODE_ABR
+    CBR,
+    VBR,
+    ABR
   };
 
-  enum ChannelsMode
+  enum class ChannelsMode
   {
-    MODE_DEFAULT,
-    MODE_STEREO,
-    MODE_JOINTSTEREO,
-    MODE_MONO
+    DEFAULT,
+    STEREO,
+    JOINTSTEREO,
+    MONO
   };
 
   class StreamParameters
@@ -164,73 +157,73 @@ namespace Sound::Mp3
 
     BitrateMode GetBitrateMode() const
     {
-      Parameters::StringType mode = Parameters::ZXTune::Sound::Backends::Mp3::MODE_DEFAULT;
-      Params->FindValue(Parameters::ZXTune::Sound::Backends::Mp3::MODE, mode);
-      if (mode == Parameters::ZXTune::Sound::Backends::Mp3::MODE_CBR)
+      using namespace Parameters::ZXTune::Sound::Backends::Mp3;
+      const auto mode = Parameters::GetString(*Params, MODE, MODE_DEFAULT);
+      if (mode == MODE_CBR)
       {
-        return MODE_CBR;
+        return BitrateMode::CBR;
       }
-      else if (mode == Parameters::ZXTune::Sound::Backends::Mp3::MODE_VBR)
+      else if (mode == MODE_VBR)
       {
-        return MODE_VBR;
+        return BitrateMode::VBR;
       }
-      else if (mode == Parameters::ZXTune::Sound::Backends::Mp3::MODE_ABR)
+      else if (mode == MODE_ABR)
       {
-        return MODE_ABR;
+        return BitrateMode::ABR;
       }
       else
       {
-        throw MakeFormattedError(THIS_LINE, translate("MP3 backend error: invalid bitrate mode '%1%'."), mode);
+        throw MakeFormattedError(THIS_LINE, translate("MP3 backend error: invalid bitrate mode '{}'."), mode);
       }
     }
 
     uint_t GetBitrate() const
     {
-      Parameters::IntType bitrate = Parameters::ZXTune::Sound::Backends::Mp3::BITRATE_DEFAULT;
-      if (Params->FindValue(Parameters::ZXTune::Sound::Backends::Mp3::BITRATE, bitrate)
-          && !Math::InRange<Parameters::IntType>(bitrate, BITRATE_MIN, BITRATE_MAX))
+      using namespace Parameters::ZXTune::Sound::Backends::Mp3;
+      const auto bitrate = Parameters::GetInteger<uint_t>(*Params, BITRATE, BITRATE_DEFAULT);
+      if (!Math::InRange(bitrate, BITRATE_MIN, BITRATE_MAX))
       {
-        throw MakeFormattedError(THIS_LINE, translate("MP3 backend error: bitrate (%1%) is out of range (%2%..%3%)."),
-                                 static_cast<int_t>(bitrate), BITRATE_MIN, BITRATE_MAX);
+        throw MakeFormattedError(THIS_LINE, translate("MP3 backend error: bitrate ({0}) is out of range ({1}..{2})."),
+                                 bitrate, BITRATE_MIN, BITRATE_MAX);
       }
-      return static_cast<uint_t>(bitrate);
+      return bitrate;
     }
 
     uint_t GetQuality() const
     {
-      Parameters::IntType quality = Parameters::ZXTune::Sound::Backends::Mp3::QUALITY_DEFAULT;
-      if (Params->FindValue(Parameters::ZXTune::Sound::Backends::Mp3::QUALITY, quality)
-          && !Math::InRange<Parameters::IntType>(quality, QUALITY_MIN, QUALITY_MAX))
+      using namespace Parameters::ZXTune::Sound::Backends::Mp3;
+      const auto quality = Parameters::GetInteger<uint_t>(*Params, QUALITY, QUALITY_DEFAULT);
+      if (!Math::InRange(quality, QUALITY_MIN, QUALITY_MAX))
       {
-        throw MakeFormattedError(THIS_LINE, translate("MP3 backend error: quality (%1%) is out of range (%2%..%3%)."),
-                                 static_cast<int_t>(quality), QUALITY_MIN, QUALITY_MAX);
+        throw MakeFormattedError(THIS_LINE, translate("MP3 backend error: quality ({0}) is out of range ({1}..{2})."),
+                                 quality, QUALITY_MIN, QUALITY_MAX);
       }
-      return static_cast<uint_t>(quality);
+      return quality;
     }
 
     ChannelsMode GetChannelsMode() const
     {
-      Parameters::StringType mode = Parameters::ZXTune::Sound::Backends::Mp3::CHANNELS_DEFAULT;
-      Params->FindValue(Parameters::ZXTune::Sound::Backends::Mp3::CHANNELS, mode);
-      if (mode == Parameters::ZXTune::Sound::Backends::Mp3::CHANNELS_DEFAULT)
+      using namespace Parameters::ZXTune::Sound::Backends::Mp3;
+      const auto mode = Parameters::GetString(*Params, CHANNELS, CHANNELS_DEFAULT);
+      if (mode == CHANNELS_DEFAULT)
       {
-        return MODE_DEFAULT;
+        return ChannelsMode::DEFAULT;
       }
-      else if (mode == Parameters::ZXTune::Sound::Backends::Mp3::CHANNELS_STEREO)
+      else if (mode == CHANNELS_STEREO)
       {
-        return MODE_STEREO;
+        return ChannelsMode::STEREO;
       }
-      else if (mode == Parameters::ZXTune::Sound::Backends::Mp3::CHANNELS_JOINTSTEREO)
+      else if (mode == CHANNELS_JOINTSTEREO)
       {
-        return MODE_JOINTSTEREO;
+        return ChannelsMode::JOINTSTEREO;
       }
-      else if (mode == Parameters::ZXTune::Sound::Backends::Mp3::CHANNELS_MONO)
+      else if (mode == CHANNELS_MONO)
       {
-        return MODE_MONO;
+        return ChannelsMode::MONO;
       }
       else
       {
-        throw MakeFormattedError(THIS_LINE, translate("MP3 backend error: invalid channels mode '%1%'."), mode);
+        throw MakeFormattedError(THIS_LINE, translate("MP3 backend error: invalid channels mode '{}'."), mode);
       }
     }
 
@@ -246,17 +239,16 @@ namespace Sound::Mp3
       , Params(std::move(params))
     {}
 
-    String GetId() const override
+    BackendId GetId() const override
     {
       return BACKEND_ID;
     }
 
     FileStream::Ptr CreateStream(Binary::OutputStream::Ptr stream) const override
     {
-      const LameContextPtr context =
-          LameContextPtr(LameApi->lame_init(), std::bind(&Api::lame_close, LameApi, std::placeholders::_1));
+      auto context = LameContextPtr(LameApi->lame_init(), [api = LameApi](auto&& arg) { api->lame_close(arg); });
       SetupContext(*context);
-      return MakePtr<FileStream>(LameApi, context, stream);
+      return MakePtr<FileStream>(LameApi, std::move(context), std::move(stream));
     }
 
   private:
@@ -265,33 +257,33 @@ namespace Sound::Mp3
       const StreamParameters stream(Params);
 
       const uint_t samplerate = GetSoundFrequency(*Params);
-      Dbg("Setting samplerate to %1%Hz", samplerate);
+      Dbg("Setting samplerate to {}Hz", samplerate);
       CheckLameCall(LameApi->lame_set_in_samplerate(&ctx, samplerate), THIS_LINE);
       CheckLameCall(LameApi->lame_set_out_samplerate(&ctx, samplerate), THIS_LINE);
       CheckLameCall(LameApi->lame_set_num_channels(&ctx, Sample::CHANNELS), THIS_LINE);
       CheckLameCall(LameApi->lame_set_bWriteVbrTag(&ctx, true), THIS_LINE);
       switch (stream.GetBitrateMode())
       {
-      case MODE_CBR:
+      case BitrateMode::CBR:
       {
         const uint_t bitrate = stream.GetBitrate();
-        Dbg("Setting bitrate to %1%kbps", bitrate);
+        Dbg("Setting bitrate to {}kbps", bitrate);
         CheckLameCall(LameApi->lame_set_VBR(&ctx, vbr_off), THIS_LINE);
         CheckLameCall(LameApi->lame_set_brate(&ctx, bitrate), THIS_LINE);
       }
       break;
-      case MODE_ABR:
+      case BitrateMode::ABR:
       {
         const uint_t bitrate = stream.GetBitrate();
-        Dbg("Setting average bitrate to %1%kbps", bitrate);
+        Dbg("Setting average bitrate to {}kbps", bitrate);
         CheckLameCall(LameApi->lame_set_VBR(&ctx, vbr_abr), THIS_LINE);
         CheckLameCall(LameApi->lame_set_VBR_mean_bitrate_kbps(&ctx, bitrate), THIS_LINE);
       }
       break;
-      case MODE_VBR:
+      case BitrateMode::VBR:
       {
         const uint_t quality = stream.GetQuality();
-        Dbg("Setting VBR quality to %1%", quality);
+        Dbg("Setting VBR quality to {}", quality);
         CheckLameCall(LameApi->lame_set_VBR(&ctx, vbr_default), THIS_LINE);
         CheckLameCall(LameApi->lame_set_VBR_q(&ctx, quality), THIS_LINE);
       }
@@ -301,18 +293,18 @@ namespace Sound::Mp3
       }
       switch (stream.GetChannelsMode())
       {
-      case MODE_DEFAULT:
+      case ChannelsMode::DEFAULT:
         Dbg("Using default channels mode");
         break;
-      case MODE_STEREO:
+      case ChannelsMode::STEREO:
         Dbg("Using stereo mode");
         CheckLameCall(LameApi->lame_set_mode(&ctx, STEREO), THIS_LINE);
         break;
-      case MODE_JOINTSTEREO:
+      case ChannelsMode::JOINTSTEREO:
         Dbg("Using joint stereo mode");
         CheckLameCall(LameApi->lame_set_mode(&ctx, JOINT_STEREO), THIS_LINE);
         break;
-      case MODE_MONO:
+      case ChannelsMode::MONO:
         Dbg("Using mono mode");
         CheckLameCall(LameApi->lame_set_mode(&ctx, MONO), THIS_LINE);
         break;
@@ -352,10 +344,10 @@ namespace Sound
   {
     try
     {
-      const Mp3::Api::Ptr api = Mp3::LoadDynamicApi();
-      Mp3::Dbg("Detected LAME library %1%", api->get_lame_version());
-      const BackendWorkerFactory::Ptr factory = MakePtr<Mp3::BackendWorkerFactory>(api);
-      storage.Register(Mp3::BACKEND_ID, Mp3::BACKEND_DESCRIPTION, CAP_TYPE_FILE, factory);
+      auto api = Mp3::LoadDynamicApi();
+      Mp3::Dbg("Detected LAME library {}", api->get_lame_version());
+      auto factory = MakePtr<Mp3::BackendWorkerFactory>(std::move(api));
+      storage.Register(Mp3::BACKEND_ID, Mp3::BACKEND_DESCRIPTION, CAP_TYPE_FILE, std::move(factory));
     }
     catch (const Error& e)
     {
@@ -363,5 +355,3 @@ namespace Sound
     }
   }
 }  // namespace Sound
-
-#undef FILE_TAG

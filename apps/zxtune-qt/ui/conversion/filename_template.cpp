@@ -8,40 +8,44 @@
  *
  **/
 
-// local includes
-#include "filename_template.h"
+#include "apps/zxtune-qt/ui/conversion/filename_template.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/conversion/parameters.h"
+#include "apps/zxtune-qt/ui/state.h"
+#include "apps/zxtune-qt/ui/tools/filedialog.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "filename_template.ui.h"
-#include "parameters.h"
-#include "supp/options.h"
-#include "ui/state.h"
-#include "ui/tools/filedialog.h"
-#include "ui/tools/parameters_helpers.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <io/providers_parameters.h>
-// qt includes
+
+#include "io/providers_parameters.h"
+
+#include "contract.h"
+
 #include <QtGui/QCloseEvent>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QVBoxLayout>
-// std includes
+
 #include <utility>
 
 namespace
 {
   void UpdateRecent(QComboBox& box)
   {
+    // Do not notify subscribers - called from dtor
+    const AutoBlockSignal blockstate(box);
     // emulate QComboBox::returnPressed
     const QString txt = box.currentText();
-    const int idx = box.findText(txt);
-    if (-1 != idx)
+    if (const int idx = box.findText(txt))
     {
-      box.removeItem(idx);
+      if (-1 != idx)
+      {
+        box.removeItem(idx);
+      }
+      box.insertItem(0, txt);
     }
-    box.insertItem(0, txt);
   }
 
   class FilenameTemplateWidgetImpl
@@ -59,8 +63,15 @@ namespace
       State->AddWidget(*DirectoryName);
       State->AddWidget(*FileTemplate);
 
-      Require(connect(DirectoryName, SIGNAL(editTextChanged(const QString&)), SIGNAL(SettingsChanged())));
-      Require(connect(FileTemplate, SIGNAL(editTextChanged(const QString&)), SIGNAL(SettingsChanged())));
+      auto onChangeSettings = [this](const QString&) { emit SettingsChanged(); };
+      Require(connect(DirectoryName, &QComboBox::editTextChanged, this, onChangeSettings));
+      Require(connect(FileTemplate, &QComboBox::editTextChanged, this, onChangeSettings));
+      Require(connect(browseDirButton, &QToolButton::clicked, this, &FilenameTemplateWidgetImpl::OnBrowseDirectory));
+      for (auto* hint : {hintFullPath, hintPath, hintFilename, hintExtension, hintSubpath, hintContainer, hintType,
+                         hintSize, hintCRC, hintFixedCRC, hintTitle, hintAuthor, hintComment, hintProgram, hintVersion})
+      {
+        Require(connect(hint, &QLabel::linkActivated, this, &FilenameTemplateWidgetImpl::OnClickHint));
+      }
 
       State->Load();
 
@@ -79,7 +90,7 @@ namespace
 
     QString GetFilenameTemplate() const override
     {
-      const QString name = FileTemplate->currentText();
+      auto name = FileTemplate->currentText();
       if (0 == name.size())
       {
         return name;
@@ -93,7 +104,8 @@ namespace
       return name;
     }
 
-    void OnBrowseDirectory() override
+  private:
+    void OnBrowseDirectory()
     {
       QString dir = DirectoryName->currentText();
       if (UI::OpenFolderDialog(dirSelectionGroup->title(), dir))
@@ -103,13 +115,12 @@ namespace
       }
     }
 
-    void OnClickHint(const QString& hint) override
+    void OnClickHint(const QString& hint)
     {
       QLineEdit* const editor = FileTemplate->lineEdit();
       editor->setText(editor->text() + hint);
     }
 
-  private:
     void UpdateRecentItemsLists() const
     {
       UpdateRecent(*FileTemplate);
@@ -126,13 +137,12 @@ namespace
   public:
     explicit FilenameTemplateDialog(QWidget& parent)
       : QDialog(&parent)
-      , TemplateBuilder(nullptr)
     {
       TemplateBuilder = UI::FilenameTemplateWidget::Create(*this);
-      const auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, this);
-      Require(connect(buttons, SIGNAL(accepted()), this, SLOT(accept())));
-      Require(connect(buttons, SIGNAL(rejected()), this, SLOT(reject())));
-      const auto layout = new QVBoxLayout(this);
+      auto* const buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, this);
+      Require(connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept));
+      Require(connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject));
+      auto* const layout = new QVBoxLayout(this);
       layout->setContentsMargins(4, 4, 4, 4);
       layout->setSpacing(4);
       layout->addWidget(TemplateBuilder);
@@ -146,7 +156,7 @@ namespace
     }
 
   private:
-    UI::FilenameTemplateWidget* TemplateBuilder;
+    UI::FilenameTemplateWidget* TemplateBuilder = nullptr;
   };
 }  // namespace
 

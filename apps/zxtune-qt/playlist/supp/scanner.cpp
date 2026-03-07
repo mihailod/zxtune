@@ -8,25 +8,26 @@
  *
  **/
 
-// local includes
-#include "scanner.h"
-#include "playlist/io/import.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-#include <error.h>
-#include <make_ptr.h>
-// library includes
-#include <async/coroutine.h>
-#include <debug/log.h>
-#include <time/elapsed.h>
-// std includes
-#include <mutex>
-// qt includes
+#include "apps/zxtune-qt/playlist/supp/scanner.h"
+
+#include "apps/zxtune-qt/playlist/io/import.h"
+#include "apps/zxtune-qt/ui/utils.h"
+
+#include "async/coroutine.h"
+#include "debug/log.h"
+#include "time/elapsed.h"
+
+#include "contract.h"
+#include "error.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <QtCore/QDirIterator>
 #include <QtCore/QStringList>
 
-#define FILE_TAG EA26A866
+#include <memory>
+#include <mutex>
+#include <utility>
 
 namespace
 {
@@ -90,7 +91,7 @@ namespace
     {
       while (NoCurrentDir())
       {
-        const QString res = Delegate.GetNext();
+        auto res = Delegate.GetNext();
         if (IsDir(res))
         {
           OpenDir(res);
@@ -108,7 +109,7 @@ namespace
   private:
     bool NoCurrentDir() const
     {
-      return nullptr == CurDir.get() || !CurDir->hasNext();
+      return nullptr == CurDir || !CurDir->hasNext();
     }
 
     static bool IsDir(const QString& name)
@@ -119,7 +120,7 @@ namespace
     void OpenDir(const QString& name)
     {
       const QDir::Filters filter = QDir::Files | QDir::NoDotAndDotDot | QDir::Hidden;
-      CurDir.reset(new QDirIterator(name, filter, QDirIterator::Subdirectories));
+      CurDir = std::make_unique<QDirIterator>(name, filter, QDirIterator::Subdirectories);
     }
 
     void CloseDir()
@@ -178,7 +179,6 @@ namespace
   public:
     FilenamesSourceStatistic(FilenamesSource& delegate)
       : Delegate(delegate)
-      , GotFilenames(0)
     {}
 
     bool Empty() const override
@@ -199,7 +199,7 @@ namespace
 
   private:
     FilenamesSource& Delegate;
-    unsigned GotFilenames;
+    unsigned GotFilenames = 0;
   };
 
   class FilesQueue
@@ -208,7 +208,7 @@ namespace
     , public Playlist::ScanStatus
   {
   public:
-    typedef std::shared_ptr<FilesQueue> Ptr;
+    using Ptr = std::shared_ptr<FilesQueue>;
 
     FilesQueue()
       : Resolved(Source)
@@ -328,7 +328,7 @@ namespace
       }
     }
 
-    void OnProgress(uint_t current, const String& message) override
+    void OnProgress(uint_t current, StringView message) override
     {
       if (ReportTimeout())
       {
@@ -349,7 +349,7 @@ namespace
     , public Async::Coroutine
   {
   public:
-    typedef std::shared_ptr<ScanRoutine> Ptr;
+    using Ptr = std::shared_ptr<ScanRoutine>;
 
     ScanRoutine(ScannerCallback& cb, Playlist::Item::DataProvider::Ptr provider)
       : Callback(cb)
@@ -452,27 +452,27 @@ namespace
     ScannerImpl(QObject& parent, Playlist::Item::DataProvider::Ptr provider)
       : Playlist::Scanner(parent)
       , Provider(provider)
-      , Routine(MakePtr<ScanRoutine>(static_cast<ScannerCallback&>(*this), provider))
+      , Routine(MakePtr<ScanRoutine>(static_cast<ScannerCallback&>(*this), std::move(provider)))
       , ScanJob(Async::CreateJob(Routine))
     {
-      Dbg("Created at %1%", this);
+      Dbg("Created at {}", Self());
     }
 
     ~ScannerImpl() override
     {
-      Dbg("Destroyed at %1%", this);
+      Dbg("Destroyed at {}", Self());
     }
 
     void AddItems(const QStringList& items) override
     {
-      Dbg("Added %1% items to %2%", items.size(), this);
+      Dbg("Added {} items to {}", items.size(), Self());
       Routine->Add(items);
       ScanJob->Start();
     }
 
     void PasteItems(const QStringList& items) override
     {
-      Dbg("Paste %1% items to %2%", items.size(), this);
+      Dbg("Paste {} items to {}", items.size(), Self());
       // TODO: optimize
       const Playlist::IO::Container::Ptr container = Playlist::IO::OpenPlainList(Provider, items);
       emit ItemsFound(container->GetItems());
@@ -480,24 +480,30 @@ namespace
 
     void Pause(bool pause) override
     {
-      Dbg(pause ? "Pausing %1%" : "Resuming %1%", this);
       if (pause)
       {
+        Dbg("Pausing {}", Self());
         ScanJob->Pause();
       }
       else
       {
+        Dbg("Resuming {}", Self());
         ScanJob->Start();
       }
     }
 
     void Stop() override
     {
-      Dbg("Stopping %1%", this);
+      Dbg("Stopping {}", Self());
       ScanJob->Stop();
     }
 
   private:
+    const void* Self() const
+    {
+      return this;
+    }
+
     void OnItem(Playlist::Item::Data::Ptr item) override
     {
       emit ItemFound(item);
@@ -551,6 +557,6 @@ namespace Playlist
     REGISTER_METATYPE(Playlist::Item::Data::Ptr);
     REGISTER_METATYPE(Playlist::Item::Collection::Ptr);
     REGISTER_METATYPE(Playlist::ScanStatus::Ptr);
-    return new ScannerImpl(parent, provider);
+    return new ScannerImpl(parent, std::move(provider));
   }
 }  // namespace Playlist

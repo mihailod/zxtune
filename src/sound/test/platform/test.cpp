@@ -8,12 +8,14 @@
  *
  **/
 
+#include "sound/backends/alsa.h"
+#include "sound/backends/dsound.h"
+#include "sound/backends/openal.h"
+#include "sound/backends/win32.h"
+
+#include "strings/format.h"
+
 #include <iostream>
-#include <sound/backends/alsa.h>
-#include <sound/backends/dsound.h>
-#include <sound/backends/openal.h>
-#include <sound/backends/win32.h>
-#include <strings/format.h>
 
 namespace
 {
@@ -24,12 +26,12 @@ namespace
     for (const Device::Iterator::Ptr devices = EnumerateDevices(); devices->IsValid(); devices->Next())
     {
       const Device::Ptr device = devices->Get();
-      std::cout << Strings::Format("Name: '%1%' Card: '%2%' Id: '%3%'\n", device->Name(), device->CardName(),
+      std::cout << Strings::Format("Name: '{}' Card: '{}' Id: '{}'\n", device->Name(), device->CardName(),
                                    device->Id());
       const Strings::Array& mixers = device->Mixers();
-      for (Strings::Array::const_iterator mit = mixers.begin(), mlim = mixers.end(); mit != mlim; ++mit)
+      for (const auto& mixer : mixers)
       {
-        std::cout << ' ' << *mit << std::endl;
+        std::cout << ' ' << mixer << std::endl;
       }
     }
   }
@@ -41,7 +43,7 @@ namespace
     for (const Device::Iterator::Ptr devices = EnumerateDevices(); devices->IsValid(); devices->Next())
     {
       const Device::Ptr device = devices->Get();
-      std::cout << Strings::Format(" Name: '%1%' Id: '%2%'", device->Name(), device->Id()) << std::endl;
+      std::cout << Strings::Format(" Name: '{}' Id: '{}'", device->Name(), device->Id()) << std::endl;
     }
   }
 
@@ -50,9 +52,9 @@ namespace
     using namespace Sound::OpenAl;
     std::cout << "OpenAL devices:" << std::endl;
     const Strings::Array& devices = EnumerateDevices();
-    for (Strings::Array::const_iterator it = devices.begin(), lim = devices.end(); it != lim; ++it)
+    for (const auto& device : devices)
     {
-      std::cout << Strings::Format(" Name: %1%", *it) << std::endl;
+      std::cout << Strings::Format(" Name: {}", device) << std::endl;
     }
   }
 
@@ -63,7 +65,7 @@ namespace
     for (const Device::Iterator::Ptr devices = EnumerateDevices(); devices->IsValid(); devices->Next())
     {
       const Device::Ptr device = devices->Get();
-      std::cout << Strings::Format(" Name: '%1%' Id: '%2%'", device->Name(), device->Id()) << std::endl;
+      std::cout << Strings::Format(" Name: '{}' Id: '{}'", device->Name(), device->Id()) << std::endl;
     }
   }
 }  // namespace

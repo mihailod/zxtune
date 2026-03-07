@@ -8,17 +8,19 @@
  *
  **/
 
-// local includes
+#include "strings/encoding.h"
+
 #include "strings/src/utf8.h"
-// common includes
-#include <byteorder.h>
-#include <iterator.h>
-#include <types.h>
-// library includes
-#include <math/bitops.h>
-#include <strings/encoding.h>
-// std includes
+
+#include "math/bitops.h"
+#include "tools/iterators.h"
+
+#include "byteorder.h"
+#include "string_view.h"
+#include "types.h"
+
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <limits>
 #include <vector>
@@ -568,7 +570,7 @@ namespace Strings
 
     void AddLanguage(LanguagesMask lang, const Letter* alphabet)
     {
-      for (auto it = alphabet; *it != LIMITER; ++it)
+      for (const auto* it = alphabet; *it != LIMITER; ++it)
       {
         const auto letter = *it;
         Traits.at(letter.Upper) = CharTraits::Alphabetic | letter.Traits | CharTraits::Capital;
@@ -760,7 +762,7 @@ namespace Strings
     }
 
   private:
-    Codepage8Bit() {}
+    Codepage8Bit() = default;
   };
 
   // https://en.wikipedia.org/wiki/Shift_JIS
@@ -769,7 +771,7 @@ namespace Strings
   public:
     bool Check(StringView str) const override
     {
-      for (auto it = str.begin(); it != str.end(); ++it)
+      for (const auto* it = str.begin(); it != str.end(); ++it)
       {
         const uint8_t s1 = *it;
         if (s1 == 0x80 || s1 == 0xa0 || s1 >= 0xf0)
@@ -805,7 +807,7 @@ namespace Strings
     {
       std::vector<uint32_t> result;
       result.reserve(str.size());
-      for (auto it = str.begin(); it != str.end(); ++it)
+      for (const auto* it = str.begin(); it != str.end(); ++it)
       {
         const uint8_t s1 = *it;
         if (s1 == 0x5c)
@@ -840,7 +842,7 @@ namespace Strings
     }
 
   private:
-    ShiftJIS() {}
+    ShiftJIS() = default;
 
     static uint32_t GetUnicode(uint_t s1, uint_t s2)
     {
@@ -867,7 +869,7 @@ namespace Strings
 
     std::vector<uint32_t> bestUnicode;
     uint_t minPenalty = std::numeric_limits<uint_t>::max();
-    for (const auto cp : CODEPAGES)
+    for (const auto* const cp : CODEPAGES)
     {
       if (!cp->Check(str))
       {
@@ -900,14 +902,14 @@ namespace Strings
     }
     else if (IsUtf8(str))
     {
-      return CutUtf8BOM(str).to_string();
+      return String{CutUtf8BOM(str)};
     }
     else if (IsUtf16(str))
     {
       std::vector<uint16_t> aligned(str.size() / 2);
       auto* target = aligned.data();
       std::memcpy(target, str.data(), aligned.size() * sizeof(*target));
-      return Utf16ToUtf8({target, target + aligned.size()});
+      return Utf16ToUtf8(MakeStringView(target, target + aligned.size()));
     }
     else
     {
@@ -915,13 +917,13 @@ namespace Strings
     }
   }
 
-  String Utf16ToUtf8(basic_string_view<uint16_t> str)
+  String Utf16ToUtf8(std::basic_string_view<uint16_t> str)
   {
     static const uint16_t BOM = 0xfeff;
     Strings::Utf8Builder builder;
     builder.Reserve(str.size());
     bool needSwap = false;
-    for (auto it = str.begin(); it != str.end();)
+    for (const auto* it = str.begin(); it != str.end();)
     {
       const uint32_t sym = needSwap ? swapBytes(*it) : (*it);
       ++it;

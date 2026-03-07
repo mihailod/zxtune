@@ -8,17 +8,16 @@
  *
  **/
 
-// local includes
 #include "formats/packed/container.h"
 #include "formats/packed/pack_utils.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/format_factories.h>
-#include <formats/packed.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "formats/packed.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <algorithm>
 #include <iterator>
 
@@ -28,7 +27,7 @@ namespace Formats::Packed
   {
     const std::size_t MAX_DECODED_SIZE = 0xc000;
 
-    const Char DESCRIPTION[] = "Pack v2.x";
+    const auto DESCRIPTION = "Pack v2.x"sv;
     const auto DEPACKER_PATTERN =
         "21??"  // ld hl,xxxx end of packed
         "11??"  // ld de,xxxx end of unpacked
@@ -63,7 +62,7 @@ namespace Formats::Packed
         "10fc"  // djnz xx
         "2b"    // dec hl
         "18cf"  // jr xx
-        ""_sv;
+        ""sv;
 
     struct RawHeader
     {
@@ -130,11 +129,7 @@ namespace Formats::Packed
           return false;
         }
         const std::size_t usedSize = GetUsedSize();
-        if (usedSize > Size)
-        {
-          return false;
-        }
-        return true;
+        return usedSize <= Size;
       }
 
       std::size_t GetUsedSize() const
@@ -191,8 +186,6 @@ namespace Formats::Packed
         : IsValid(container.FastCheck())
         , Header(container.GetHeader())
         , Stream(Header.PackedData, container.GetPackedSize())
-        , Result(new Binary::Dump())
-        , Decoded(*Result)
       {
         if (IsValid && !Stream.Eof())
         {
@@ -200,21 +193,22 @@ namespace Formats::Packed
         }
       }
 
-      std::unique_ptr<Binary::Dump> GetResult()
+      Binary::Container::Ptr GetResult()
       {
-        return IsValid ? std::move(Result) : std::unique_ptr<Binary::Dump>();
+        return IsValid ? Decoded.CaptureResult() : Binary::Container::Ptr();
       }
 
     private:
       bool DecodeData()
       {
+        Decoded = Binary::DataBuilder(MAX_DECODED_SIZE);
         // assume that first byte always exists due to header format
-        while (!Stream.Eof() && Decoded.size() < MAX_DECODED_SIZE)
+        while (!Stream.Eof() && Decoded.Size() < MAX_DECODED_SIZE)
         {
           const uint_t data = Stream.GetByte();
           if (data != Header.Marker)
           {
-            Decoded.push_back(data);
+            Decoded.AddByte(data);
           }
           else
           {
@@ -224,23 +218,23 @@ namespace Formats::Packed
               if (const std::size_t len = token & 0x7f)
               {
                 const uint8_t filler = len < Header.RleThreshold ? Header.FirstRleByte : Header.SecondRleByte;
-                std::fill_n(std::back_inserter(Decoded), len, filler);
+                Fill(Decoded, len, filler);
               }
               else
               {
-                std::fill_n(std::back_inserter(Decoded), 256, 0);
+                Fill(Decoded, 256, 0);
               }
             }
             else
             {
               const std::size_t len = token ? token : 256;
               const uint8_t filler = Stream.GetByte();
-              std::fill_n(std::back_inserter(Decoded), len, filler);
+              Fill(Decoded, len, filler);
             }
           }
         }
-        Decoded.pop_back();
-        std::reverse(Decoded.begin(), Decoded.end());
+        Decoded.Resize(Decoded.Size() - 1);
+        Reverse(Decoded);
         return true;
       }
 
@@ -248,8 +242,7 @@ namespace Formats::Packed
       bool IsValid;
       const RawHeader& Header;
       ReverseByteStream Stream;
-      std::unique_ptr<Binary::Dump> Result;
-      Binary::Dump& Decoded;
+      Binary::DataBuilder Decoded;
     };
   }  // namespace Pack2
 
@@ -260,7 +253,7 @@ namespace Formats::Packed
       : Depacker(Binary::CreateFormat(Pack2::DEPACKER_PATTERN, Pack2::MIN_SIZE))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Pack2::DESCRIPTION;
     }
@@ -274,12 +267,12 @@ namespace Formats::Packed
     {
       if (!Depacker->Match(rawData))
       {
-        return Container::Ptr();
+        return {};
       }
       const Pack2::Container container(rawData.Start(), rawData.Size());
       if (!container.FastCheck())
       {
-        return Container::Ptr();
+        return {};
       }
       Pack2::DataDecoder decoder(container);
       return CreateContainer(decoder.GetResult(), container.GetUsedSize());

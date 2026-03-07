@@ -8,9 +8,8 @@
  *
  **/
 
-// local includes
 #include "module/players/xsf/memory_region.h"
-// std includes
+
 #include <cstring>
 
 namespace Module
@@ -31,7 +30,7 @@ namespace Module
     }
     else
     {
-      const auto src = static_cast<const uint8_t*>(data.Start());
+      const auto* const src = static_cast<const uint8_t*>(data.Start());
       Data.assign(src, src + data.Size());
       Start = addr;
     }

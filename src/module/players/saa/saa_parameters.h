@@ -10,14 +10,10 @@
 
 #pragma once
 
-// library includes
-#include <devices/saa.h>
-#include <parameters/accessor.h>
+#include "devices/saa.h"
+#include "parameters/accessor.h"
 
-namespace Module
+namespace Module::SAA
 {
-  namespace SAA
-  {
-    Devices::SAA::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params);
-  }
-}  // namespace Module
+  Devices::SAA::ChipParameters::Ptr CreateChipParameters(uint_t samplerate, Parameters::Accessor::Ptr params);
+}  // namespace Module::SAA

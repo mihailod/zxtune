@@ -8,12 +8,11 @@
  *
  **/
 
-// local includes
 #include "devices/aym/src/psg.h"
 #include "devices/aym/src/soundchip.h"
-// common includes
-#include <make_ptr.h>
-// std includes
+
+#include "make_ptr.h"
+
 #include <utility>
 
 namespace Devices::AYM
@@ -23,9 +22,9 @@ namespace Devices::AYM
 
   struct Traits
   {
-    typedef DataChunk DataChunkType;
-    typedef PSG PSGType;
-    typedef Chip ChipBaseType;
+    using DataChunkType = DataChunk;
+    using PSGType = PSG;
+    using ChipBaseType = Chip;
     static const uint_t VOICES = AYM::VOICES;
   };
 

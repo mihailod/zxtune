@@ -8,54 +8,51 @@
  *
  **/
 
-// local includes
 #include "core/plugins/archive_plugins_registrator.h"
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/gme/kss_supp.h"
 #include "core/plugins/players/multitrack_plugin.h"
 #include "core/plugins/players/plugin.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <error.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/compression/zlib_stream.h>
-#include <binary/format_factories.h>
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/decoders.h>
-#include <formats/multitrack/decoders.h>
-#include <math/numeric.h>
-#include <module/attributes.h>
-#include <module/players/duration.h>
-#include <module/players/platforms.h>
-#include <module/players/properties_helper.h>
-#include <module/players/streaming.h>
-#include <strings/optimize.h>
-// std includes
-#include <map>
-// boost includes
-#include <boost/algorithm/string/predicate.hpp>
-// 3rdparty includes
-#include <3rdparty/gme/gme/Gbs_Emu.h>
-#include <3rdparty/gme/gme/Gym_Emu.h>
-#include <3rdparty/gme/gme/Hes_Emu.h>
-#include <3rdparty/gme/gme/Kss_Emu.h>
-#include <3rdparty/gme/gme/Nsf_Emu.h>
-#include <3rdparty/gme/gme/Nsfe_Emu.h>
-#include <3rdparty/gme/gme/Sap_Emu.h>
-#include <3rdparty/gme/gme/Vgm_Emu.h>
+#include "formats/chiptune/decoders.h"
+#include "formats/multitrack/decoders.h"
+#include "module/players/duration.h"
+#include "module/players/platforms.h"
+#include "module/players/properties_helper.h"
+#include "module/players/streaming.h"
 
-#define FILE_TAG 513E65A8
+#include "binary/compression/zlib_stream.h"
+#include "binary/format_factories.h"
+#include "core/core_parameters.h"
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "module/attributes.h"
+#include "parameters/tracking_helper.h"
+#include "strings/optimize.h"
+#include "tools/xrange.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "error.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include "3rdparty/gme/gme/Gbs_Emu.h"
+#include "3rdparty/gme/gme/Gym_Emu.h"
+#include "3rdparty/gme/gme/Hes_Emu.h"
+#include "3rdparty/gme/gme/Kss_Emu.h"
+#include "3rdparty/gme/gme/Nsf_Emu.h"
+#include "3rdparty/gme/gme/Nsfe_Emu.h"
+
+#include <map>
 
 namespace Module::GME
 {
   const Debug::Stream Dbg("Core::GMESupp");
 
-  typedef std::shared_ptr< ::Music_Emu> EmuPtr;
+  using EmuPtr = std::unique_ptr< ::Music_Emu>;
 
-  typedef EmuPtr (*EmuCreator)();
+  using EmuCreator = EmuPtr (*)();
 
   template<class EmuType>
   EmuPtr Create()
@@ -63,7 +60,7 @@ namespace Module::GME
     return EmuPtr(new EmuType());
   }
 
-  inline static void CheckError(::blargg_err_t err)
+  inline void CheckError(::blargg_err_t err)
   {
     if (err)
     {
@@ -73,29 +70,42 @@ namespace Module::GME
 
   using TimeBase = Time::Millisecond;
 
+  struct TuneInfo : ::track_info_t
+  {
+    Strings::Array Channels;
+  };
+
   struct GMETune
   {
     using Ptr = std::shared_ptr<GMETune>;
 
-    GMETune(EmuCreator create, Binary::Dump data, uint_t track)
+    GMETune(EmuCreator create, Binary::Data::Ptr data, uint_t track)
       : CreateEmu(create)
       , Data(std::move(data))
       , Track(track)
     {}
 
-    EmuCreator CreateEmu;
-    Binary::Dump Data;
-    uint_t Track;
+    const EmuCreator CreateEmu;
+    const Binary::Data::Ptr Data;
+    const uint_t Track;
     Time::Milliseconds Duration;
 
-    ::track_info_t GetInfo() const
+    TuneInfo GetInfo() const
     {
       const uint_t FAKE_SOUND_FREQUENCY = 30000;
       const auto emu = CreateEmu();
       CheckError(emu->set_sample_rate(FAKE_SOUND_FREQUENCY));
-      CheckError(emu->load_mem(Data.data(), Data.size()));
-      ::track_info_t info;
+      CheckError(emu->load_mem(Data->Start(), Data->Size()));
+      TuneInfo info;
       CheckError(emu->track_info(&info, Track));
+      if (auto chans = emu->voice_count())
+      {
+        info.Channels.resize(chans);
+        for (auto i : xrange(chans))
+        {
+          info.Channels[i] = emu->voice_name(i);
+        }
+      }
       return info;
     }
 
@@ -125,7 +135,7 @@ namespace Module::GME
       , Track(tune.Track)
     {
       CheckError(Emu->set_sample_rate(samplerate));
-      CheckError(Emu->load_mem(tune.Data.data(), tune.Data.size()));
+      CheckError(Emu->load_mem(tune.Data->Start(), tune.Data->Size()));
       Reset();
     }
 
@@ -140,13 +150,18 @@ namespace Module::GME
       static_assert(Sound::Sample::BITS == 16, "Incompatible sound bits count");
       Sound::Chunk result(samples);
       auto* const buffer = safe_ptr_cast< ::Music_Emu::sample_t*>(result.data());
-      CheckError(Emu->play(samples * Sound::Sample::CHANNELS, buffer));
+      CheckError(Emu->play(static_cast<int>(samples * Sound::Sample::CHANNELS), buffer));
       return result;
     }
 
     void Skip(uint_t samples)
     {
       CheckError(Emu->skip(samples));
+    }
+
+    void SetChannelsMask(int mask)
+    {
+      Emu->mute_voices(mask);
     }
 
     uint_t GetSoundFreq() const
@@ -165,9 +180,10 @@ namespace Module::GME
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(GMETune::Ptr tune, uint_t samplerate)
+    Renderer(GMETune::Ptr tune, uint_t samplerate, Parameters::Accessor::Ptr params)
       : Tune(std::move(tune))
       , State(MakePtr<TimedState>(Tune->Duration))
+      , Params(std::move(params))
       , Engine(*Tune, samplerate)
     {}
 
@@ -176,13 +192,10 @@ namespace Module::GME
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto avail = State->Consume(FRAME_DURATION, looped);
+      ApplyParameters();
+      const auto avail = State->ConsumeUpTo(FRAME_DURATION);
       return Engine.Render(GetSamples(avail));
     }
 
@@ -190,6 +203,7 @@ namespace Module::GME
     {
       try
       {
+        Params.Reset();
         State->Reset();
         Engine.Reset();
       }
@@ -212,6 +226,16 @@ namespace Module::GME
     }
 
   private:
+    void ApplyParameters()
+    {
+      if (Params.IsChanged())
+      {
+        using namespace Parameters::ZXTune::Core;
+        const auto val = Parameters::GetInteger(*Params, CHANNELS_MASK, CHANNELS_MASK_DEFAULT);
+        Engine.SetChannelsMask(val);
+      }
+    }
+
     uint_t GetSamples(Time::Microseconds period) const
     {
       return period.Get() * Engine.GetSoundFreq() / period.PER_SECOND;
@@ -232,6 +256,7 @@ namespace Module::GME
   private:
     const GMETune::Ptr Tune;
     const TimedState::Ptr State;
+    Parameters::TrackingHelper<Parameters::Accessor> Params;
     GME Engine;
   };
 
@@ -253,11 +278,11 @@ namespace Module::GME
       return Properties;
     }
 
-    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr /*params*/) const override
+    Renderer::Ptr CreateRenderer(uint_t samplerate, Parameters::Accessor::Ptr params) const override
     {
       try
       {
-        return MakePtr<Renderer>(Tune, samplerate);
+        return MakePtr<Renderer>(Tune, samplerate, std::move(params));
       }
       catch (const std::exception& e)
       {
@@ -271,17 +296,16 @@ namespace Module::GME
   };
 
   // TODO: rework, extract GYM parsing code to Formats library
-  Binary::Dump DefaultDataCreator(Binary::View data)
+  Binary::Data::Ptr DefaultDataCreator(Binary::View data)
   {
-    return Binary::Dump(static_cast<const uint8_t*>(data.Start()),
-                        static_cast<const uint8_t*>(data.Start()) + data.Size());
+    return Binary::CreateContainer(data);
   }
 
   using PlatformDetector = StringView (*)(Binary::View);
 
   struct PluginDescription
   {
-    const Char* const Id;
+    const ZXTune::PluginId Id;
     const uint_t ChiptuneCaps;
     const EmuCreator CreateEmu;
     const decltype(&DefaultDataCreator) CreateData;
@@ -290,7 +314,7 @@ namespace Module::GME
 
   namespace GYM
   {
-    Binary::Dump CreateData(Binary::View data)
+    Binary::Data::Ptr CreateData(Binary::View data)
     {
       Binary::DataInputStream input(data);
       Binary::DataBuilder output(data.Size());
@@ -306,13 +330,11 @@ namespace Module::GME
         output.Add<le_uint32_t>(0);
         output.Add(input.ReadRestData());
       }
-      Binary::Dump result;
-      output.CaptureResult(result);
-      return result;
+      return output.CaptureResult();
     }
   }  // namespace GYM
 
-  void GetProperties(const ::track_info_t& info, PropertiesHelper& props)
+  void GetProperties(const TuneInfo& info, PropertiesHelper& props)
   {
     const auto system = Strings::OptimizeAscii(info.system);
     const auto song = Strings::OptimizeAscii(info.song);
@@ -330,6 +352,7 @@ namespace Module::GME
     props.SetAuthor(author);
     props.SetComment(copyright);
     props.SetComment(comment);
+    props.SetChannels(info.Channels);
   }
 
   class MultitrackFactory : public Module::MultitrackFactory
@@ -347,7 +370,7 @@ namespace Module::GME
       {
         PropertiesHelper props(*properties);
         auto data = Desc.CreateData(container);
-        props.SetPlatform(Desc.DetectPlatform(data));
+        props.SetPlatform(Desc.DetectPlatform(*data));
         auto tune = MakePtr<GMETune>(Desc.CreateEmu, std::move(data), container.StartTrackIndex());
 
         const auto info = tune->GetInfo();
@@ -358,7 +381,7 @@ namespace Module::GME
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create %1%: %2%", Desc.Id, e.what());
+        Dbg("Failed to create {}: {}", Desc.Id, e.what());
       }
       return {};
     }
@@ -381,7 +404,7 @@ namespace Module::GME
       {
         PropertiesHelper props(*properties);
         auto data = Desc.CreateData(container);
-        props.SetPlatform(Desc.DetectPlatform(data));
+        props.SetPlatform(Desc.DetectPlatform(*data));
         auto tune = MakePtr<GMETune>(Desc.CreateEmu, std::move(data), 0);
         const auto info = tune->GetInfo();
         GetProperties(info, props);
@@ -391,7 +414,7 @@ namespace Module::GME
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create %1%: %2%", Desc.Id, e.what());
+        Dbg("Failed to create {}: {}", Desc.Id, e.what());
       }
       return {};
     }
@@ -402,11 +425,13 @@ namespace Module::GME
 
   struct MultitrackPluginDescription
   {
-    typedef Formats::Multitrack::Decoder::Ptr (*MultitrackDecoderCreator)();
+    using MultitrackDecoderCreator = Formats::Multitrack::Decoder::Ptr (*)();
 
     PluginDescription Desc;
     const MultitrackDecoderCreator CreateMultitrackDecoder;
   };
+
+  using ZXTune::operator""_id;
 
   // clang-format off
   const MultitrackPluginDescription MULTITRACK_PLUGINS[] =
@@ -414,7 +439,7 @@ namespace Module::GME
     //nsf
     {
       {
-        "NSF",
+        "NSF"_id,
         ZXTune::Capabilities::Module::Type::MEMORYDUMP | ZXTune::Capabilities::Module::Device::RP2A0X,
         &Create< ::Nsf_Emu>,
         &DefaultDataCreator,
@@ -425,7 +450,7 @@ namespace Module::GME
     //nsfe
     {
       {
-        "NSFE",
+        "NSFE"_id,
         ZXTune::Capabilities::Module::Type::MEMORYDUMP | ZXTune::Capabilities::Module::Device::RP2A0X,
         &Create< ::Nsfe_Emu>,
         &DefaultDataCreator,
@@ -436,7 +461,7 @@ namespace Module::GME
     //gbs
     {
       {
-        "GBS",
+        "GBS"_id,
         ZXTune::Capabilities::Module::Type::MEMORYDUMP | ZXTune::Capabilities::Module::Device::LR35902,
         &Create< ::Gbs_Emu>,
         &DefaultDataCreator,
@@ -447,7 +472,7 @@ namespace Module::GME
     //kssx
     {
       {
-        "KSSX",
+        "KSSX"_id,
         ZXTune::Capabilities::Module::Type::MEMORYDUMP | ZXTune::Capabilities::Module::Device::MULTI,
         &Create< ::Kss_Emu>,
         &DefaultDataCreator,
@@ -458,7 +483,7 @@ namespace Module::GME
     //hes
     {
       {
-        "HES",
+        "HES"_id,
         ZXTune::Capabilities::Module::Type::MEMORYDUMP | ZXTune::Capabilities::Module::Device::HUC6270,
         &Create< ::Hes_Emu>,
         &DefaultDataCreator,
@@ -471,7 +496,7 @@ namespace Module::GME
 
   struct SingletrackPluginDescription
   {
-    typedef Formats::Chiptune::Decoder::Ptr (*ChiptuneDecoderCreator)();
+    using ChiptuneDecoderCreator = Formats::Chiptune::Decoder::Ptr (*)();
 
     PluginDescription Desc;
     const ChiptuneDecoderCreator CreateChiptuneDecoder;
@@ -483,7 +508,7 @@ namespace Module::GME
     //gym
     {
       {
-        "GYM",
+        "GYM"_id,
         ZXTune::Capabilities::Module::Type::STREAM | ZXTune::Capabilities::Module::Device::MULTI,
         &Create< ::Gym_Emu>,
         &GYM::CreateData,
@@ -494,7 +519,7 @@ namespace Module::GME
     //kss
     {
       {
-        "KSS",
+        "KSS"_id,
         ZXTune::Capabilities::Module::Type::MEMORYDUMP | ZXTune::Capabilities::Module::Device::MULTI,
         &Create< ::Kss_Emu>,
         &DefaultDataCreator,
@@ -542,5 +567,3 @@ namespace ZXTune
     RegisterSingletrackGMEPlugins(playerRegistrator);
   }
 }  // namespace ZXTune
-
-#undef FILE_TAG

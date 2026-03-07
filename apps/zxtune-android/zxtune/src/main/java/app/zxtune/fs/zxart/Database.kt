@@ -11,7 +11,11 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import app.zxtune.Logger
 import app.zxtune.TimeStamp
-import app.zxtune.fs.dbhelpers.*
+import app.zxtune.fs.dbhelpers.DBProvider
+import app.zxtune.fs.dbhelpers.Grouping
+import app.zxtune.fs.dbhelpers.Objects
+import app.zxtune.fs.dbhelpers.Timestamps
+import app.zxtune.fs.dbhelpers.Utils
 
 /**
  * Version 1
@@ -46,9 +50,9 @@ internal open class Database(context: Context) {
     private val partiesTracks = Tables.PartiesTracks(helper)
     private val tracks = Tables.Tracks(helper)
     private val timestamps = Timestamps(helper)
-    private val findQuery = "SELECT * FROM authors LEFT OUTER JOIN tracks ON " +
-            "tracks.${Tables.Tracks.getSelection(authorsTracks.getIdsSelection("authors._id"))} " +
-            "WHERE tracks.filename || tracks.title LIKE '%' || ? || '%'"
+    private val findQuery = "SELECT * FROM authors LEFT OUTER JOIN tracks ON " + "tracks.${
+        Tables.Tracks.getSelection(authorsTracks.getIdsSelection("authors._id"))
+    } " + "WHERE tracks.filename || tracks.title LIKE '%' || ? || '%'"
 
     fun close() {
         helper.close()
@@ -68,82 +72,57 @@ internal open class Database(context: Context) {
 
     open fun getTopLifetime(ttl: TimeStamp) = timestamps.getLifetime(Tables.Tracks.NAME, ttl)
 
-    open fun queryAuthors(visitor: Catalog.AuthorsVisitor): Boolean {
+    open fun queryAuthors(visitor: Catalog.Visitor<Author>) =
         helper.readableDatabase.query(Tables.Authors.NAME, null, null, null, null, null, null)
             ?.use { cursor ->
-                val count = cursor.count
-                if (count != 0) {
-                    visitor.setCountHint(count)
-                    while (cursor.moveToNext()) {
-                        visitor.accept(Tables.Authors.createAuthor(cursor))
-                    }
-                    return true
+                while (cursor.moveToNext()) {
+                    visitor.accept(Tables.Authors.createAuthor(cursor))
                 }
-            }
-        return false
-    }
+                cursor.count != 0
+            } ?: false
 
     open fun addAuthor(obj: Author) = authors.add(obj)
 
-    open fun queryParties(visitor: Catalog.PartiesVisitor): Boolean {
+    open fun queryParties(visitor: Catalog.Visitor<Party>) =
         helper.readableDatabase.query(Tables.Parties.NAME, null, null, null, null, null, null)
             ?.use { cursor ->
-                val count = cursor.count
-                if (count != 0) {
-                    visitor.setCountHint(count)
-                    while (cursor.moveToNext()) {
-                        visitor.accept(Tables.Parties.createParty(cursor))
-                    }
-                    return true
+                while (cursor.moveToNext()) {
+                    visitor.accept(Tables.Parties.createParty(cursor))
                 }
-            }
-        return false
-    }
+                cursor.count != 0
+            } ?: false
 
     open fun addParty(obj: Party) = parties.add(obj)
 
-    open fun queryAuthorTracks(author: Author, visitor: Catalog.TracksVisitor): Boolean {
-        val selection = Tables.Tracks.getSelection(authorsTracks.getTracksIdsSelection(author))
-        return queryTracks(selection, visitor)
-    }
+    open fun queryAuthorTracks(author: Author, visitor: Catalog.Visitor<Track>) =
+        Tables.Tracks.getSelection(authorsTracks.getTracksIdsSelection(author)).let {
+            queryTracks(it, visitor)
+        }
 
-    open fun queryPartyTracks(party: Party, visitor: Catalog.TracksVisitor): Boolean {
-        val selection = Tables.Tracks.getSelection(partiesTracks.getTracksIdsSelection(party))
-        return queryTracks(selection, visitor)
-    }
+    open fun queryPartyTracks(party: Party, visitor: Catalog.Visitor<Track>) =
+        Tables.Tracks.getSelection(partiesTracks.getTracksIdsSelection(party)).let {
+            queryTracks(it, visitor)
+        }
 
-    private fun queryTracks(selection: String, visitor: Catalog.TracksVisitor) =
+    private fun queryTracks(selection: String, visitor: Catalog.Visitor<Track>) =
         helper.readableDatabase.query(Tables.Tracks.NAME, null, selection, null, null, null, null)
             .let { cursor ->
                 queryTracks(cursor, visitor)
             }
 
-    open fun queryTopTracks(limit: Int, visitor: Catalog.TracksVisitor) =
+    open fun queryTopTracks(limit: Int, visitor: Catalog.Visitor<Track>) =
         helper.readableDatabase.query(
-            Tables.Tracks.NAME,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "votes DESC",
-            limit.toString()
-        )
-            .let { cursor ->
-                queryTracks(cursor, visitor)
-            }
+            Tables.Tracks.NAME, null, null, null, null, null, "votes DESC", limit.toString()
+        ).let { cursor ->
+            queryTracks(cursor, visitor)
+        }
 
     open fun findTracks(query: String, visitor: Catalog.FoundTracksVisitor) {
         helper.readableDatabase.rawQuery(findQuery, arrayOf(query))?.use { cursor ->
-            val count = cursor.count
-            if (count != 0) {
-                visitor.setCountHint(count)
-                while (cursor.moveToNext()) {
-                    val author = Tables.Authors.createAuthor(cursor)
-                    val track =
-                        Tables.Tracks.createTrack(cursor, Tables.Authors.FIELDS_COUNT)
-                    visitor.accept(author, track)
-                }
+            while (cursor.moveToNext()) {
+                val author = Tables.Authors.createAuthor(cursor)
+                val track = Tables.Tracks.createTrack(cursor, Tables.Authors.FIELDS_COUNT)
+                visitor.accept(author, track)
             }
         }
     }
@@ -155,16 +134,12 @@ internal open class Database(context: Context) {
     open fun addPartyTrack(party: Party, track: Track) = partiesTracks.add(party, track)
 }
 
-private fun queryTracks(cursor: Cursor?, visitor: Catalog.TracksVisitor): Boolean {
+private fun queryTracks(cursor: Cursor?, visitor: Catalog.Visitor<Track>): Boolean {
     cursor?.use {
-        val count = cursor.count
-        if (count != 0) {
-            visitor.setCountHint(count)
-            while (cursor.moveToNext()) {
-                visitor.accept(Tables.Tracks.createTrack(cursor))
-            }
-            return true
+        while (cursor.moveToNext()) {
+            visitor.accept(Tables.Tracks.createTrack(cursor))
         }
+        return cursor.count != 0
     }
     return false
 }
@@ -194,10 +169,8 @@ private class Tables {
 
         companion object {
             const val NAME = "authors"
-            const val CREATE_QUERY = "CREATE TABLE authors (" +
-                    "_id  INTEGER PRIMARY KEY, " +
-                    "nickname TEXT NOT NULL, " +
-                    "name  TEXT);"
+            const val CREATE_QUERY =
+                "CREATE TABLE authors (" + "_id  INTEGER PRIMARY KEY, " + "nickname TEXT NOT NULL, " + "name  TEXT);"
             const val FIELDS_COUNT = 3
 
             fun createAuthor(cursor: Cursor) = run {
@@ -214,10 +187,8 @@ private class Tables {
 
         companion object {
             const val NAME = "parties"
-            const val CREATE_QUERY = "CREATE TABLE parties (" +
-                    "_id INTEGER PRIMARY KEY, " +
-                    "name TEXT NOT NULL, " +
-                    "year INTEGER NOT NULL);"
+            const val CREATE_QUERY =
+                "CREATE TABLE parties (" + "_id INTEGER PRIMARY KEY, " + "name TEXT NOT NULL, " + "year INTEGER NOT NULL);"
             const val FIELDS_COUNT = 3
 
             fun createParty(cursor: Cursor) = run {
@@ -236,15 +207,8 @@ private class Tables {
 
         companion object {
             const val NAME = "tracks"
-            const val CREATE_QUERY = "CREATE TABLE tracks (" +
-                    "_id INTEGER PRIMARY KEY, " +
-                    "filename TEXT NOT NULL, " +
-                    "title TEXT, " +
-                    "votes TEXT, " +
-                    "duration INTEGER, " +
-                    "year INTEGER, " +
-                    "compo TEXT, " +
-                    "partyplace INTEGER);"
+            const val CREATE_QUERY =
+                "CREATE TABLE tracks (" + "_id INTEGER PRIMARY KEY, " + "filename TEXT NOT NULL, " + "title TEXT, " + "votes TEXT, " + "duration INTEGER, " + "year INTEGER, " + "compo TEXT, " + "partyplace INTEGER);"
             const val FIELDS_COUNT = 8
 
             fun createTrack(cursor: Cursor, fieldOffset: Int = 0) = run {

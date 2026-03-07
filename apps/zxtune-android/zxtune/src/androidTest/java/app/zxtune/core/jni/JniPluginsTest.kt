@@ -2,7 +2,6 @@ package app.zxtune.core.jni
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import java.util.*
 
 class JniPluginsTest {
     @Test
@@ -11,7 +10,7 @@ class JniPluginsTest {
         val counts = intArrayOf(0, 0)
         val players = HashSet<String>()
         val containers = HashSet<String>()
-        val api = JniApi();
+        val api = JniApi()
         api.enumeratePlugins(object : Plugins.Visitor {
             override fun onPlayerPlugin(devices: Int, id: String, description: String) {
                 flags[0] = flags[0] or devices
@@ -27,7 +26,7 @@ class JniPluginsTest {
         })
         assertEquals(16375, flags[0])
         assertEquals(51, flags[1])
-        assertEquals(118, counts[0])
-        assertEquals(24, counts[1])
+        assertEquals(274, counts[0])
+        assertEquals(58, counts[1])
     }
 }

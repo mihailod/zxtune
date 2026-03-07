@@ -10,8 +10,7 @@
 
 #pragma once
 
-// library includes
-#include <module/state.h>
+#include "module/state.h"
 
 namespace Module
 {
@@ -20,7 +19,7 @@ namespace Module
   {
   public:
     //! Pointer type
-    typedef std::shared_ptr<const TrackState> Ptr;
+    using Ptr = std::shared_ptr<const TrackState>;
 
     //! Current position (up to TrackInformation::PositionsCount)
     virtual uint_t Position() const = 0;

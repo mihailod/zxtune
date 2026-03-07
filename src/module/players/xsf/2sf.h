@@ -10,13 +10,9 @@
 
 #pragma once
 
-// library includes
-#include <module/players/factory.h>
+#include "module/players/xsf/xsf_factory.h"
 
-namespace Module
+namespace Module::TwoSF
 {
-  namespace TwoSF
-  {
-    Factory::Ptr CreateFactory();
-  }
-}  // namespace Module
+  XSF::Factory::Ptr CreateFactory();
+}  // namespace Module::TwoSF

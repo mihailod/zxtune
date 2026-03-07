@@ -8,21 +8,20 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/music/oggvorbis.h"
+
 #include "formats/chiptune/container.h"
 #include "formats/chiptune/music/tags_vorbis.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/data_builder.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <math/bitops.h>
-#include <strings/encoding.h>
-#include <strings/trim.h>
-// std includes
+
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "math/bitops.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+
+#include <array>
 #include <cctype>
 #include <numeric>
 #include <unordered_map>
@@ -32,9 +31,12 @@ namespace Formats::Chiptune
   namespace Ogg
   {
     const uint8_t SIGNATURE[] = {'O', 'g', 'g', 'S', 0};
-    const uint64_t UNFINISHED_PAGE_POSITION = ~0ull;
+    const uint64_t UNFINISHED_PAGE_POSITION = ~0uLL;
     const uint_t MAX_SEGMENT_SIZE = 255;
     const uint_t MAX_PAGE_SIZE = 32768;
+    const uint_t CONTINUED_PACKET = 1;
+    const uint_t FIRST_PAGE = 2;
+    const uint_t LAST_PAGE = 4;
 
     const uint8_t* SeekSignature(Binary::DataInputStream& stream, const uint8_t* needle, std::size_t size)
     {
@@ -67,56 +69,124 @@ namespace Formats::Chiptune
       public:
         virtual ~Callback() = default;
 
-        virtual void OnStream(uint32_t streamId) = 0;
-        virtual void OnPage(std::size_t offset, uint_t positionsCount, Binary::DataInputStream& payload) = 0;
+        virtual void OnPage(uint32_t streamId, std::size_t offset, uint64_t positionInFrames, Binary::View data) = 0;
       };
 
       Binary::Container::Ptr Parse(Callback& target)
       {
         static const std::size_t MIN_PAGE_SIZE = 27;
-        uint32_t lastStreamId = ~0;
-        struct StreamData
+        class StreamData
         {
+        public:
+          explicit StreamData(uint32_t id)
+            : Id(id)
+          {}
+
+          uint32_t GetId() const
+          {
+            return Id;
+          }
+
+          void StartPage(uint32_t number)
+          {
+            Require(NextPageNumber <= number);
+            NextPageNumber = number + 1;
+          }
+
+          void AddPart(std::size_t offset, uint64_t position, Binary::View part)
+          {
+            if (Parts.empty())
+            {
+              Offset = offset;
+              Position = position;
+            }
+            Parts.push_back(part);
+          }
+
+          void Flush(Callback& target)
+          {
+            if (Parts.size() == 1)
+            {
+              target.OnPage(Id, Offset, Position, Parts.front());
+            }
+            else if (!Parts.empty())
+            {
+              target.OnPage(Id, Offset, Position, MergeParts());
+            }
+            Parts.clear();
+          }
+
+        private:
+          Binary::View MergeParts()
+          {
+            const auto totalSize =
+                std::accumulate(Parts.begin(), Parts.end(), std::size_t(0),
+                                [](std::size_t sum, Binary::View part) { return sum + part.Size(); });
+            Buffer = Binary::DataBuilder(totalSize);
+            for (const auto& p : Parts)
+            {
+              Buffer.Add(p);
+            }
+            return Buffer.GetView();
+          }
+
+        private:
+          const uint32_t Id;
           uint32_t NextPageNumber = 0;
+          std::size_t Offset = 0;
           uint64_t Position = 0;
+          std::vector<Binary::View> Parts;
+          Binary::DataBuilder Buffer;
         };
-        std::unordered_map<uint32_t, StreamData> streams;
+        std::vector<StreamData> streams;
+        StreamData* currentStream = nullptr;
         while (Stream.GetRestSize() >= MIN_PAGE_SIZE && SyncToPage())
         {
           const auto offset = Stream.GetPosition();
           Stream.Skip(sizeof(SIGNATURE));
-          /*const auto flags = */ Stream.ReadByte();
-          const uint64_t nextPosition = Stream.Read<le_uint64_t>();
-          const auto hasNextPosition = nextPosition != UNFINISHED_PAGE_POSITION;
+          const auto flags = Stream.ReadByte();
+          const auto newPacket = (flags & CONTINUED_PACKET) == 0;
+          const uint64_t position = Stream.Read<le_uint64_t>();
           const uint_t streamId = Stream.Read<le_uint32_t>();
-          auto& stream = streams[streamId];
-          const uint32_t pageNumber = Stream.Read<le_uint32_t>();
-          Require(stream.NextPageNumber <= pageNumber);
-          stream.NextPageNumber = pageNumber + 1;
+          if (currentStream && currentStream->GetId() != streamId)
+          {
+            currentStream = nullptr;
+            for (auto& s : streams)
+            {
+              if (s.GetId() == streamId)
+              {
+                currentStream = &s;
+                break;
+              }
+            }
+          }
+          if (!currentStream)
+          {
+            streams.emplace_back(streamId);
+            currentStream = &streams.back();
+          }
+          currentStream->StartPage(Stream.Read<le_uint32_t>());
           /*const auto crc = */ Stream.Read<le_uint32_t>();
           const auto segmentsCount = Stream.ReadByte();
-          const auto segmentsSizes = Stream.PeekRawData(segmentsCount);
+          const auto* const segmentsSizes = Stream.PeekRawData(segmentsCount);
           if (!segmentsSizes)
           {
             Stream.Seek(offset);
             break;
           }
           Stream.Skip(segmentsCount);
-          auto& position = stream.Position;
           if (const auto payloadSize = std::accumulate(segmentsSizes, segmentsSizes + segmentsCount, std::size_t(0)))
           {
-            if (lastStreamId != streamId)
+            if (newPacket)
             {
-              lastStreamId = streamId;
-              target.OnStream(streamId);
+              currentStream->Flush(target);
             }
-            Binary::DataInputStream payload(Stream.ReadData(std::min(payloadSize, Stream.GetRestSize())));
-            target.OnPage(offset, hasNextPosition ? static_cast<uint_t>(nextPosition - position) : 0, payload);
+            currentStream->AddPart(offset, position, Stream.ReadData(std::min(payloadSize, Stream.GetRestSize())));
           }
-          if (hasNextPosition)
-          {
-            position = nextPosition;
-          }
+        }
+        if (currentStream)
+        {
+          currentStream->Flush(target);
         }
         return Stream.GetReadContainer();
       }
@@ -134,137 +204,6 @@ namespace Formats::Chiptune
     private:
       Binary::InputStream Stream;
     };
-
-    class Builder
-    {
-    public:
-      explicit Builder(std::size_t sizeHint)
-        : Storage(sizeHint)
-      {}
-
-      void SetStreamId(uint32_t streamId)
-      {
-        StreamId = streamId;
-      }
-
-      void AddData(uint64_t position, const uint8_t* data, std::size_t size)
-      {
-        bool continued = false;
-        while (size > MAX_PAGE_SIZE)
-        {
-          AddPage(UNFINISHED_PAGE_POSITION, Binary::View(data, MAX_PAGE_SIZE), continued);
-          data += MAX_PAGE_SIZE;
-          size -= MAX_PAGE_SIZE;
-          continued = true;
-        }
-        AddPage(position, Binary::View(data, size), continued);
-      }
-
-      Binary::Container::Ptr CaptureResult()
-      {
-        auto& flags = Storage.Get<uint8_t>(LastPageOffset + 5);
-        flags |= LAST_PAGE;
-        CalculateCrc();
-        return Storage.CaptureResult();
-      }
-
-    private:
-      enum Flags
-      {
-        CONTINUED_PACKET = 1,
-        FIRST_PAGE = 2,
-        LAST_PAGE = 4
-      };
-
-      void AddPage(uint64_t position, Binary::View data, bool continued)
-      {
-        if (PagesDone)
-        {
-          CalculateCrc();
-        }
-        const uint8_t segmentsCount = static_cast<uint8_t>(data.Size() / MAX_SEGMENT_SIZE) + 1;
-        LastPageOffset = Storage.Size();
-        LastPageSize = 27 + segmentsCount + data.Size();
-        Storage.Allocate(LastPageSize);
-        Storage.Resize(LastPageOffset);
-        Storage.Add(SIGNATURE);
-        // assume single stream, so first page is always first
-        const uint8_t flag = PagesDone == 0 ? FIRST_PAGE : (continued ? CONTINUED_PACKET : 0);
-        Storage.Add(flag);
-        Storage.Add<le_uint64_t>(position);
-        Storage.Add<le_uint32_t>(StreamId);
-        Storage.Add<le_uint32_t>(PagesDone++);
-        const le_uint32_t EMPTY_CRC = 0;
-        Storage.Add(EMPTY_CRC);
-        Storage.Add(segmentsCount);
-        WriteSegments(data.Size(), static_cast<uint8_t*>(Storage.Allocate(segmentsCount)));
-        Storage.Add(data);
-      }
-
-      void WriteSegments(std::size_t size, uint8_t* data)
-      {
-        for (;;)
-        {
-          const auto part = std::min<uint_t>(MAX_SEGMENT_SIZE, size);
-          *data++ = static_cast<uint8_t>(part);
-          size -= part;
-          if (!size)
-          {
-            if (part == MAX_SEGMENT_SIZE)
-            {
-              *data++ = 0;
-            }
-            break;
-          }
-        }
-      }
-
-      void CalculateCrc()
-      {
-        auto* const page = static_cast<uint8_t*>(Storage.Get(LastPageOffset));
-        auto* const rawCrc = safe_ptr_cast<le_uint32_t*>(page + 22);
-        *rawCrc = 0;
-        *rawCrc = Crc32::Calculate(page, LastPageSize);
-      }
-
-      class Crc32
-      {
-      public:
-        Crc32()
-        {
-          const uint32_t CRC32_POLY = 0x04c11db7;
-          for (uint_t i = 0; i < 256; ++i)
-          {
-            uint_t s = i << 24;
-            for (uint_t j = 0; j < 8; ++j)
-              s = (s << 1) ^ (s >= (1u << 31) ? CRC32_POLY : 0);
-            Table[i] = s;
-          }
-        }
-
-        static uint32_t Calculate(const uint8_t* data, std::size_t size)
-        {
-          static const Crc32 INSTANCE;
-          uint32_t crc = 0;
-          for (; size != 0; --size, ++data)
-          {
-            crc = (crc << 8) ^ INSTANCE.Table[*data ^ (crc >> 24)];
-          }
-          return crc;
-        }
-
-      private:
-        uint32_t Table[256];
-      };
-
-    private:
-      Binary::DataBuilder Storage;
-      uint32_t StreamId = 0x2054585a;
-      uint32_t PagesDone = 0;
-      std::size_t LastPageOffset = 0;
-      std::size_t LastPageSize = 0;
-    };
-
   }  // namespace Ogg
 
   // https://xiph.org/vorbis/doc/Vorbis_I_spec.html
@@ -288,22 +227,23 @@ namespace Formats::Chiptune
         : Target(target)
       {}
 
-      void OnStream(uint32_t streamId) override
+      void OnPage(uint32_t streamId, std::size_t offset, uint64_t positionInFrames, Binary::View data) override
       {
-        Target.SetStreamId(streamId);
-        NextPacketType = &StreamsNextPacketTypes.try_emplace(streamId, Identification).first->second;
-      }
-
-      void OnPage(std::size_t offset, uint_t positionsCount, Binary::DataInputStream& payload) override
-      {
+        if (streamId != LastStreamId)
+        {
+          LastStreamId = streamId;
+          Target.SetStreamId(streamId);
+          NextPacketType = &StreamsNextPacketTypes.try_emplace(streamId, Identification).first->second;
+        }
+        Binary::DataInputStream payload(data);
         while (payload.GetRestSize())
         {
-          ReadPacket(offset, positionsCount, payload);
+          ReadPacket(offset, positionInFrames, payload);
         }
       }
 
     private:
-      void ReadPacket(std::size_t pageOffset, uint_t samplesCount, Binary::DataInputStream& payload)
+      void ReadPacket(std::size_t pageOffset, uint64_t positionInFrames, Binary::DataInputStream& payload)
       {
         if (*NextPacketType != Audio)
         {
@@ -319,7 +259,7 @@ namespace Formats::Chiptune
         }
         else
         {
-          Target.AddFrame(pageOffset, samplesCount, payload.ReadRestData());
+          Target.AddFrame(pageOffset, positionInFrames, payload.ReadRestData());
         }
       }
 
@@ -378,6 +318,7 @@ namespace Formats::Chiptune
 
     private:
       OggVorbis::Builder& Target;
+      uint32_t LastStreamId = ~0u;
       std::unordered_map<uint32_t, PacketType> StreamsNextPacketTypes;
       PacketType* NextPacketType = nullptr;
     };
@@ -385,7 +326,7 @@ namespace Formats::Chiptune
 
   namespace OggVorbis
   {
-    const Char DESCRIPTION[] = "OGG Vorbis";
+    const auto DESCRIPTION = "OGG Vorbis"sv;
 
     Formats::Chiptune::Container::Ptr Parse(const Binary::Container& data, Builder& target)
     {
@@ -399,12 +340,12 @@ namespace Formats::Chiptune
         }
         else
         {
-          return Container::Ptr();
+          return {};
         }
       }
       catch (const std::exception&)
       {
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
 
@@ -422,91 +363,13 @@ namespace Formats::Chiptune
                          uint_t /*blockSizeHi*/) override
       {}
       void SetSetup(Binary::View /*data*/) override {}
-      void AddFrame(std::size_t /*offset*/, uint_t /*samplesCount*/, Binary::View /*data*/) override {}
+      void AddFrame(std::size_t /*offset*/, uint64_t /*positionInFrames*/, Binary::View /*data*/) override {}
     };
 
     Builder& GetStubBuilder()
     {
       static StubBuilder stub;
       return stub;
-    }
-
-    class SimpleDumpBuilder : public DumpBuilder
-    {
-    public:
-      explicit SimpleDumpBuilder(std::size_t sizeHint)
-        : Storage(sizeHint)
-      {}
-
-      MetaBuilder& GetMetaBuilder() override
-      {
-        return GetStubMetaBuilder();
-      }
-
-      void SetStreamId(uint32_t id) override
-      {
-        Storage.SetStreamId(id);
-      }
-
-      void AddUnknownPacket(Binary::View data) override
-      {
-        Storage.AddData(0, data.As<uint8_t>(), data.Size());
-      }
-
-      void SetProperties(uint_t channels, uint_t frequency, uint_t blockSizeLo, uint_t blockSizeHi) override
-      {
-        const auto blockSizes = (Math::Log2(blockSizeHi - 1) << 4) | (Math::Log2(blockSizeLo - 1));
-        WriteIdentification(channels, frequency, blockSizes);
-        WriteComment();
-      }
-
-      void SetSetup(Binary::View data) override
-      {
-        Storage.AddData(0, data.As<uint8_t>(), data.Size());
-      }
-
-      void AddFrame(std::size_t /*offset*/, uint_t framesCount, Binary::View data) override
-      {
-        TotalFrames += framesCount;
-        Storage.AddData(TotalFrames, data.As<uint8_t>(), data.Size());
-      }
-
-      Binary::Container::Ptr GetDump() override
-      {
-        return Storage.CaptureResult();
-      }
-
-    private:
-      void WriteIdentification(uint8_t channels, uint32_t frequency, uint8_t blockSizes)
-      {
-        Binary::DataBuilder builder(30);
-        builder.Add<uint8_t>(Vorbis::Identification);
-        builder.Add(Vorbis::SIGNATURE);
-        builder.Add<le_uint32_t>(Vorbis::VERSION);
-        builder.Add(channels);
-        builder.Add<le_uint32_t>(frequency);
-        builder.Allocate(3 * sizeof(uint32_t));
-        builder.Add(blockSizes);
-        builder.Add<uint8_t>(1);
-        assert(builder.Size() == 30);
-        Storage.AddData(0, static_cast<const uint8_t*>(builder.Get(0)), builder.Size());
-      }
-
-      void WriteComment()
-      {
-        static const uint8_t DATA[] = {
-            Vorbis::Comment, 'v', 'o', 'r', 'b', 'i', 's', 6, 0, 0, 0, 'z', 'x', 't', 'u', 'n', 'e', 0, 0, 0, 0, 1};
-        Storage.AddData(0, DATA, sizeof(DATA));
-      }
-
-    private:
-      Ogg::Builder Storage;
-      uint64_t TotalFrames = 0;
-    };
-
-    DumpBuilder::Ptr CreateDumpBuilder(std::size_t sizeHint)
-    {
-      return MakePtr<SimpleDumpBuilder>(sizeHint);
     }
 
     // Check only OGG container
@@ -517,7 +380,7 @@ namespace Formats::Chiptune
         "00{8}"     // position
         "?{4}"      // serial
         "00000000"  // page
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -526,7 +389,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -549,7 +412,7 @@ namespace Formats::Chiptune
         }
         else
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
       }
 

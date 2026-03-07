@@ -10,26 +10,26 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// library includes
-#include <strings/array.h>
+#include "binary/view.h"
+#include "strings/array.h"
 
-namespace Formats
+#include "string_view.h"
+#include "types.h"
+
+namespace Formats::Chiptune
 {
-  namespace Chiptune
+  class MetaBuilder
   {
-    class MetaBuilder
-    {
-    public:
-      virtual ~MetaBuilder() = default;
+  public:
+    virtual ~MetaBuilder() = default;
 
-      virtual void SetProgram(StringView program) = 0;
-      virtual void SetTitle(StringView title) = 0;
-      virtual void SetAuthor(StringView author) = 0;
-      virtual void SetStrings(const Strings::Array& strings) = 0;
-    };
+    virtual void SetProgram(StringView program) = 0;
+    virtual void SetTitle(StringView title) = 0;
+    virtual void SetAuthor(StringView author) = 0;
+    virtual void SetStrings(const Strings::Array& strings) = 0;
+    virtual void SetComment(StringView comment) = 0;
+    virtual void SetPicture(Binary::View /*content*/){};
+  };
 
-    MetaBuilder& GetStubMetaBuilder();
-  }  // namespace Chiptune
-}  // namespace Formats
+  MetaBuilder& GetStubMetaBuilder();
+}  // namespace Formats::Chiptune

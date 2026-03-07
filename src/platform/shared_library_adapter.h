@@ -10,9 +10,8 @@
 
 #pragma once
 
-// library includes
-#include <platform/shared_library.h>
-// std includes
+#include "platform/shared_library.h"
+
 #include <map>
 
 namespace Platform
@@ -27,7 +26,7 @@ namespace Platform
     template<class F>
     F GetSymbol(const char* name) const
     {
-      const NameToSymbol::const_iterator it = Symbols.find(name);
+      const auto it = Symbols.find(name);
       if (it != Symbols.end())
       {
         return reinterpret_cast<F>(it->second);
@@ -39,7 +38,7 @@ namespace Platform
 
   private:
     const SharedLibrary::Ptr Library;
-    typedef std::map<const char*, void*> NameToSymbol;
+    using NameToSymbol = std::map<const char*, void*>;
     mutable NameToSymbol Symbols;
   };
 }  // namespace Platform

@@ -44,7 +44,6 @@ Gfx: &lt;b&gt;Restorer&lt;/b&gt;&lt;br/&gt;
 &lt;li&gt;Used &lt;a href=&quot;https://gitlab.kode54.net/kode54/Highly_Theoretical&quot;&gt;Highly Threoretical&lt;/a&gt; library by &lt;b&gt;Neill Corlett&lt;/b&gt; and &lt;b&gt;Christopher Snowhill&lt;/b&gt;&lt;/li&gt;
 &lt;li&gt;Used &lt;a href=&quot;http://sourceforge.net/projects/asap&quot;&gt;ASAP&lt;/a&gt; library by &lt;b&gt;Piotr Fusik&lt;/b&gt;&lt;/li&gt;
 &lt;li&gt;Used &lt;a href=&quot;https://github.com/lieff/minimp3&quot;&gt;minimp3&lt;/a&gt; library by &lt;b&gt;lieff&lt;/b&gt;&lt;/li&gt;
-&lt;li&gt;Used &lt;a href=&quot;https://github.com/nothings/stb&quot;&gt;stb-vorbis&lt;/a&gt; library by &lt;b&gt;Sean Barrett&lt;/b&gt;&lt;/li&gt;
 &lt;li&gt;Used &lt;a href=&quot;https://github.com/jgilje/v2m-player&quot;&gt;v2m-player&lt;/a&gt; library by &lt;b&gt;Farbrausch&lt;/b&gt; and &lt;b&gt;Joakim L. Gilje&lt;/b&gt;&lt;/li&gt;
 &lt;li&gt;Used &lt;a href=&quot;https://ffmpeg.org/&quot;&gt;FFmpeg&lt;/a&gt; library&lt;/li&gt;
 &lt;li&gt;Used &lt;a href=&quot;https://github.com/ValleyBell/libvgm&quot;&gt;libvgm&lt;/a&gt; library by &lt;b&gt;Valley Bell&lt;/b&gt;&lt;/li&gt;
@@ -91,7 +90,6 @@ Gfx: &lt;b&gt;Restorer&lt;/b&gt;&lt;br/&gt;
 &lt;li&gt;Использована библиотека &lt;a href=&quot;https://gitlab.kode54.net/kode54/Highly_Theoretical&quot;&gt;Highly Threoretical&lt;/a&gt; от &lt;b&gt;Neill Corlett&lt;/b&gt; и &lt;b&gt;Christopher Snowhill&lt;/b&gt;&lt;/li&gt;
 &lt;li&gt;Использована библиотека &lt;a href=&quot;http://sourceforge.net/projects/asap&quot;&gt;ASAP&lt;/a&gt; от &lt;b&gt;Piotr Fusik&lt;/b&gt;&lt;/li&gt;
 &lt;li&gt;Использована библиотека &lt;a href=&quot;https://github.com/lieff/minimp3&quot;&gt;minimp3&lt;/a&gt; от &lt;b&gt;lieff&lt;/b&gt;&lt;/li&gt;
-&lt;li&gt;Использована библиотека &lt;a href=&quot;https://github.com/nothings/stb&quot;&gt;stb-vorbis&lt;/a&gt; от &lt;b&gt;Sean Barrett&lt;/b&gt;&lt;/li&gt;
 &lt;li&gt;Использована библиотека &lt;a href=&quot;https://github.com/jgilje/v2m-player&quot;&gt;v2m-player&lt;/a&gt; от &lt;b&gt;Farbrausch&lt;/b&gt; и &lt;b&gt;Joakim L. Gilje&lt;/b&gt;&lt;/li&gt;
 &lt;li&gt;Использована библиотека &lt;a href=&quot;https://ffmpeg.org/&quot;&gt;FFmpeg&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;Использована библиотека &lt;a href=&quot;https://github.com/ValleyBell/libvgm&quot;&gt;libvgm&lt;/a&gt; от &lt;b&gt;Valley Bell&lt;/b&gt;&lt;/li&gt;
@@ -114,7 +112,7 @@ Gfx: &lt;b&gt;Restorer&lt;/b&gt;&lt;br/&gt;
 <context>
     <name>AnalyzerControl</name>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/controls/analyzer_control.cpp" line="164"/>
+        <location filename="../../apps/zxtune-qt/ui/controls/analyzer_control.cpp" line="160"/>
         <source>Analyzer</source>
         <translation>Анализатор</translation>
     </message>
@@ -142,27 +140,27 @@ Gfx: &lt;b&gt;Restorer&lt;/b&gt;&lt;br/&gt;
         <translation>Доступ к файлам</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="55"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="57"/>
         <source>Player plugins</source>
         <translation>Поддержка модулей</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="56"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="58"/>
         <source>Container plugins</source>
         <translation>Поддержка контейнеров</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="94"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="96"/>
         <source>Multidevice</source>
         <translation>Поддержка произвольных устройств</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="110"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="112"/>
         <source>Multitrack</source>
         <translation>Многофайловые</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="101"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="103"/>
         <source>Archive</source>
         <translation>Архивные</translation>
     </message>
@@ -207,7 +205,7 @@ Gfx: &lt;b&gt;Restorer&lt;/b&gt;&lt;br/&gt;
         <translation>Конверсия в сжатый .fym</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="112"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="114"/>
         <source>Data scanner</source>
         <translation>Анализатор данных</translation>
     </message>
@@ -222,22 +220,22 @@ Gfx: &lt;b&gt;Restorer&lt;/b&gt;&lt;br/&gt;
         <translation>Поддержка директорий</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="103"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="105"/>
         <source>Compressor</source>
         <translation>Упаковщики</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="104"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="106"/>
         <source>Snapshot</source>
         <translation>Снапшоты</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="106"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="108"/>
         <source>Disk image</source>
         <translation>Образы дисков</translation>
     </message>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="108"/>
+        <location filename="../../apps/zxtune-qt/ui/informational/componentsdialog.cpp" line="110"/>
         <source>Decompiler</source>
         <translation>Декомпиляторы</translation>
     </message>
@@ -327,7 +325,7 @@ Gfx: &lt;b&gt;Restorer&lt;/b&gt;&lt;br/&gt;
 <context>
     <name>OverlayProgress</name>
     <message>
-        <location filename="../../apps/zxtune-qt/ui/controls/overlay_progress.cpp" line="103"/>
+        <location filename="../../apps/zxtune-qt/ui/controls/overlay_progress.cpp" line="101"/>
         <source>Click to cancel</source>
         <translation>Нажмите для отмены</translation>
     </message>

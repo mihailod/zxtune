@@ -8,11 +8,8 @@
  *
  **/
 
-// local includes
 #include "sound/backends/paudio.h"
 #include "sound/backends/storage.h"
-// library includes
-#include <sound/backend_attrs.h>
 
 namespace Sound
 {

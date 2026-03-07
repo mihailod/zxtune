@@ -8,18 +8,19 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/aym/ascsoundmaster.h"
 #include "formats/packed/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <static_string.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "static_string.h"
+#include "string_view.h"
+
+#include <algorithm>
 #include <array>
 
 namespace Formats::Packed
@@ -31,7 +32,7 @@ namespace Formats::Packed
     const std::size_t MAX_MODULE_SIZE = 0x3a00;
     const std::size_t MAX_PLAYER_SIZE = 1700;
 
-    typedef std::array<uint8_t, 63> InfoData;
+    using InfoData = std::array<uint8_t, 63>;
 
     struct PlayerVer0
     {
@@ -98,15 +99,15 @@ namespace Formats::Packed
       }
     };
 
-    typedef PlayerTraits (*CreatePlayerFunc)(Binary::View);
-    typedef Formats::Chiptune::Container::Ptr (*ParseFunc)(const Binary::Container&,
-                                                           Formats::Chiptune::ASCSoundMaster::Builder&);
-    typedef Binary::Container::Ptr (*InsertMetaInfoFunc)(const Binary::Container&, Binary::View);
+    using CreatePlayerFunc = PlayerTraits (*)(Binary::View);
+    using ParseFunc = Formats::Chiptune::Container::Ptr (*)(const Binary::Container&,
+                                                            Formats::Chiptune::ASCSoundMaster::Builder&);
+    using InsertMetaInfoFunc = Binary::Container::Ptr (*)(const Binary::Container&, Binary::View);
 
     struct VersionTraits
     {
       const std::size_t MinSize;
-      const Char* Description;
+      const StringView Description;
       const StringView Format;
       const CreatePlayerFunc CreatePlayer;
       const ParseFunc Parse;
@@ -142,7 +143,7 @@ namespace Formats::Packed
                                      ""_ss;
     const VersionTraits VERSION0 = {
         sizeof(PlayerVer0),
-        "ASC Sound Master v0.x player",
+        "ASC Sound Master v0.x player"sv,
         VERSION0_FORMAT,
         &PlayerTraits::Create<PlayerVer0>,
         &Formats::Chiptune::ASCSoundMaster::Ver0::Parse,
@@ -163,7 +164,7 @@ namespace Formats::Packed
                                      ""_ss;
     const VersionTraits VERSION1 = {
         sizeof(PlayerVer0),
-        "ASC Sound Master v1.x player",
+        "ASC Sound Master v1.x player"sv,
         VERSION1_FORMAT,
         &PlayerTraits::Create<PlayerVer0>,
         &Formats::Chiptune::ASCSoundMaster::Ver1::Parse,
@@ -185,7 +186,7 @@ namespace Formats::Packed
         ""_ss;
     const VersionTraits VERSION2 = {
         sizeof(PlayerVer2),
-        "ASC Sound Master v2.x player",
+        "ASC Sound Master v2.x player"sv,
         VERSION2_FORMAT,
         &PlayerTraits::Create<PlayerVer2>,
         &Formats::Chiptune::ASCSoundMaster::Ver1::Parse,
@@ -198,11 +199,11 @@ namespace Formats::Packed
       // 20 - author
       // 4  - ignore
       // 20 - title
-      const auto authorStart = info.As<char>() + 19;
-      const auto ignoreStart = authorStart + 20;
-      const auto titleStart = ignoreStart + 4;
-      const auto end = titleStart + 20;
-      const auto isVisible = [](Char c) { return c > ' '; };
+      const auto* const authorStart = info.As<char>() + 19;
+      const auto* const ignoreStart = authorStart + 20;
+      const auto* const titleStart = ignoreStart + 4;
+      const auto* const end = titleStart + 20;
+      const auto isVisible = [](auto c) { return c > ' '; };
       return std::none_of(authorStart, ignoreStart, isVisible) && std::none_of(titleStart, end, isVisible);
     }
   }  // namespace CompiledASC
@@ -215,7 +216,7 @@ namespace Formats::Packed
       , Player(Binary::CreateFormat(Version.Format, Version.MinSize))
     {}
 
-    String GetDescription() const override
+    StringView GetDescription() const override
     {
       return Version.Description;
     }
@@ -231,15 +232,15 @@ namespace Formats::Packed
       const Binary::View data(rawData);
       if (!Player->Match(data))
       {
-        return Container::Ptr();
+        return {};
       }
       const auto rawPlayer = Version.CreatePlayer(data);
       if (rawPlayer.Size >= std::min(data.Size(), MAX_PLAYER_SIZE))
       {
         Dbg("Invalid player");
-        return Container::Ptr();
+        return {};
       }
-      Dbg("Detected player in first %1% bytes", rawPlayer.Size);
+      Dbg("Detected player in first {} bytes", rawPlayer.Size);
       const auto modData = rawData.GetSubcontainer(rawPlayer.Size, MAX_MODULE_SIZE);
       const auto rawInfo = data.SubView(rawPlayer.InfoOffset, sizeof(InfoData));
       auto& stub = Formats::Chiptune::ASCSoundMaster::GetStubBuilder();
@@ -262,7 +263,7 @@ namespace Formats::Packed
         Dbg("Failed to parse fixed module");
       }
       Dbg("Failed to find module after player");
-      return Container::Ptr();
+      return {};
     }
 
   private:

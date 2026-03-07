@@ -8,8 +8,9 @@
  *
  **/
 
-// common includes
-#include <progress_callback.h>
+#include "tools/progress_callback.h"
+
+#include "string_view.h"
 
 namespace Log
 {
@@ -18,7 +19,7 @@ namespace Log
   public:
     void OnProgress(uint_t /*current*/) override {}
 
-    void OnProgress(uint_t /*current*/, const String& /*message*/) override {}
+    void OnProgress(uint_t /*current*/, StringView /*message*/) override {}
   };
 
   ProgressCallback& ProgressCallback::Stub()

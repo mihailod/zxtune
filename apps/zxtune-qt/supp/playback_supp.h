@@ -10,11 +10,10 @@
 
 #pragma once
 
-// local includes
-#include "playlist/supp/data.h"
-// library includes
-#include <sound/backend.h>
-// qt includes
+#include "apps/zxtune-qt/playlist/supp/data.h"
+
+#include "sound/backend.h"
+
 #include <QtCore/QThread>
 
 class PlaybackSupport : public QObject
@@ -26,7 +25,7 @@ protected:
 public:
   static PlaybackSupport* Create(QObject& parent, Parameters::Accessor::Ptr sndOptions);
 
-public slots:
+public:
   virtual void SetDefaultItem(Playlist::Item::Data::Ptr item) = 0;
   virtual void SetItem(Playlist::Item::Data::Ptr item) = 0;
   virtual void ResetItem() = 0;

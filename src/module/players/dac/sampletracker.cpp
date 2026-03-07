@@ -8,21 +8,19 @@
  *
  **/
 
-// local includes
 #include "module/players/dac/sampletracker.h"
+
+#include "formats/chiptune/digital/sampletracker.h"
 #include "module/players/dac/dac_simple.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <formats/chiptune/digital/sampletracker.h>
-#include <module/players/platforms.h>
+
+#include "make_ptr.h"
 
 namespace Module::SampleTracker
 {
   const std::size_t CHANNELS_COUNT = 3;
 
-  typedef DAC::SimpleModuleData ModuleData;
-  typedef DAC::SimpleDataBuilder DataBuilder;
+  using ModuleData = DAC::SimpleModuleData;
+  using DataBuilder = DAC::SimpleDataBuilder;
 
   /*
     0x0016 0x0017 0x0019 0x001a 0x001c 0x001e 0x001f 0x0021 0x0023 0x0025 0x0027 0x002a
@@ -39,17 +37,16 @@ namespace Module::SampleTracker
     DAC::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
                                       Parameters::Container::Ptr properties) const override
     {
-      DAC::PropertiesHelper props(*properties);
+      DAC::PropertiesHelper props(*properties, CHANNELS_COUNT);
       DataBuilder::Ptr dataBuilder = DAC::CreateSimpleDataBuilder<CHANNELS_COUNT>(props);
       if (const auto container = Formats::Chiptune::SampleTracker::Parse(rawData, *dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
         return DAC::CreateSimpleChiptune(dataBuilder->CaptureResult(), std::move(properties));
       }
       else
       {
-        return DAC::Chiptune::Ptr();
+        return {};
       }
     }
   };

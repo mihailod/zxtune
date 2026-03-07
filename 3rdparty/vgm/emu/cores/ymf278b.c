@@ -145,6 +145,7 @@ static DEVDEF_RWFUNC devFunc[] =
 static DEV_DEF devDef =
 {
 	"YMF278B", "openMSX", FCC_OMSX,
+	24,  // Channels
 	
 	device_start_ymf278b,
 	device_stop_ymf278b,
@@ -946,8 +947,12 @@ static void ymf278b_C_w(YMF278BChip* chip, UINT8 reg, UINT8 data)
 				ymf278b_C_w(chip, 8 + snum + (i - 2) * 24, buf[i]);
 			}
 			
-			if (slot->keyon)
+			if (slot->keyon) {
 				ymf278b_keyOnHelper(chip, slot);
+			} else {
+				slot->stepptr = 0;
+				slot->pos = 0;
+			}
 			break;
 		case 1:
 			slot->wave = (slot->wave & 0xFF) | ((data & 0x1) << 8);

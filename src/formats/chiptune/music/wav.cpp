@@ -8,26 +8,27 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/music/wav.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/data_builder.h>
-#include <binary/format_factories.h>
-#include <binary/input_stream.h>
-#include <strings/encoding.h>
-#include <strings/trim.h>
-// std includes
+
+#include "binary/data_builder.h"
+#include "binary/format_factories.h"
+#include "binary/input_stream.h"
+#include "strings/sanitize.h"
+
+#include "byteorder.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
+#include <array>
 #include <numeric>
 
 namespace Formats::Chiptune
 {
   namespace Wav
   {
-    const Char DESCRIPTION[] = "Waveform Audio File Format";
+    const auto DESCRIPTION = "Waveform Audio File Format"sv;
 
     // http://www-mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
     namespace Chunks
@@ -61,7 +62,7 @@ namespace Formats::Chiptune
       Binary::InputStream stream(data);
       Chunks::Id id;
       static const std::size_t HEADER_SIZE = 8;
-      while (const auto hdr = stream.PeekRawData(HEADER_SIZE))
+      while (const auto* const hdr = stream.PeekRawData(HEADER_SIZE))
       {
         std::memcpy(&id, hdr, sizeof(id));
         const auto size = ReadLE<uint32_t>(hdr + sizeof(id));
@@ -221,7 +222,7 @@ namespace Formats::Chiptune
         static String ReadString(Binary::View data)
         {
           const StringView view(data.As<char>(), data.Size());
-          return Strings::ToAutoUtf8(Strings::TrimSpaces(view));
+          return Strings::Sanitize(view);
         }
 
       private:
@@ -245,7 +246,7 @@ namespace Formats::Chiptune
       }
       catch (const std::exception&)
       {}
-      return Formats::Chiptune::Container::Ptr();
+      return {};
     }
 
     class StubBuilder : public Builder
@@ -273,81 +274,6 @@ namespace Formats::Chiptune
       return stub;
     }
 
-    class SimpleDumpBuilder : public DumpBuilder
-    {
-    public:
-      SimpleDumpBuilder()
-        : Storage(60)
-      {
-        Storage.Add(Chunks::RIFF);
-        Storage.Add<le_uint32_t>(0);
-        Storage.Add(Headers::WAVE);
-        Storage.Add(Chunks::FMT);
-        Storage.Add<le_uint32_t>(16);
-      }
-
-      MetaBuilder& GetMetaBuilder() override
-      {
-        return GetStubMetaBuilder();
-      }
-
-      void SetProperties(uint_t format, uint_t frequency, uint_t channels, uint_t bits, uint_t blockSize) override
-      {
-        Storage.Add<le_uint16_t>(format);
-        Storage.Add<le_uint16_t>(channels);
-        Storage.Add<le_uint32_t>(frequency);
-        Storage.Add<le_uint32_t>(frequency * blockSize);
-        Storage.Add<le_uint16_t>(blockSize);
-        Storage.Add<le_uint16_t>(bits);
-      }
-
-      void SetExtendedProperties(uint_t validBitsOrBlockSize, uint_t channelsMask, const Guid& formatId,
-                                 Binary::View restData) override
-      {
-        Storage.Add<le_uint16_t>(6 + sizeof(formatId) + restData.Size());
-        Storage.Add<le_uint16_t>(validBitsOrBlockSize);
-        Storage.Add<le_uint32_t>(channelsMask);
-        Storage.Add(formatId);
-        Storage.Add(restData);
-        Storage.Get<le_uint32_t>(16) = Storage.Size() - 20;
-      }
-
-      void SetExtraData(Binary::View data) override
-      {
-        Storage.Add<le_uint16_t>(data.Size());
-        Storage.Add(data);
-        Storage.Get<le_uint32_t>(16) = Storage.Size() - 20;
-      }
-
-      void SetSamplesData(Binary::Container::Ptr data) override
-      {
-        Storage.Add(Chunks::DATA);
-        Storage.Add<le_uint32_t>(data->Size());
-        Storage.Add(*data);
-      }
-
-      void SetSamplesCountHint(uint_t count) override
-      {
-        Storage.Add(Chunks::FACT);
-        Storage.Add<le_uint32_t>(4);
-        Storage.Add<le_uint32_t>(count);
-      }
-
-      Binary::Container::Ptr GetDump() override
-      {
-        Storage.Get<le_uint32_t>(4) = Storage.Size() - 8;
-        return Storage.CaptureResult();
-      }
-
-    private:
-      Binary::DataBuilder Storage;
-    };
-
-    DumpBuilder::Ptr CreateDumpBuilder()
-    {
-      return MakePtr<SimpleDumpBuilder>();
-    }
-
     const auto FORMAT =
         "'R'I'F'F"
         "????"
@@ -360,7 +286,7 @@ namespace Formats::Chiptune
         "????"             // data rate
         "??"               // arbitraty block size
         "00|01-20 00"      // 1-32 bits per sample and 0 for special formats
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -369,7 +295,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateMatchOnlyFormat(FORMAT))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -392,7 +318,7 @@ namespace Formats::Chiptune
         }
         else
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
       }
 

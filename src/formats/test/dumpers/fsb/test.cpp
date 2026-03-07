@@ -8,16 +8,20 @@
  *
  **/
 
-#include "../../utils.h"
-#include <formats/archived/fmod.h>
+#include "formats/archived/fmod.h"
+#include "formats/test/utils.h"
+
+#include "strings/format.h"
+
+#include "string_view.h"
+
 #include <iomanip>
-#include <strings/format.h>
 
 namespace
 {
   using namespace Formats::Archived::Fmod;
 
-  void Write(uint_t level, const char* msg)
+  void Write(uint_t level, StringView msg)
   {
     if (level)
     {
@@ -27,9 +31,9 @@ namespace
   }
 
   template<class... P>
-  void Write(uint_t level, const char* msg, P&&... params)
+  constexpr void Write(uint_t level, Strings::FormatString<P...> msg, P&&... params)
   {
-    Write(level, Strings::Format(msg, params...).c_str());
+    Write(level, Strings::Format(msg, std::forward<P>(params)...));
   }
 
   char ToHex(uint_t nib)
@@ -48,7 +52,7 @@ namespace
     const auto DUMP_SIZE = std::min<std::size_t>(data.Size(), 256);
     for (std::size_t offset = 0; offset < DUMP_SIZE;)
     {
-      const auto in = data.As<uint8_t>() + offset;
+      const auto* const in = data.As<uint8_t>() + offset;
       const auto toPrint = std::min(data.Size() - offset, LINE_SIZE);
       std::string msg(5 + 2 + LINE_SIZE * 3 + 2 + LINE_SIZE, ' ');
       msg[0] = ToHex((offset >> 12) & 15);
@@ -77,38 +81,38 @@ namespace
   public:
     void Setup(uint_t samplesCount, uint_t format) override
     {
-      Write(0, "%1% samples type %2% (%3%)", samplesCount, format, FormatString(format));
+      Write(0, "{} samples type {} ({})", samplesCount, format, FormatString(format));
     }
 
     void StartSample(uint_t idx) override
     {
-      Write(1, "Sample %1%", idx);
+      Write(1, "Sample {}", idx);
     }
 
     void SetFrequency(uint_t frequency) override
     {
-      Write(2, "Frequency: %1%Hz", frequency);
+      Write(2, "Frequency: {}Hz", frequency);
     }
 
     void SetChannels(uint_t channels) override
     {
-      Write(2, "Channels: %1%", channels);
+      Write(2, "Channels: {}", channels);
     }
 
-    void SetName(String name) override
+    void SetName(StringView name) override
     {
-      Write(2, "Name: %1%", name);
+      Write(2, "Name: {}", name);
     }
 
     void AddMetaChunk(uint_t type, Binary::View chunk) override
     {
-      Write(2, "Meta chunk %1% (%2%) %3% bytes", type, ChunkTypeString(type), chunk.Size());
+      Write(2, "Meta chunk {} ({}) {} bytes", type, ChunkTypeString(type), chunk.Size());
       DumpHex(3, chunk);
     }
 
     void SetData(uint_t samplesCount, Binary::Container::Ptr blob) override
     {
-      Write(2, "Data: %1% samples in %2% bytes", samplesCount, blob ? blob->Size() : std::size_t(0));
+      Write(2, "Data: {} samples in {} bytes", samplesCount, blob ? blob->Size() : std::size_t(0));
     }
 
   private:
@@ -190,9 +194,7 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Binary::Dump> rawData(new Binary::Dump());
-    Test::OpenFile(argv[1], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[1]);
     FsbBuilder builder;
     if (const auto result = Formats::Archived::Fmod::Parse(*data, builder))
     {

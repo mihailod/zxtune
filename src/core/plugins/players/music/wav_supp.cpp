@@ -8,25 +8,23 @@
  *
  **/
 
-// local includes
 #include "core/plugins/players/music/wav_supp.h"
+
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-// common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/decoders.h>
-#include <formats/chiptune/music/wav.h>
-#include <module/players/properties_helper.h>
-#include <module/players/properties_meta.h>
-#include <module/players/streaming.h>
-#include <sound/resampler.h>
+#include "formats/chiptune/music/wav.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
 
-#define FILE_TAG 72CE1906
+#include "binary/dump.h"
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "sound/resampler.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
 
 namespace Module::Wav
 {
@@ -46,16 +44,10 @@ namespace Module::Wav
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto loops = State->LoopCount();
       auto frame = Tune->RenderNextFrame();
-      State->Consume(frame.size(), looped);
-      if (State->LoopCount() != loops)
+      if (0 != State->Consume(frame.size()))
       {
         Tune->Seek(0);
       }
@@ -193,10 +185,6 @@ namespace Module::Wav
       {
         return CreateAtrac9Model(WavProperties, ExtraData);
       }
-      else if (FormatId == Formats::Chiptune::Wav::FADPCM)
-      {
-        return CreateFmodAdpcmModel(WavProperties);
-      }
       else
       {
         return {};
@@ -233,7 +221,7 @@ namespace Module::Wav
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create WAV: %s", e.what());
+        Dbg("Failed to create WAV: {}", e.what());
       }
       return {};
     }
@@ -244,14 +232,12 @@ namespace ZXTune
 {
   void RegisterWAVPlugin(PlayerPluginsRegistrator& registrator)
   {
-    const Char ID[] = {'W', 'A', 'V', 0};
+    const auto ID = "WAV"_id;
     const uint_t CAPS = Capabilities::Module::Type::STREAM | Capabilities::Module::Device::DAC;
 
-    const auto decoder = Formats::Chiptune::CreateWAVDecoder();
-    const auto factory = MakePtr<Module::Wav::Factory>();
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, CAPS, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::CreateWAVDecoder();
+    auto factory = MakePtr<Module::Wav::Factory>();
+    auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
 }  // namespace ZXTune
-
-#undef FILE_TAG

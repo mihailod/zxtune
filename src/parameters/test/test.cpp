@@ -8,8 +8,12 @@
  *
  **/
 
-#include <parameters/container.h>
-#include <parameters/types.h>
+#include "binary/container_factories.h"
+#include "parameters/container.h"
+#include "parameters/convert.h"
+#include "parameters/types.h"
+
+#include "string_view.h"
 
 #include <iostream>
 #include <iterator>
@@ -56,94 +60,112 @@ namespace
       const Identifier zeroId = zero;
       Test("zero.IsEmpty", zeroId.IsEmpty(), true);
       Test("zero.IsPath", zeroId.IsPath(), false);
-      Test("zero.Name()", zeroId.Name(), ""_sv);
-      Test("zero.RelativeTo(zero)", zeroId.RelativeTo(zero), ""_sv);
-      Test("zero.RelativeTo(one)", zeroId.RelativeTo(one), ""_sv);
-      Test("zero.RelativeTo(two)", zeroId.RelativeTo(two), ""_sv);
-      Test("zero.RelativeTo(three)", zeroId.RelativeTo(three), ""_sv);
-      Test("zero.Append(one)", zeroId.Append(one), "one"_sv);
+      Test("zero.Name()", zeroId.Name(), ""sv);
+      Test("zero.RelativeTo(zero)", zeroId.RelativeTo(zero), ""sv);
+      Test("zero.RelativeTo(one)", zeroId.RelativeTo(one), ""sv);
+      Test("zero.RelativeTo(two)", zeroId.RelativeTo(two), ""sv);
+      Test("zero.RelativeTo(three)", zeroId.RelativeTo(three), ""sv);
+      Test("zero.Append(one)", zeroId.Append(one), "one"sv);
     }
 
     {
       const Identifier oneId = one;
       Test("one.IsEmpty", oneId.IsEmpty(), false);
       Test("one.IsPath", oneId.IsPath(), false);
-      Test("one.Name()", oneId.Name(), "one"_sv);
-      Test("one.RelativeTo(zero)", oneId.RelativeTo(zero), ""_sv);
-      Test("one.RelativeTo(one)", oneId.RelativeTo(one), ""_sv);
-      Test("one.RelativeTo(two)", oneId.RelativeTo(two), ""_sv);
-      Test("one.RelativeTo(three)", oneId.RelativeTo(three), ""_sv);
-      Test("one + one", one + one, "one.one"_sv);
-      Test("one + two", one + two, "one.one.two"_sv);
-      Test("one + three", one + three, "one.one.two.three"_sv);
-      Test("one.Append(zero)", oneId.Append(zero), "one"_sv);
+      Test("one.Name()", oneId.Name(), "one"sv);
+      Test("one.RelativeTo(zero)", oneId.RelativeTo(zero), ""sv);
+      Test("one.RelativeTo(one)", oneId.RelativeTo(one), ""sv);
+      Test("one.RelativeTo(two)", oneId.RelativeTo(two), ""sv);
+      Test("one.RelativeTo(three)", oneId.RelativeTo(three), ""sv);
+      Test("one + one", one + one, "one.one"sv);
+      Test("one + two", one + two, "one.one.two"sv);
+      Test("one + three", one + three, "one.one.two.three"sv);
+      Test("one.Append(zero)", oneId.Append(zero), "one"sv);
     }
 
     {
       const Identifier twoId = two;
       Test("two.IsEmpty", twoId.IsEmpty(), false);
       Test("two.IsPath", twoId.IsPath(), true);
-      Test("two.Name()", twoId.Name(), "two"_sv);
-      Test("two.RelativeTo(zero)", twoId.RelativeTo(zero), ""_sv);
-      Test("two.RelativeTo(one)", twoId.RelativeTo(one), "two"_sv);
-      Test("two.RelativeTo(two)", twoId.RelativeTo(two), ""_sv);
-      Test("two.RelativeTo(three)", twoId.RelativeTo(three), ""_sv);
-      Test("two + one", two + one, "one.two.one"_sv);
-      Test("two + two", two + two, "one.two.one.two"_sv);
-      Test("two + three", two + three, "one.two.one.two.three"_sv);
+      Test("two.Name()", twoId.Name(), "two"sv);
+      Test("two.RelativeTo(zero)", twoId.RelativeTo(zero), ""sv);
+      Test("two.RelativeTo(one)", twoId.RelativeTo(one), "two"sv);
+      Test("two.RelativeTo(two)", twoId.RelativeTo(two), ""sv);
+      Test("two.RelativeTo(three)", twoId.RelativeTo(three), ""sv);
+      Test("two + one", two + one, "one.two.one"sv);
+      Test("two + two", two + two, "one.two.one.two"sv);
+      Test("two + three", two + three, "one.two.one.two.three"sv);
     }
 
     {
       const Identifier threeId = three;
       Test("three.IsEmpty", threeId.IsEmpty(), false);
       Test("three.IsPath", threeId.IsPath(), true);
-      Test("three.Name()", threeId.Name(), "three"_sv);
-      Test("three.RelativeTo(zero)", threeId.RelativeTo(zero), ""_sv);
-      Test("three.IsSubpathOf(one)", threeId.RelativeTo(one), "two.three"_sv);
-      Test("three.IsSubpathOf(two)", threeId.RelativeTo(two), "three"_sv);
-      Test("three.IsSubpathOf(three)", threeId.RelativeTo(three), ""_sv);
-      Test("three + one", three + one, "one.two.three.one"_sv);
-      Test("three + two", three + two, "one.two.three.one.two"_sv);
-      Test("three + three", three + three, "one.two.three.one.two.three"_sv);
+      Test("three.Name()", threeId.Name(), "three"sv);
+      Test("three.RelativeTo(zero)", threeId.RelativeTo(zero), ""sv);
+      Test("three.IsSubpathOf(one)", threeId.RelativeTo(one), "two.three"sv);
+      Test("three.IsSubpathOf(two)", threeId.RelativeTo(two), "three"sv);
+      Test("three.IsSubpathOf(three)", threeId.RelativeTo(three), ""sv);
+      Test("three + one", three + one, "one.two.three.one"sv);
+      Test("three + two", three + two, "one.two.three.one.two"sv);
+      Test("three + three", three + three, "one.two.three.one.two.three"sv);
     }
   }
 
   class CountingVisitor : public Parameters::Visitor
   {
   public:
-    void SetValue(Parameters::Identifier name, Parameters::IntType val)
+    void SetValue(Parameters::Identifier name, Parameters::IntType val) override
     {
       Names.emplace_back(name.AsString());
       Integers.push_back(val);
     }
 
-    void SetValue(Parameters::Identifier name, StringView val)
+    void SetValue(Parameters::Identifier name, StringView val) override
     {
       Names.emplace_back(name.AsString());
-      Strings.emplace_back(val.to_string());
+      Strings.emplace_back(val);
     }
 
-    void SetValue(Parameters::Identifier name, Binary::View val)
+    void SetValue(Parameters::Identifier name, Binary::View val) override
     {
       Names.emplace_back(name.AsString());
-      const auto* raw = val.As<uint8_t>();
-      Datas.emplace_back(Binary::Dump(raw, raw + val.Size()));
+      Datas.emplace_back(Binary::CreateContainer(val));
     }
 
     std::vector<String> Names;
     std::vector<Parameters::IntType> Integers;
     std::vector<Parameters::StringType> Strings;
-    std::vector<Parameters::DataType> Datas;
+    std::vector<Binary::Data::Ptr> Datas;
   };
 
-  template<class T>
-  void TestFind(const Parameters::Accessor& src, StringView name, const T* ref)
+  void TestFind(const Parameters::Accessor& src, StringView name, const Parameters::IntType* ref)
   {
-    T out;
-    Test("find", src.FindValue(name, out), ref != nullptr);
+    const auto out = src.FindInteger(name);
+    Test("find", !!out, !!ref);
     if (ref != nullptr)
     {
-      Test("value", out, *ref);
+      Test("value", *out, *ref);
+    }
+  }
+
+  void TestFind(const Parameters::Accessor& src, StringView name, const Parameters::StringType* ref)
+  {
+    const auto out = src.FindString(name);
+    Test("find", !!out, !!ref);
+    if (ref != nullptr)
+    {
+      Test("value", *out, *ref);
+    }
+  }
+
+  void TestFind(const Parameters::Accessor& src, StringView name, const Binary::Dump* ref)
+  {
+    const auto out = src.FindData(name);
+    Test("find", !!out, !!ref);
+    if (ref)
+    {
+      Test("value", Parameters::ConvertToString(*out), Parameters::ConvertToString(*ref));
     }
   }
 
@@ -159,9 +181,18 @@ namespace
       Test("count", cnt.Integers.size() + cnt.Strings.size() + cnt.Datas.size(), std::size_t(0));
     }
 
-    const Parameters::IntType int1 = 1, int2 = 2, int3 = 3, int4 = 4, *noInt = nullptr;
-    const Parameters::StringType str1 = "a", str2 = "b", str3 = "c", str4 = "d", *noString = nullptr;
-    const Parameters::DataType data = {}, *noData = nullptr;
+    const Parameters::IntType int1 = 1;
+    const Parameters::IntType int2 = 2;
+    const Parameters::IntType int3 = 3;
+    const Parameters::IntType int4 = 4;
+    const Parameters::IntType* noInt = nullptr;
+    const Parameters::StringType str1 = "a";
+    const Parameters::StringType str2 = "b";
+    const Parameters::StringType str3 = "c";
+    const Parameters::StringType str4 = "d";
+    const Parameters::StringType* noString = nullptr;
+    const Binary::Dump data = {};
+    const Binary::Dump* noData = nullptr;
 
     std::cout << "3 inseters" << std::endl;
     cont->SetValue("int", int1);

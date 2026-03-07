@@ -8,27 +8,30 @@
  *
  **/
 
-// local includes
 #include "module/players/xsf/gsf.h"
+
+#include "module/players/platforms.h"
+#include "module/players/streaming.h"
 #include "module/players/xsf/gsf_rom.h"
 #include "module/players/xsf/xsf.h"
-#include "module/players/xsf/xsf_factory.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/compression/zlib_container.h>
-#include <debug/log.h>
-#include <module/attributes.h>
-#include <module/players/platforms.h>
-#include <module/players/streaming.h>
-// 3rdparty includes
-#include <3rdparty/mgba/defines.h>
-#include <mgba-util/vfs.h>
+
+#include "binary/compression/zlib_container.h"
+#include "debug/log.h"
+#include "module/attributes.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
+#include "3rdparty/mgba/defines.h"
+
 #include <mgba/core/blip_buf.h>
 #include <mgba/core/core.h>
 #include <mgba/gba/core.h>
+
+#include <algorithm>
+
+#include <mgba-util/vfs.h>
 
 #undef min
 
@@ -62,9 +65,8 @@ namespace Module::GSF
     };
 
     AVStream()
-    {
-      std::memset(this, 0, sizeof(mAVStream));
-    }
+      : mAVStream()
+    {}
 
     void RenderSamples(uint_t count)
     {
@@ -111,7 +113,7 @@ namespace Module::GSF
 
     Sound::Chunk CaptureResult()
     {
-      return Sound::Chunk(std::move(Result));
+      return {std::move(Result)};
     }
 
   private:
@@ -121,9 +123,9 @@ namespace Module::GSF
 
     static void OnRenderComplete(struct mAVStream* in, blip_t* left, blip_t* right)
     {
-      AVStream* const self = safe_ptr_cast<AVStream*>(in);
+      auto* const self = safe_ptr_cast<AVStream*>(in);
       const auto ready = self->Result.size() - self->SamplesToRender;
-      const auto dst = safe_ptr_cast<int16_t*>(&self->Result[ready]);
+      auto* const dst = safe_ptr_cast<int16_t*>(&self->Result[ready]);
       const auto done = std::min(blip_read_samples(left, dst, self->SamplesToRender, true),
                                  blip_read_samples(right, dst + 1, self->SamplesToRender, true));
       self->SamplesToRender -= done;
@@ -135,7 +137,7 @@ namespace Module::GSF
 
     static void OnSkipComplete(struct mAVStream* in, blip_t* left, blip_t* right)
     {
-      AVStream* const self = safe_ptr_cast<AVStream*>(in);
+      auto* const self = safe_ptr_cast<AVStream*>(in);
       int16_t dummy[AUDIO_BUFFER_SIZE];
       const auto toSkip = std::min<uint_t>(self->SamplesToSkip, AUDIO_BUFFER_SIZE);
       const auto done =
@@ -172,10 +174,10 @@ namespace Module::GSF
       : Core(GBACoreCreate())
     {
       Core->init(Core);
-      mCoreInitConfig(Core, NULL);
+      mCoreInitConfig(Core, nullptr);
       // core owns rom file memory, so copy it
-      const auto romFile = VFileMemChunk(rom.Content.Data.data(), rom.Content.Data.size());
-      Require(romFile != 0);
+      auto* const romFile = VFileMemChunk(rom.Content.Data.data(), rom.Content.Data.size());
+      Require(romFile != nullptr);
       Core->loadROM(Core, romFile);
       Reset();
     }
@@ -281,13 +283,9 @@ namespace Module::GSF
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto avail = State->Consume(FRAME_DURATION, looped);
+      const auto avail = State->ConsumeUpTo(FRAME_DURATION);
       return Engine->Render(GetSamples(avail));
     }
 
@@ -350,7 +348,7 @@ namespace Module::GSF
       {
         tune->Meta->Dump(*properties);
       }
-      properties->SetValue(ATTR_PLATFORM, Platforms::GAME_BOY_ADVANCE.to_string());
+      properties->SetValue(ATTR_PLATFORM, Platforms::GAME_BOY_ADVANCE);
       return MakePtr<Holder>(std::move(tune), std::move(properties));
     }
 
@@ -413,7 +411,7 @@ namespace Module::GSF
       return Holder::Create(builder.CaptureResult(), std::move(properties));
     }
 
-    Holder::Ptr CreateMultifileModule(const XSF::File& file, const std::map<String, XSF::File>& additionalFiles,
+    Holder::Ptr CreateMultifileModule(const XSF::File& file, const XSF::FilesMap& additionalFiles,
                                       Parameters::Container::Ptr properties) const override
     {
       ModuleDataBuilder builder;
@@ -431,8 +429,8 @@ namespace Module::GSF
     */
     static const uint_t MAX_LEVEL = 10;
 
-    static void MergeRom(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
-                         ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeRom(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
+                         uint_t level = 1)
     {
       auto it = data.Dependencies.begin();
       const auto lim = data.Dependencies.end();
@@ -450,8 +448,8 @@ namespace Module::GSF
       }
     }
 
-    static void MergeMeta(const XSF::File& data, const std::map<String, XSF::File>& additionalFiles,
-                          ModuleDataBuilder& dst, uint_t level = 1)
+    static void MergeMeta(const XSF::File& data, const XSF::FilesMap& additionalFiles, ModuleDataBuilder& dst,
+                          uint_t level = 1)
     {
       if (level < MAX_LEVEL)
       {
@@ -467,8 +465,8 @@ namespace Module::GSF
     }
   };
 
-  Module::Factory::Ptr CreateFactory()
+  XSF::Factory::Ptr CreateFactory()
   {
-    return XSF::CreateFactory(MakePtr<Factory>());
+    return MakePtr<Factory>();
   }
 }  // namespace Module::GSF

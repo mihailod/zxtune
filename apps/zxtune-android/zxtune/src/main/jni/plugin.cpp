@@ -8,12 +8,13 @@
  *
  **/
 
-// local includes
-#include "jni_api.h"
-#include "properties.h"
-// library includes
-#include <core/plugin.h>
-#include <core/plugin_attrs.h>
+#include "apps/zxtune-android/zxtune/src/main/jni/plugin.h"
+
+#include "apps/zxtune-android/zxtune/src/main/jni/defines.h"
+#include "apps/zxtune-android/zxtune/src/main/jni/properties.h"
+
+#include "core/plugin.h"
+#include "core/plugin_attrs.h"
 
 namespace
 {
@@ -79,9 +80,9 @@ namespace Plugin
 
     void Visit(const ZXTune::Plugin& plug) override
     {
-      const uint_t caps = plug.Capabilities();
-      const String id = plug.Id();
-      const String desc = plug.Description();
+      const auto caps = plug.Capabilities();
+      const auto id = String{plug.Id()};
+      const auto desc = String{plug.Description()};
 
       // TODO: remove hardcode
       using namespace ZXTune::Capabilities;
@@ -104,7 +105,7 @@ namespace Plugin
   };
 }  // namespace Plugin
 
-JNIEXPORT void JNICALL Java_app_zxtune_core_jni_JniApi_enumeratePlugins(JNIEnv* env, jobject /*self*/, jobject visitor)
+EXPORTED void JNICALL Java_app_zxtune_core_jni_JniApi_enumeratePlugins(JNIEnv* env, jobject /*self*/, jobject visitor)
 {
   Plugin::Visitor adapter(env, visitor);
   ZXTune::EnumeratePlugins(adapter);

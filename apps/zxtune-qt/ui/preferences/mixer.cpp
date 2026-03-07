@@ -8,12 +8,12 @@
  *
  **/
 
-// local includes
-#include "mixer.h"
+#include "apps/zxtune-qt/ui/preferences/mixer.h"
+
 #include "mixer.ui.h"
-// common includes
-#include <contract.h>
-// std includes
+
+#include "contract.h"
+
 #include <utility>
 
 namespace
@@ -34,7 +34,7 @@ namespace
       setupUi(this);
       LoadName();
 
-      Require(connect(channelValue, SIGNAL(valueChanged(int)), SIGNAL(valueChanged(int))));
+      Require(connect(channelValue, &QSlider::valueChanged, this, &UI::MixerWidget::valueChanged));
     }
 
     void setValue(int val) override
@@ -85,15 +85,15 @@ namespace
     MixerValueImpl(UI::MixerWidget& parent, Container& ctr, Identifier name, int defValue)
       : MixerValue(parent)
       , Storage(ctr)
-      , Name(name)
+      , Name(std::move(name))
     {
-      IntType value = defValue;
-      Storage.FindValue(Name, value);
+      const auto value = Parameters::GetInteger(Storage, Name, defValue);
       parent.setValue(value);
-      Require(connect(&parent, SIGNAL(valueChanged(int)), SLOT(SetValue(int))));
+      Require(connect(&parent, &UI::MixerWidget::valueChanged, this, &MixerValueImpl::SetValue));
     }
 
-    void SetValue(int value) override
+  private:
+    void SetValue(int value)
     {
       Storage.SetValue(Name, value);
     }

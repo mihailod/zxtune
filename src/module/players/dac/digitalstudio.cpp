@@ -8,21 +8,19 @@
  *
  **/
 
-// local includes
 #include "module/players/dac/digitalstudio.h"
+
+#include "formats/chiptune/digital/digitalstudio.h"
 #include "module/players/dac/dac_simple.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <formats/chiptune/digital/digitalstudio.h>
-#include <module/players/platforms.h>
+
+#include "make_ptr.h"
 
 namespace Module::DigitalStudio
 {
   const std::size_t CHANNELS_COUNT = 3;
 
-  typedef DAC::SimpleModuleData ModuleData;
-  typedef DAC::SimpleDataBuilder DataBuilder;
+  using ModuleData = DAC::SimpleModuleData;
+  using DataBuilder = DAC::SimpleDataBuilder;
 
   class Factory : public DAC::Factory
   {
@@ -30,17 +28,16 @@ namespace Module::DigitalStudio
     DAC::Chiptune::Ptr CreateChiptune(const Binary::Container& rawData,
                                       Parameters::Container::Ptr properties) const override
     {
-      DAC::PropertiesHelper props(*properties);
+      DAC::PropertiesHelper props(*properties, CHANNELS_COUNT);
       DataBuilder::Ptr dataBuilder = DAC::CreateSimpleDataBuilder<CHANNELS_COUNT>(props);
       if (const auto container = Formats::Chiptune::DigitalStudio::Parse(rawData, *dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
         return DAC::CreateSimpleChiptune(dataBuilder->CaptureResult(), std::move(properties));
       }
       else
       {
-        return DAC::Chiptune::Ptr();
+        return {};
       }
     }
   };

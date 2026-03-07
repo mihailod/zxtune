@@ -10,22 +10,15 @@
 
 #pragma once
 
-// library includes
-#include <binary/view.h>
+#include "binary/view.h"
 
-namespace Binary
+namespace Binary::Compression::Zlib
 {
-  namespace Compression
-  {
-    namespace Zlib
-    {
-      //! @throws Error
-      //! @return real output size
-      std::size_t DecompressRaw(View input, void* output, std::size_t maxOutputSize);
+  //! @throws Error
+  //! @return real output size
+  std::size_t DecompressRaw(View input, void* output, std::size_t maxOutputSize);
 
-      //! @throws Error
-      //! @return real output size
-      std::size_t Decompress(View input, void* output, std::size_t maxOutputSize);
-    }  // namespace Zlib
-  }    // namespace Compression
-}  // namespace Binary
+  //! @throws Error
+  //! @return real output size
+  std::size_t Decompress(View input, void* output, std::size_t maxOutputSize);
+}  // namespace Binary::Compression::Zlib

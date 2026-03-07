@@ -5,6 +5,102 @@ Annotation:
 [-] - removed feature/rudiment
 [*] - fix/improvement
 
+--- Rev5100 from 30.05.2025
+
+[*] Fixed ID3 tags processing
+[*] Fixed RAR processing with unicode filenames
+[+] zxtune-android: supported downloads.khinsider.com online catalogue
+[+] zxtune-android: icons in browser (tracks' coverart and graphics for some online catalogues entities)
+[*] zxtune-android: fixed aminet catalogue
+[*] zxtune-android: fixed ocremix catalogue for old android devices
+
+--- Rev5090 from 18.02.2025
+
+[*] Fixed fading for VGM playback
+[+] zxtune-android: supported ocremix.org online catalogue
+[*] zxtune-android: improved German translation
+[*] zxtune-android: improved loading speed for some online catalogues
+[*] zxtune-android: do not show digital photos as cover images
+[*] zxtune-android: simplified packed files hierarchy displaying in browser
+[*] zxtune-android: show comments in brief information panel
+[*] zxtune-android: fixed found and reported crashes
+
+--- Rev5080 from 06.12.2024
+
+[+] Supported channels muting for some formats
+[+] Supported Mikey chip for vgm playback
+[+] Supported NWA,STER and NXOPUS formats playback
+[*] Fixed playback of USF files
+[*] zxtune-android: improved startup and overall UI performance
+[*] Fixed seeking on tracker modules
+
+--- Rev5070 from 03.08.2024
+
+[+] Supported Loongson architecture
+[*] Fixed embedded strings processing for some formats
+[*] Fixed Windows 7 support
+[*] Reduced size of builds for Debian
+[*] Updated libsidplayfp library, fixed playback of some .sid tracks
+[*] zxtune-qt: fixed crash on items activation in some cases
+[*] zxtune-android: improved compatibility with old Android versions
+[*] zxtune-android: supported archived/packed tracks sending
+
+--- Rev5060 from 22.04.2024
+
+[*] Fixed fadeout processing for looped playback
+[*] Reduced memory usage on decompressing
+[*] Fixed some GSF tracks playback
+[*] Fixed playback of modules with internal loops
+[+] zxtune-qt: embedded coverart displaying in tooltip and track properties
+[*] zxtune-android: fixed spectrum analyzer
+[*] zxtune-android: improved support of Android 13&14
+[+] zxtune-android: embedded (mp3/ogg/flac) and external (vgmrips/zxtunes/amp/archive) coverart support 
+[+] zxtune-android: toggleable track comments control
+
+--- Rev5050 from 22.08.2023
+
+[+] Supported OPUS format playback including modules' samples
+[+] ARM64 builds for Windows and generic Linux
+[*] Fixed some xSF tracks parsing
+[*] Fixed fadeout processing
+[*] zxtune-qt: better usage of multicore CPUs
+[*] zxtune-qt: fixed crashes in conversion dialog
+[+] zxtune-android: light theme
+[+] zxtune-android: detected possible power management issues
+[*] zxtune-android: fixed permission request for ringtone creation
+[*] zxtune-android: fixed found and reported crashes
+[*] zxtune-android: fixed unattended startup on Bluetooth enabling
+
+--- Rev5040 from 05.07.2023
+
+[+] Build for MacOSX arm64 (unnotarized)
+[*] Improved compatibility of generic linux/raspbian builds with older distributives
+[*] Reworked spectrum analyzer
+[*] Fixed crash on corrupted 7zip archives
+[*] Fixed fadeout processing
+[*] Fixed mp3 looped playback
+[*] Fixed vgm loop duration detection
+[*] Use default value for vgm tracks with zero duration
+[*] zxtune-qt: fixed crash on app close
+[*] zxtune123: fixed encoding problems on windows
+[*] zxtune-android: reworked UI
+[*] zxtune-android: playlist filtering operates on filename if module has no title
+[*] zxtune-android: fixed shuffle mode processing for currently playing queue
+
+--- Rev5030 from 03.04.2023
+
+[*] Fixed playback of some ogg files
+[*] Fixed loops count processing
+[*] zxtune-qt: fixed stored playlists location
+[*] zxtune-qt: fixed crash on not ready module playback
+[*] zxtune123: fixed layout when analyzer is on
+[*] zxtune123: fixed keyboard processing on linux
+[*] zxtune-android: fixed ringtone creating
+[*] zxtune-android: fixed modules opening from another apps
+[*] zxtune-android: fixed 'Open with' functionality
+[*] zxtune-android: fixed audio focus processing
+[*] zxtune-android: reduced package size
+
 --- Rev5020 from 28.09.2022
 
 [*] Fixed playback of multitrack .hes files

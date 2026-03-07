@@ -10,7 +10,6 @@
 
 #pragma once
 
-// std includes
 #include <memory>
 
 namespace Async
@@ -18,7 +17,7 @@ namespace Async
   class Job
   {
   public:
-    typedef std::shared_ptr<Job> Ptr;
+    using Ptr = std::shared_ptr<Job>;
     virtual ~Job() = default;
 
     virtual void Start() = 0;

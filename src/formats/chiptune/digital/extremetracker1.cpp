@@ -8,22 +8,22 @@
  *
  **/
 
-// local includes
 #include "formats/chiptune/digital/extremetracker1.h"
+
 #include "formats/chiptune/container.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <indices.h>
-#include <make_ptr.h>
-#include <range_checker.h>
-// library includes
-#include <binary/format_factories.h>
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <strings/format.h>
-#include <strings/optimize.h>
-// std includes
+
+#include "binary/format_factories.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "strings/format.h"
+#include "strings/optimize.h"
+#include "tools/indices.h"
+#include "tools/range_checker.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <array>
 #include <cstring>
 
@@ -33,9 +33,9 @@ namespace Formats::Chiptune
   {
     const Debug::Stream Dbg("Formats::Chiptune::ExtremeTracker1");
 
-    const Char DESCRIPTION[] = "Extreme Tracker v1.x";
-    const Char VERSION131[] = "Extreme Tracker v1.31";
-    const Char VERSION132[] = "Extreme Tracker v1.32-1.41";
+    const auto DESCRIPTION = "Extreme Tracker v1.x"sv;
+    const auto VERSION131 = "Extreme Tracker v1.31"sv;
+    const auto VERSION132 = "Extreme Tracker v1.32-1.41"sv;
 
     const std::size_t CHANNELS_COUNT = 4;
     const std::size_t MAX_POSITIONS_COUNT = 100;
@@ -320,13 +320,11 @@ namespace Formats::Chiptune
     {
     public:
       explicit VersionTraits(const Header& hdr)
-        : HasRestCmd()
-        , GlissVolParamsMask()
       {
         Analyze(hdr);
       }
 
-      String GetEditorString() const
+      auto GetEditorString() const
       {
         return IsNewVersion() ? VERSION132 : VERSION131;
       }
@@ -351,25 +349,25 @@ namespace Formats::Chiptune
     private:
       void Analyze(const Header& hdr)
       {
-        for (uint_t pat = 0; pat != hdr.Patterns.size(); ++pat)
+        for (const auto& pat : hdr.Patterns)
         {
-          Analyze(hdr.Patterns[pat]);
+          Analyze(pat);
         }
       }
 
       void Analyze(const Pattern& pat)
       {
-        for (uint_t line = 0; line != MAX_PATTERN_SIZE; ++line)
+        for (const auto& line : pat.Lines)
         {
-          Analyze(pat.Lines[line]);
+          Analyze(line);
         }
       }
 
       void Analyze(const Pattern::Line& line)
       {
-        for (uint_t chan = 0; chan != CHANNELS_COUNT; ++chan)
+        for (const auto& chan : line.Channels)
         {
-          Analyze(line.Channels[chan]);
+          Analyze(chan);
         }
       }
 
@@ -395,8 +393,8 @@ namespace Formats::Chiptune
       }
 
     private:
-      bool HasRestCmd;
-      uint_t GlissVolParamsMask;
+      bool HasRestCmd = false;
+      uint_t GlissVolParamsMask = 0;
     };
 
     class Format
@@ -431,7 +429,7 @@ namespace Formats::Chiptune
         Positions result;
         result.Loop = Source.LoopPosition;
         result.Lines.assign(Source.Positions.begin(), Source.Positions.begin() + std::max<uint_t>(Source.Length, 1));
-        Dbg("Positions: %1%, loop to %2%", result.GetSize(), result.GetLoop());
+        Dbg("Positions: {}, loop to {}", result.GetSize(), result.GetLoop());
         target.SetPositions(std::move(result));
       }
 
@@ -440,7 +438,7 @@ namespace Formats::Chiptune
         for (Indices::Iterator it = pats.Items(); it; ++it)
         {
           const uint_t patIndex = *it;
-          Dbg("Parse pattern %1%", patIndex);
+          Dbg("Parse pattern {}", patIndex);
           const Pattern& source = Source.Patterns[patIndex];
           ParsePattern(source, patIndex, target);
         }
@@ -465,7 +463,7 @@ namespace Formats::Chiptune
                                               {0x13c00, 0x8400, 0x10000}};
 
         target.SetSamplesFrequency(Version.GetSamplesFrequency());
-        Dbg("Parse %1% samples", sams.Count());
+        Dbg("Parse {} samples", sams.Count());
         for (Indices::Iterator it = sams.Items(); it; ++it)
         {
           const uint_t samIdx = *it;
@@ -477,33 +475,33 @@ namespace Formats::Chiptune
           if (0 == bank.FileOffset || 0 == info.Blocks || rawAddr < bank.Addr || rawEnd > bank.End || rawLoop < rawAddr
               || rawLoop > rawEnd)
           {
-            Dbg("Skip sample %1%", samIdx);
+            Dbg("Skip sample {}", samIdx);
             continue;
           }
           const std::size_t size = rawEnd - rawAddr;
           const std::size_t offset = bank.FileOffset + (rawAddr - bank.Addr);
           if (const auto sample = GetSample(offset, size))
           {
-            Dbg("Sample %1%: start=#%2$04x loop=#%3$04x size=#%4$04x bank=%5%", samIdx, rawAddr, rawLoop, sample.Size(),
+            Dbg("Sample {}: start=#{:04x} loop=#{:04x} size=#{:04x} bank={}", samIdx, rawAddr, rawLoop, sample.Size(),
                 uint_t(info.Page));
             const std::size_t loop = rawLoop - bank.Addr;
             target.SetSample(samIdx, loop, sample);
           }
           else
           {
-            Dbg("Empty sample %1%", samIdx);
+            Dbg("Empty sample {}", samIdx);
           }
         }
       }
 
-      std::size_t GetSize() const
+      static std::size_t GetSize()
       {
         return MODULE_SIZE;
       }
 
       RangeChecker::Range GetFixedArea() const
       {
-        return RangeChecker::Range(offsetof(Header, Patterns), sizeof(Source.Patterns));
+        return {offsetof(Header, Patterns), sizeof(Source.Patterns)};
       }
 
     private:
@@ -613,7 +611,7 @@ namespace Formats::Chiptune
         // samples. Hi addr is usually 7e-ff, but some tracks has another values (40)
         "(?? ?? 51|53|54|56|57 00-10 00-7c ? ?{8}){16}"
         // patterns
-        ""_sv;
+        ""sv;
 
     class Decoder : public Formats::Chiptune::Decoder
     {
@@ -622,7 +620,7 @@ namespace Formats::Chiptune
         : Format(Binary::CreateFormat(FORMAT, MODULE_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }
@@ -641,7 +639,7 @@ namespace Formats::Chiptune
       {
         if (!Format->Match(rawData))
         {
-          return Formats::Chiptune::Container::Ptr();
+          return {};
         }
         Builder& stub = GetStubBuilder();
         return Parse(rawData, stub);
@@ -674,7 +672,7 @@ namespace Formats::Chiptune
       catch (const std::exception&)
       {
         Dbg("Failed to create");
-        return Formats::Chiptune::Container::Ptr();
+        return {};
       }
     }
 

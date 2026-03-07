@@ -10,43 +10,44 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
+#include "string_type.h"
+#include "string_view.h"
 
 namespace Urls
 {
+  // TODO: use Strings::Concat
   constexpr StringView Email()
   {
-    return "zxtune@gmail.com"_sv;
+    return "zxtune@gmail.com"sv;
   }
 
   constexpr StringView Site()
   {
-    return "https://zxtune.ru/"_sv;
+    return "https://zxtune.ru/"sv;
   }
 
   inline String DownloadsFeed()
   {
-    return Site().to_string() + "downloads.xml";
+    return Site() + "downloads.xml"s;
   }
 
   inline String Help()
   {
-    return Site().to_string() + "manuals/zxtune-qt/";
+    return Site() + "manuals/zxtune-qt/"s;
   }
 
   inline String Faq()
   {
-    return Site().to_string() + "faq/";
+    return Site() + "faq/"s;
   }
 
   constexpr StringView Repository()
   {
-    return "https://bitbucket.org/zxtune/zxtune/"_sv;
+    return "https://bitbucket.org/zxtune/zxtune/"sv;
   }
 
   inline String Bugreport()
   {
-    return Repository().to_string() + "issues/new";
+    return Repository() + "issues/new"s;
   }
 }  // namespace Urls

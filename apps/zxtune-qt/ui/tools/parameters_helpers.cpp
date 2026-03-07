@@ -8,14 +8,14 @@
  *
  **/
 
-// local includes
-#include "parameters_helpers.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <debug/log.h>
-#include <math/numeric.h>
-// qt includes
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+
+#include "debug/log.h"
+#include "math/numeric.h"
+
+#include "contract.h"
+#include "string_view.h"
+
 #include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QAction>
 #include <QtWidgets/QComboBox>
@@ -23,6 +23,8 @@
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QSpinBox>
+
+#include <utility>
 
 namespace
 {
@@ -38,19 +40,12 @@ namespace
       : BooleanValue(parent)
       , Parent(parent)
       , Storage(ctr)
-      , Name(name)
+      , Name(std::move(name))
       , Default(defValue)
       , OneValue(oneValue)
     {
       BooleanValueImpl<Holder>::Reload();
-      Require(connect(&parent, SIGNAL(toggled(bool)), SLOT(Set(bool))));
-    }
-
-    void Set(bool value) override
-    {
-      const IntType val = value ? OneValue : 0;
-      Dbg("%1%=%2%", static_cast<StringView>(Name), val);
-      Storage.SetValue(Name, val);
+      Require(connect(&parent, &Holder::toggled, this, &BooleanValueImpl::Set));
     }
 
     void Reset() override
@@ -66,11 +61,20 @@ namespace
     }
 
   private:
+    void Set(bool value)
+    {
+      const IntType val = value ? OneValue : 0;
+      Dbg("{}={}", static_cast<StringView>(Name), val);
+      Storage.SetValue(Name, val);
+    }
+
     bool GetValue() const
     {
-      IntType val = Default ? OneValue : 0;
-      Storage.FindValue(Name, val);
-      return val != 0;
+      if (const auto val = Storage.FindInteger(Name))
+      {
+        return *val != 0;
+      }
+      return Default ? OneValue : 0;
     }
 
   private:
@@ -88,20 +92,11 @@ namespace
       : ExclusiveValue(parent)
       , Parent(parent)
       , Storage(ctr)
-      , Name(name)
-      , Value(value.to_string())
+      , Name(std::move(name))
+      , Value(value)
     {
       StringSetValue::Reload();
-      Require(connect(&parent, SIGNAL(toggled(bool)), SLOT(Set(bool))));
-    }
-
-    void Set(bool value) override
-    {
-      if (value)
-      {
-        Dbg("%1%=%2%", static_cast<StringView>(Name), Value);
-        Storage.SetValue(Name, Value);
-      }
+      Require(connect(&parent, &QAbstractButton::toggled, this, &StringSetValue::Set));
     }
 
     void Reset() override
@@ -117,11 +112,18 @@ namespace
     }
 
   private:
+    void Set(bool value)
+    {
+      if (value)
+      {
+        Dbg("{}={}", static_cast<StringView>(Name), Value);
+        Storage.SetValue(Name, Value);
+      }
+    }
+
     StringType GetValue() const
     {
-      StringType value;
-      Storage.FindValue(Name, value);
-      return value;
+      return Parameters::GetString(Storage, Name);
     }
 
   private:
@@ -140,7 +142,7 @@ namespace
   template<class Holder>
   void ConnectChanges(Holder& holder, IntegerValue& val)
   {
-    Require(val.connect(&holder, SIGNAL(valueChanged(int)), SLOT(Set(int))));
+    Require(QObject::connect(&holder, qOverload<int>(&Holder::valueChanged), &val, &IntegerValue::Set));
   }
 
   void SetWidgetValue(QComboBox& holder, int val)
@@ -150,7 +152,7 @@ namespace
 
   void ConnectChanges(QComboBox& holder, IntegerValue& val)
   {
-    Require(val.connect(&holder, SIGNAL(currentIndexChanged(int)), SLOT(Set(int))));
+    Require(QObject::connect(&holder, qOverload<int>(&QComboBox::currentIndexChanged), &val, &IntegerValue::Set));
   }
 
   template<class Holder>
@@ -161,7 +163,7 @@ namespace
       : IntegerValue(parent)
       , Parent(parent)
       , Storage(ctr)
-      , Name(name)
+      , Name(std::move(name))
       , Default(defValue)
     {
       IntegerValueImpl<Holder>::Reload();
@@ -170,7 +172,7 @@ namespace
 
     void Set(int value) override
     {
-      Dbg("%1%=%2%", static_cast<StringView>(Name), value);
+      Dbg("{}={}", static_cast<StringView>(Name), value);
       Storage.SetValue(Name, value);
     }
 
@@ -189,9 +191,7 @@ namespace
   private:
     int GetValue() const
     {
-      IntType value = Default;
-      Storage.FindValue(Name, value);
-      return value;
+      return Parameters::GetInteger<int>(Storage, Name, Default);
     }
 
   private:
@@ -243,21 +243,11 @@ namespace
       : BigIntegerValue(parent)
       , Parent(parent)
       , Storage(ctr)
-      , Traits(std::move(traits))
+      , Traits(traits)
     {
       BigIntegerValueImpl::Reload();
-      Require(connect(&parent, SIGNAL(textChanged(const QString&)), SLOT(Set(const QString&))));
-      Require(connect(&parent, SIGNAL(editingFinished()), SLOT(Reload())));
-    }
-
-    void Set(const QString& value) override
-    {
-      const IntType val = value.toLongLong();
-      if (Math::InRange(val, Traits.Min, Traits.Max))
-      {
-        Dbg("%1%=%2%", static_cast<StringView>(Traits.Name), val);
-        Storage.SetValue(Traits.Name, val);
-      }
+      Require(connect(&parent, &QLineEdit::textChanged, this, &BigIntegerValueImpl::Set));
+      Require(connect(&parent, &QLineEdit::editingFinished, this, &Value::Reload));
     }
 
     void Reset() override
@@ -281,11 +271,19 @@ namespace
     }
 
   private:
+    void Set(const QString& value)
+    {
+      const IntType val = value.toLongLong();
+      if (Math::InRange(val, Traits.Min, Traits.Max))
+      {
+        Dbg("{}={}", static_cast<StringView>(Traits.Name), val);
+        Storage.SetValue(Traits.Name, val);
+      }
+    }
+
     IntType GetValue() const
     {
-      IntType value = Traits.Default;
-      Storage.FindValue(Traits.Name, value);
-      return value;
+      return Parameters::GetInteger<IntType>(Storage, Traits.Name, Traits.Default);
     }
 
   private:
@@ -301,18 +299,11 @@ namespace
       : StringValue(parent)
       , Parent(parent)
       , Storage(ctr)
-      , Name(name)
-      , Default(defValue.to_string())
+      , Name(std::move(name))
+      , Default(defValue)
     {
       StringValueImpl::Reload();
-      Require(connect(&parent, SIGNAL(textChanged(const QString&)), SLOT(Set(const QString&))));
-    }
-
-    void Set(const QString& value) override
-    {
-      const auto val = FromQString(value);
-      Dbg("%1%=%2%", static_cast<StringView>(Name), val);
-      Storage.SetValue(Name, val);
+      Require(connect(&parent, &QLineEdit::textChanged, this, &StringValueImpl::Set));
     }
 
     void Reset() override
@@ -328,11 +319,16 @@ namespace
     }
 
   private:
+    void Set(const QString& value)
+    {
+      const auto val = FromQString(value);
+      Dbg("{}={}", static_cast<StringView>(Name), val);
+      Storage.SetValue(Name, val);
+    }
+
     StringType GetValue() const
     {
-      StringType value = Default;
-      Storage.FindValue(Name, value);
-      return value;
+      return Parameters::GetString(Storage, Name, Default);
     }
 
   private:
@@ -406,7 +402,7 @@ namespace Parameters
 
   Value* IntegerValue::Bind(QComboBox& combo, Integer::Ptr val)
   {
-    return new IntegerValueControl<QComboBox>(combo, val);
+    return new IntegerValueControl<QComboBox>(combo, std::move(val));
   }
 
   Value* BigIntegerValue::Bind(QLineEdit& edit, Container& ctr, const IntegerTraits& traits)

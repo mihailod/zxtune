@@ -5,21 +5,26 @@
  */
 package app.zxtune.ui.browser
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.support.v4.media.session.MediaControllerCompat
-import android.view.*
+import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.View
 import android.view.View.OnFocusChangeListener
+import android.view.ViewGroup
 import android.widget.ProgressBar
 import android.widget.SearchView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.core.view.doOnLayout
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.selection.Selection
 import androidx.recyclerview.selection.SelectionPredicates
 import androidx.recyclerview.selection.SelectionTracker
@@ -27,27 +32,46 @@ import androidx.recyclerview.selection.StorageStrategy
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.OnChildAttachStateChangeListener
-import app.zxtune.MainService
+import app.zxtune.MainActivity
 import app.zxtune.R
+import app.zxtune.ResultActivity
 import app.zxtune.ui.utils.SelectionUtils
+import app.zxtune.ui.utils.whenLifecycleStarted
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
-class BrowserFragment : Fragment() {
-    private lateinit var model: Model
+class BrowserFragment : Fragment(), MainActivity.PagerTabListener {
+    private val model by activityViewModels<Model>()
     private val stateStorage by lazy {
         State.create(requireContext())
     }
 
-    private var listing: RecyclerView? = null
-    private var search: SearchView? = null
+    private val backHandler by lazy {
+        object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() = moveUp()
+        }.also {
+            requireActivity().onBackPressedDispatcher.addCallback(this, it)
+        }
+    }
+
+    private lateinit var breadcrumbs: RecyclerView
+    private lateinit var listing: RecyclerView
+    private lateinit var listingStub: TextView
+    private lateinit var search: SearchView
 
     private var selectionTracker: SelectionTracker<Uri>? = null
 
     private val controller
         get() = activity?.let { MediaControllerCompat.getMediaController(it) }
-    private val listingAdapter
-        get() = listing?.adapter as? ListingViewAdapter
     private val listingLayoutManager
-        get() = listing?.layoutManager as? LinearLayoutManager
+        get() = listing.layoutManager as LinearLayoutManager
+    private val scope
+        get() = viewLifecycleOwner.lifecycleScope
+    private val maybeScope
+        get() = viewLifecycleOwnerLiveData.value?.lifecycleScope
 
     private class NotificationView(view: View) {
         private val panel = view.findViewById<TextView>(R.id.browser_notification)
@@ -61,59 +85,65 @@ class BrowserFragment : Fragment() {
         }
 
         private fun setPanelVisibility(isVisible: Boolean) = panel.run {
-            animate().translationY(if (isVisible) 0f else height.toFloat())
+            val translation = if (isVisible) 0f else height.also { /*check(it != 0)*/ }.toFloat()
+            animate().translationY(translation)
         }
     }
 
-    override fun onAttach(ctx: Context) {
-        super.onAttach(ctx)
-        model = Model.of(this)
+    override fun onTabVisibilityChanged(isVisible: Boolean) {
+        backHandler.isEnabled = isVisible
     }
 
     override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
+        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View? = container?.let { inflater.inflate(R.layout.browser, it, false) }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setupRootsView(view)
-        setupBreadcrumbs(model, view)
-        listing = setupListing(model, view)
+        breadcrumbs = setupBreadcrumbs(view)
+        listing = setupListing(view)
         search = setupSearchView(model, view)
-        setupProgress(model, view)
-        setupNotification(model, view)
-        if (model.state.value == null) {
-            model.browseAsync {
-                stateStorage.currentPath
+        scope.launch {
+            model.initialize(stateStorage.getCurrentPath())
+        }
+        viewLifecycleOwner.whenLifecycleStarted {
+            launch {
+                trackState(model.state)
+            }
+            launch {
+                trackProgress(model.progress, view.findViewById(R.id.browser_loading))
+            }
+            launch {
+                trackNotifications(model.notification, NotificationView(view.waitForLayout()))
+            }
+            launch {
+                trackErrors(model.errors)
+            }
+            launch {
+                model.playbackEvents.collect { uri ->
+                    controller?.transportControls?.playFromUri(uri, null)
+                }
             }
         }
-        model.setClient(object : Model.Client {
-            override fun onFileBrowse(uri: Uri) =
-                controller?.transportControls?.playFromUri(uri, null) ?: Unit
-
-            override fun onError(msg: String) = showError(msg)
-        })
     }
 
-    private fun showError(msg: String) {
-        view?.post {
-            Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
-        }
+    override fun onDestroyView() {
+        super.onDestroyView()
+        storeCurrentViewPosition()
+    }
+
+    private fun showError(msg: String) = activity?.let {
+        Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
     }
 
     private fun setupRootsView(view: View) =
         view.findViewById<View>(R.id.browser_roots).setOnClickListener { browse(Uri.EMPTY) }
 
-    private fun setupBreadcrumbs(model: Model, view: View) =
+    private fun setupBreadcrumbs(view: View) =
         view.findViewById<RecyclerView>(R.id.browser_breadcrumb).apply {
             val adapter = BreadcrumbsViewAdapter().apply {
                 adapter = this
-            }
-            model.state.observe(viewLifecycleOwner) { state ->
-                adapter.submitList(state.breadcrumbs)
-                smoothScrollToPosition(state.breadcrumbs.size)
             }
             val onClick = View.OnClickListener { v: View ->
                 val pos = getChildAdapterPosition(v)
@@ -130,82 +160,89 @@ class BrowserFragment : Fragment() {
             })
         }
 
-    private fun setupListing(model: Model, view: View) =
+    private fun setupListing(view: View) =
         view.findViewById<RecyclerView>(R.id.browser_content).apply {
             setHasFixedSize(true)
-            val adapter = ListingViewAdapter().apply {
+            val adapter = ListingViewAdapter(context).apply {
                 adapter = this
             }
             selectionTracker = SelectionTracker.Builder(
                 "browser_selection",
-                this, ListingViewAdapter.KeyProvider(adapter),
+                this,
+                ListingViewAdapter.KeyProvider(adapter),
                 ListingViewAdapter.DetailsLookup(this),
                 StorageStrategy.createParcelableStorage(Uri::class.java)
-            )
-                .withSelectionPredicate(SelectionPredicates.createSelectAnything())
+            ).withSelectionPredicate(SelectionPredicates.createSelectAnything())
                 .withOnItemActivatedListener { item, _ ->
                     item.selectionKey?.let { browse(it) }
-                    true
+                    false // for ripple
                 }.build().also {
                     adapter.setSelection(it.selection)
-                    // another class for test
-                    (activity as? AppCompatActivity)?.let { activity ->
-                        SelectionUtils.install(activity, it, SelectionClient(adapter))
-                    }
+                    SelectionUtils.install(
+                        view.findViewById(R.id.browser_top_panel), it, SelectionClient(adapter)
+                    )
                 }
-            model.state.observe(viewLifecycleOwner) { state ->
-                val stub = view.findViewById<TextView>(R.id.browser_stub)
-
-                storeCurrentViewPosition()
-                adapter.submitList(state.entries) {
-                    stateStorage.currentPath = state.uri
-                    restoreCurrentViewPosition()
-                }
-                if (state.entries.isEmpty()) {
-                    visibility = View.GONE
-                    stub.visibility = View.VISIBLE
-                } else {
-                    visibility = View.VISIBLE
-                    stub.visibility = View.GONE
-                }
-            }
-            lifecycle.addObserver(object : DefaultLifecycleObserver {
-                override fun onStop(owner: LifecycleOwner) {
-                    storeCurrentViewPosition()
-                    lifecycle.removeObserver(this)
-                }
-            })
+            listingStub = view.findViewById(R.id.browser_stub)
         }
 
-    private fun setupProgress(model: Model, view: View) =
-        view.findViewById<ProgressBar>(R.id.browser_loading).run {
-            model.progress.observe(viewLifecycleOwner) { prg ->
-                isIndeterminate = prg == -1
-                progress = prg ?: 0
+    private suspend fun trackProgress(src: Flow<Int?>, view: ProgressBar) = src.collect { prg ->
+        view.isIndeterminate = prg == -1
+        view.progress = prg ?: 0
+    }
+
+    private suspend fun trackState(src: Flow<Model.State>) = src.collect { state ->
+        updateBreadcrumbsState(state)
+        updateListingState(state)
+    }
+
+    private fun updateBreadcrumbsState(state: Model.State) = breadcrumbs.run {
+        if (!isInSearchMode()) {
+            (adapter as BreadcrumbsViewAdapter).submitList(state.breadcrumbs)
+            smoothScrollToPosition(state.breadcrumbs.size)
+        }
+    }
+
+    private fun updateListingState(state: Model.State) = listing.run {
+        val adapter = adapter as ListingViewAdapter
+        if (isInSearchMode()) {
+            adapter.submitList(state.entries)
+        } else {
+            storeCurrentViewPosition()
+            adapter.submitList(state.entries) {
+                maybeScope?.launch {
+                    val pos = stateStorage.updateCurrentPath(state.uri)
+                    setCurrentViewPosition(pos)
+                }
             }
         }
+        val hasContent = state.entries.isNotEmpty()
+        isVisible = hasContent
+        listingStub.isVisible = !hasContent
+    }
 
-    private fun setupNotification(model: Model, view: View) = with(NotificationView(view)) {
-        model.notification.observe(viewLifecycleOwner) { notification ->
-            bind(notification) { intent ->
+    private suspend fun trackNotifications(src: Flow<Model.Notification?>, view: NotificationView) =
+        src.collect { notification ->
+            view.bind(notification) { intent ->
                 runCatching {
                     requireContext().startActivity(intent)
                 }.onFailure { showError((it.cause ?: it).message ?: it.javaClass.name) }
             }
         }
+
+    private suspend fun trackErrors(src: Flow<String>) = src.collect { err ->
+        showError(err)
     }
 
-    private fun storeCurrentViewPosition() =
-        listingLayoutManager?.findFirstVisibleItemPosition()
-            ?.takeIf { it != RecyclerView.NO_POSITION }?.let { pos ->
-                stateStorage.currentViewPosition = pos
+    private fun storeCurrentViewPosition() = listingLayoutManager.findFirstVisibleItemPosition()
+        .takeIf { it != RecyclerView.NO_POSITION }?.let { pos ->
+            // Use MainScope to store data despite fragment destruction
+            MainScope().launch {
+                stateStorage.updateCurrentPosition(pos)
             }
+        }
 
-    private fun restoreCurrentViewPosition() =
-        listingLayoutManager?.scrollToPositionWithOffset(
-            stateStorage.currentViewPosition,
-            0
-        )
+    private fun setCurrentViewPosition(pos: Int) =
+        listingLayoutManager.scrollToPositionWithOffset(pos, 0)
 
     private fun setupSearchView(model: Model, view: View) =
         view.findViewById<SearchView>(R.id.browser_search).apply {
@@ -222,7 +259,7 @@ class BrowserFragment : Fragment() {
                 }
 
                 override fun onQueryTextChange(query: String): Boolean {
-                    listingAdapter?.setFilter(query)
+                    model.filter = query
                     return true
                 }
             })
@@ -232,7 +269,7 @@ class BrowserFragment : Fragment() {
                 }
                 post {
                     clearFocus()
-                    model.reload()
+                    model.cancelSearch()
                 }
                 false
             }
@@ -247,11 +284,11 @@ class BrowserFragment : Fragment() {
     private inner class SelectionClient(private val adapter: ListingViewAdapter) :
         SelectionUtils.Client<Uri> {
         override fun getTitle(count: Int) = resources.getQuantityString(
-            R.plurals.items,
-            count, count
+            R.plurals.items, count, count
         )
 
-        override fun getAllItems() = adapter.currentList.map { it.uri }
+        override val allItems
+            get() = adapter.currentList.map(ListingEntry::uri)
 
         override fun fillMenu(inflater: MenuInflater, menu: Menu) =
             inflater.inflate(R.menu.browser, menu)
@@ -265,18 +302,18 @@ class BrowserFragment : Fragment() {
         }
 
         //TODO: rework for PlaylistControl usage as a local iface
-        private fun addToPlaylist(selection: Selection<Uri>) = controller?.run {
-            val params = Bundle().apply {
-                putParcelableArray("uris", convertSelection(selection))
+        private fun addToPlaylist(selection: Selection<Uri>) =
+            ResultActivity.addToPlaylistOrCreateRequestPermissionIntent(
+                requireContext(), convertSelection(selection)
+            )?.let {
+                startActivity(it)
             }
-            transportControls.sendCustomAction(MainService.CUSTOM_ACTION_ADD, params)
-        }
     }
 
     override fun onSaveInstanceState(state: Bundle) {
         super.onSaveInstanceState(state)
         selectionTracker?.onSaveInstanceState(state)
-        search?.takeIf { !it.isIconified }?.query?.let { query ->
+        search.takeIf { !it.isIconified }?.query?.let { query ->
             state.putString(SEARCH_QUERY_KEY, query.toString())
         }
     }
@@ -285,7 +322,7 @@ class BrowserFragment : Fragment() {
         super.onViewStateRestored(state)
         selectionTracker?.onRestoreInstanceState(state)
         state?.getString(SEARCH_QUERY_KEY)?.takeIf { it.isNotEmpty() }?.let { query ->
-            search?.run {
+            search.run {
                 post {
                     isIconified = false
                     setQuery(query, false)
@@ -296,16 +333,15 @@ class BrowserFragment : Fragment() {
 
     private fun browse(uri: Uri) = model.browse(uri)
 
-    fun moveUp() =
-        search?.takeIf { !it.isIconified }?.let { it.isIconified = true } ?: browseParent()
+    private fun moveUp() =
+        search.takeIf { !it.isIconified }?.let { it.isIconified = true } ?: browseParent()
 
     private fun browseParent() = model.browseParent()
 
+    private fun isInSearchMode() = search.isFocused
+
     companion object {
         private const val SEARCH_QUERY_KEY = "search_query"
-
-        @JvmStatic
-        fun createInstance() = BrowserFragment()
 
         private fun convertSelection(selection: Selection<Uri>) =
             selection.iterator().let { iterator ->
@@ -313,5 +349,11 @@ class BrowserFragment : Fragment() {
                     iterator.next()
                 }
             }
+    }
+}
+
+private suspend fun View.waitForLayout() = suspendCoroutine { cont ->
+    doOnLayout {
+        cont.resume(this)
     }
 }

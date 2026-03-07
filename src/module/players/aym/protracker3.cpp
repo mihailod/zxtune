@@ -8,26 +8,25 @@
  *
  **/
 
-// local includes
 #include "module/players/aym/protracker3.h"
+
 #include "module/players/aym/aym_base.h"
 #include "module/players/aym/aym_base_track.h"
 #include "module/players/aym/aym_properties_helper.h"
 #include "module/players/aym/turbosound.h"
 #include "module/players/aym/vortex.h"
-// common includes
-#include <pointers.h>
-// library includes
-#include <module/players/platforms.h>
-#include <module/players/properties_meta.h>
-#include <module/players/simple_orderlist.h>
-#include <parameters/tracking_helper.h>
+#include "module/players/properties_meta.h"
+#include "module/players/simple_orderlist.h"
+
+#include "parameters/tracking_helper.h"
+
+#include "pointers.h"
 
 namespace Module::ProTracker3
 {
-  typedef Vortex::ModuleData ModuleData;
+  using ModuleData = Vortex::ModuleData;
 
-  const Char TURBOSOUND_COMMENT[] = "TurboSound module";
+  const auto TURBOSOUND_COMMENT = "TurboSound module"sv;
 
   class DataBuilder : public Formats::Chiptune::ProTracker3::Builder
   {
@@ -52,7 +51,7 @@ namespace Module::ProTracker3
 
     void SetNoteTable(Formats::Chiptune::ProTracker3::NoteTable table) override
     {
-      const String freqTable = Vortex::GetFreqTable(static_cast<Vortex::NoteTable>(table), Data->Version);
+      const auto freqTable = Vortex::GetFreqTable(static_cast<Vortex::NoteTable>(table), Data->Version);
       Properties.SetFrequencyTable(freqTable);
     }
 
@@ -193,7 +192,7 @@ namespace Module::ProTracker3
 
   class StubLine : public Line
   {
-    StubLine() {}
+    StubLine() = default;
 
   public:
     const Cell* GetChannel(uint_t /*idx*/) const override
@@ -263,7 +262,7 @@ namespace Module::ProTracker3
     class Line : public Module::Line
     {
     public:
-      typedef std::unique_ptr<Line> Ptr;
+      using Ptr = std::unique_ptr<Line>;
 
       Line(const Module::Line* first, const Module::Line* second)
         : First(first ? first : StubLine::Create())
@@ -297,7 +296,7 @@ namespace Module::ProTracker3
     class Pattern : public Module::Pattern
     {
     public:
-      typedef std::unique_ptr<Pattern> Ptr;
+      using Ptr = std::unique_ptr<Pattern>;
 
       Pattern(const Module::Pattern& first, const Module::Pattern& second)
         : First(first)
@@ -306,14 +305,14 @@ namespace Module::ProTracker3
 
       const Line* GetLine(uint_t row) const override
       {
-        if (const auto cached = Lines.Get(row).get())
+        if (auto* const cached = Lines.Get(row).get())
         {
           return cached;
         }
         else
         {
-          const auto first = First.GetLine(row);
-          const auto second = Second.GetLine(row);
+          const auto* const first = First.GetLine(row);
+          const auto* const second = Second.GetLine(row);
           return Lines.Add(row, MakePtr<Line>(first, second)).get();
         }
       }
@@ -339,14 +338,14 @@ namespace Module::ProTracker3
 
       const Pattern* Get(uint_t idx) const override
       {
-        if (const auto cached = Patterns.Get(idx).get())
+        if (auto* const cached = Patterns.Get(idx).get())
         {
           return cached;
         }
         else
         {
-          const auto first = Delegate->Get(idx);
-          const auto second = Delegate->Get(Base - 1 - idx);
+          const auto* const first = Delegate->Get(idx);
+          const auto* const second = Delegate->Get(Base - 1 - idx);
           return Patterns.Add(idx, MakePtr<Pattern>(*first, *second)).get();
         }
       }
@@ -387,14 +386,9 @@ namespace Module::ProTracker3
         Second->Reset();
       }
 
-      bool IsValid() const override
+      void NextFrame() override
       {
-        return Delegate->IsValid();
-      }
-
-      void NextFrame(const Sound::LoopParameters& looped) override
-      {
-        Delegate->NextFrame(looped);
+        Delegate->NextFrame();
       }
 
       Module::State::Ptr GetStateObserver() const override
@@ -404,16 +398,11 @@ namespace Module::ProTracker3
 
       Devices::TurboSound::Registers GetData() const override
       {
-        return Delegate->IsValid() ? GetCurrentChunk() : Devices::TurboSound::Registers();
-      }
-
-    private:
-      Devices::TurboSound::Registers GetCurrentChunk() const
-      {
         SynchronizeParameters();
         return {{RenderFrom(*First), RenderFrom(*Second)}};
       }
 
+    private:
       Devices::AYM::Registers RenderFrom(AYM::DataRenderer& renderer) const
       {
         AYM::TrackBuilder builder(Table);
@@ -495,13 +484,13 @@ namespace Module::ProTracker3
       if (const auto container = Decoder->Parse(rawData, dataBuilder))
       {
         props.SetSource(*container);
-        props.SetPlatform(Platforms::ZX_SPECTRUM);
         const uint_t patOffset = dataBuilder.GetPatOffset();
         auto modData = dataBuilder.CaptureResult();
         if (patOffset != Formats::Chiptune::ProTracker3::SINGLE_AY_MODE)
         {
           // TurboSound modules
           props.SetComment(TURBOSOUND_COMMENT);
+          props.SetChannels(TurboSound::MakeChannelsNames());
           modData->Patterns = TS::CreatePatterns(patOffset, std::move(modData->Patterns));
           auto chiptune = MakePtr<TS::Chiptune>(std::move(modData), std::move(properties));
           return TurboSound::CreateHolder(std::move(chiptune));

@@ -8,27 +8,22 @@
  *
  **/
 
-// local includes
 #include "sound/backends/backend_impl.h"
 #include "sound/backends/gates/paudio_api.h"
 #include "sound/backends/l10n.h"
 #include "sound/backends/paudio.h"
 #include "sound/backends/storage.h"
-// common includes
-#include <byteorder.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <debug/log.h>
-#include <module/attributes.h>
-#include <platform/version/api.h>
-#include <sound/backend_attrs.h>
-#include <sound/backends_parameters.h>
-#include <sound/render_params.h>
-// std includes
-#include <functional>
 
-#define FILE_TAG 181AC911
+#include "debug/log.h"
+#include "module/attributes.h"
+#include "platform/version/api.h"
+#include "sound/backends_parameters.h"
+#include "sound/render_params.h"
+
+#include "byteorder.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+#include "string_view.h"
 
 namespace Sound::PulseAudio
 {
@@ -39,11 +34,11 @@ namespace Sound::PulseAudio
   class BackendWorker : public Sound::BackendWorker
   {
   public:
-    BackendWorker(Api::Ptr api, Parameters::Accessor::Ptr params, String stream)
+    BackendWorker(Api::Ptr api, Parameters::Accessor::Ptr params, StringView stream)
       : PaApi(std::move(api))
       , Params(std::move(params))
       , Client(Platform::Version::GetProgramTitle())  // TODO: think about another solution...
-      , Stream(std::move(stream))
+      , Stream(stream)
     {}
 
     void Startup() override
@@ -56,7 +51,7 @@ namespace Sound::PulseAudio
     void Shutdown() override
     {
       Dbg("Shutdown");
-      Device = std::shared_ptr<pa_simple>();
+      Device = {};
     }
 
     void Pause() override
@@ -87,7 +82,7 @@ namespace Sound::PulseAudio
 
     VolumeControl::Ptr GetVolumeControl() const override
     {
-      return VolumeControl::Ptr();
+      return {};
     }
 
   private:
@@ -95,10 +90,10 @@ namespace Sound::PulseAudio
     {
       const pa_sample_spec format = GetFormat();
       int error = 0;
-      if (pa_simple* result = PaApi->pa_simple_new(nullptr, Client.c_str(), PA_STREAM_PLAYBACK, nullptr, Stream.c_str(),
-                                                   &format, nullptr, nullptr, &error))
+      if (auto* result = PaApi->pa_simple_new(nullptr, Client.c_str(), PA_STREAM_PLAYBACK, nullptr, Stream.c_str(),
+                                              &format, nullptr, nullptr, &error))
       {
-        return std::shared_ptr<pa_simple>(result, std::bind(&Api::pa_simple_free, PaApi, std::placeholders::_1));
+        return {result, [api = PaApi](auto&& arg) { api->pa_simple_free(arg); }};
       }
       throw MakeError(error, THIS_LINE);
     }
@@ -120,11 +115,11 @@ namespace Sound::PulseAudio
     {
       if (const char* txt = PaApi->pa_strerror(code))
       {
-        return MakeFormattedError(loc, translate("Error in PulseAudio backend: %1%."), txt);
+        return MakeFormattedError(loc, translate("Error in PulseAudio backend: {}."), txt);
       }
       else
       {
-        return Error(loc, translate("Unknown error in PulseAudio backend."));
+        return {loc, translate("Unknown error in PulseAudio backend.")};
       }
     }
 
@@ -145,17 +140,16 @@ namespace Sound::PulseAudio
 
     BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr holder) const override
     {
-      const String& stream = GetStreamName(*holder);
-      return MakePtr<BackendWorker>(PaApi, params, stream);
+      const auto& stream = GetStreamName(*holder);
+      return MakePtr<BackendWorker>(PaApi, std::move(params), stream);
     }
 
   private:
     static String GetStreamName(const Module::Holder& holder)
     {
-      const Parameters::Accessor::Ptr props = holder.GetModuleProperties();
-      String author, title;
-      props->FindValue(Module::ATTR_AUTHOR, author);
-      props->FindValue(Module::ATTR_TITLE, title);
+      const auto props = holder.GetModuleProperties();
+      const auto author = Parameters::GetString(*props, Module::ATTR_AUTHOR);
+      const auto title = Parameters::GetString(*props, Module::ATTR_TITLE);
       const bool hasAuthor = !author.empty();
       const bool hasTitle = !title.empty();
       return hasAuthor && hasTitle ? author + " - " + title : (hasTitle ? title : "");
@@ -172,11 +166,12 @@ namespace Sound
   {
     try
     {
-      const PulseAudio::Api::Ptr api = PulseAudio::LoadDynamicApi();
+      auto api = PulseAudio::LoadDynamicApi();
       const char* const version = api->pa_get_library_version();
-      PulseAudio::Dbg("Detected PulseAudio v%1%", version);
-      const BackendWorkerFactory::Ptr factory = MakePtr<PulseAudio::BackendWorkerFactory>(api);
-      storage.Register(PulseAudio::BACKEND_ID, PulseAudio::BACKEND_DESCRIPTION, PulseAudio::CAPABILITIES, factory);
+      PulseAudio::Dbg("Detected PulseAudio v{}", version);
+      auto factory = MakePtr<PulseAudio::BackendWorkerFactory>(std::move(api));
+      storage.Register(PulseAudio::BACKEND_ID, PulseAudio::BACKEND_DESCRIPTION, PulseAudio::CAPABILITIES,
+                       std::move(factory));
     }
     catch (const Error& e)
     {
@@ -184,5 +179,3 @@ namespace Sound
     }
   }
 }  // namespace Sound
-
-#undef FILE_TAG

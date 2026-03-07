@@ -10,12 +10,13 @@
 
 #pragma once
 
-// library includes
-#include <io/identifier.h>
-#include <parameters/accessor.h>
+#include "io/identifier.h"
+#include "parameters/accessor.h"
+
+#include "string_view.h"
 
 namespace Module
 {
-  Parameters::Accessor::Ptr CreatePathProperties(const String& fullpath);
+  Parameters::Accessor::Ptr CreatePathProperties(StringView fullpath);
   Parameters::Accessor::Ptr CreatePathProperties(IO::Identifier::Ptr id);
 }  // namespace Module

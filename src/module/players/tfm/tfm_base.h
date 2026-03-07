@@ -10,16 +10,12 @@
 
 #pragma once
 
-// local includes
 #include "module/players/tfm/tfm_chiptune.h"
-// library includes
-#include <module/renderer.h>
 
-namespace Module
+#include "module/renderer.h"
+
+namespace Module::TFM
 {
-  namespace TFM
-  {
-    Renderer::Ptr CreateRenderer(Time::Microseconds frameDuration, DataIterator::Ptr iterator,
-                                 Devices::TFM::Chip::Ptr device);
-  }
-}  // namespace Module
+  Renderer::Ptr CreateRenderer(Time::Microseconds frameDuration, DataIterator::Ptr iterator,
+                               Devices::TFM::Chip::Ptr device);
+}  // namespace Module::TFM

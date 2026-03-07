@@ -8,22 +8,21 @@
  *
  **/
 
-// local includes
 #include "binary/format/details.h"
-// common includes
-#include <contract.h>
-#include <make_ptr.h>
-#include <types.h>
-// library includes
-#include <binary/format_factories.h>
-// std includes
+
+#include "binary/format_factories.h"
+
+#include "contract.h"
+#include "make_ptr.h"
+#include "types.h"
+
 #include <algorithm>
 
 namespace Binary
 {
   std::size_t GetSize(const Format& format)
   {
-    if (const auto dtl = dynamic_cast<const FormatDetails*>(&format))
+    if (const auto* const dtl = dynamic_cast<const FormatDetails*>(&format))
     {
       return dtl->GetMinSize();
     }
@@ -65,7 +64,7 @@ namespace Binary
 
     std::size_t NextMatchOffset(View data) const override
     {
-      const uint8_t* const start = static_cast<const uint8_t*>(data.Start());
+      const auto* const start = static_cast<const uint8_t*>(data.Start());
       const std::size_t limit = data.Size();
       for (std::size_t headerCursor = 1;;)
       {

@@ -10,10 +10,9 @@
 
 #pragma once
 
-// library includes
-#include <sound/backend.h>
+#include "sound/backend.h"
 
 namespace Sound
 {
-  VolumeControl::Ptr CreateVolumeControlDelegate(VolumeControl::Ptr delegate);
+  VolumeControl::Ptr CreateVolumeControlDelegate(const VolumeControl::Ptr& delegate);
 }

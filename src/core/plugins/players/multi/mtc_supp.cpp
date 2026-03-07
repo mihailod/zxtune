@@ -8,27 +8,27 @@
  *
  **/
 
-// local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/multi/multi_base.h"
 #include "core/plugins/players/plugin.h"
-// common includes
-#include <contract.h>
-#include <error.h>
-#include <make_ptr.h>
-// library includes
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/multidevice/multitrackcontainer.h>
-#include <module/attributes.h>
-#include <module/players/properties_helper.h>
-#include <parameters/convert.h>
-#include <parameters/merged_accessor.h>
-#include <parameters/merged_container.h>
-#include <parameters/tools.h>
-// std includes
+#include "formats/chiptune/multidevice/multitrackcontainer.h"
+#include "module/players/properties_helper.h"
+
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "module/attributes.h"
+#include "parameters/merged_accessor.h"
+#include "parameters/merged_container.h"
+#include "parameters/serialize.h"
+
+#include "contract.h"
+#include "error.h"
+#include "make_ptr.h"
+#include "string_view.h"
+
 #include <algorithm>
 #include <list>
+#include <utility>
 
 namespace Module::MTC
 {
@@ -36,25 +36,25 @@ namespace Module::MTC
 
   Parameters::Accessor::Ptr CombineProps(Parameters::Accessor::Ptr first, Parameters::Accessor::Ptr second)
   {
-    return first ? (second ? Parameters::CreateMergedAccessor(first, second) : first) : second;
+    return first ? (second ? Parameters::CreateMergedAccessor(std::move(first), std::move(second)) : first) : second;
   }
 
   Parameters::Accessor::Ptr CombineProps(Parameters::Accessor::Ptr first, Parameters::Accessor::Ptr second,
                                          Parameters::Accessor::Ptr third)
   {
-    return first ? (second
-                        ? (third ? Parameters::CreateMergedAccessor(first, second, third) : CombineProps(first, second))
-                        : CombineProps(first, third))
-                 : CombineProps(second, third);
+    return first
+               ? (second
+                      ? (third ? Parameters::CreateMergedAccessor(std::move(first), std::move(second), std::move(third))
+                               : CombineProps(std::move(first), std::move(second)))
+                      : CombineProps(std::move(first), std::move(third)))
+               : CombineProps(std::move(second), std::move(third));
   }
 
   class DataBuilder : public Formats::Chiptune::MultiTrackContainer::Builder
   {
   public:
     DataBuilder(const Parameters::Accessor& params, Parameters::Container::Ptr props)
-      : Module(params, props)
-      , CurTrack()
-      , CurStream()
+      : Module(params, std::move(props))
       , CurEntity(&Module)
     {}
 
@@ -75,27 +75,12 @@ namespace Module::MTC
 
     void SetProperty(StringView name, StringView value) override
     {
-      Parameters::IntType asInt = 0;
-      Parameters::DataType asData;
-      Parameters::StringType asString;
-      auto& out = GetCurrentProperties();
-      if (Parameters::ConvertFromString(value, asInt))
-      {
-        out.SetValue(name, asInt);
-      }
-      else if (Parameters::ConvertFromString(value, asData))
-      {
-        out.SetValue(name, asData);
-      }
-      else if (Parameters::ConvertFromString(value, asString))
-      {
-        out.SetValue(name, asString);
-      }
+      Parameters::Convert(name, value, GetCurrentProperties());
     }
 
     void StartTrack(uint_t idx) override
     {
-      Dbg("Start track %1%", idx);
+      Dbg("Start track {}", idx);
       CurEntity = CurTrack = Module.AddTrack(idx);
     }
 
@@ -119,8 +104,6 @@ namespace Module::MTC
     class TrackEntity
     {
     public:
-      typedef std::shared_ptr<TrackEntity> Ptr;
-
       virtual ~TrackEntity() = default;
 
       virtual Module::Holder::Ptr GetHolder() const = 0;
@@ -186,7 +169,7 @@ namespace Module::MTC
       {
         if (Type.empty())
         {
-          Require(GetHolder()->GetModuleProperties()->FindValue(Module::ATTR_TYPE, Type));
+          Require(Parameters::FindValue(*GetHolder()->GetModuleProperties(), Module::ATTR_TYPE, Type));
         }
         return Type;
       }
@@ -200,7 +183,7 @@ namespace Module::MTC
 
       uint_t GetPenalty() const
       {
-        const String& type = GetType();
+        const auto& type = GetType();
         if (type == "STR")
         {
           // badly emulated
@@ -223,17 +206,17 @@ namespace Module::MTC
         if (Data)
         {
           auto initialProperties = CombineProps(GetProperties(), std::move(TrackProperties), std::move(TuneProperties));
-          Holder = OpenModule(std::move(Data), std::move(initialProperties));
+          Holder = OpenModule(*Data, std::move(initialProperties));
         }
       }
 
-      Module::Holder::Ptr OpenModule(Binary::Container::Ptr data, Parameters::Accessor::Ptr baseProperties) const
+      Module::Holder::Ptr OpenModule(const Binary::Container& data, Parameters::Accessor::Ptr baseProperties) const
       {
         const auto initialProperties =
             Parameters::CreateMergedContainer(std::move(baseProperties), Parameters::Container::Create());
         for (const auto& plugin : ZXTune::PlayerPlugin::Enumerate())
         {
-          if (auto result = plugin->TryOpen(Params, *data, initialProperties))
+          if (auto result = plugin->TryOpen(Params, data, initialProperties))
           {
             return result;
           }
@@ -255,8 +238,7 @@ namespace Module::MTC
     public:
       Track(const Parameters::Accessor& params, Parameters::Accessor::Ptr tuneProperties)
         : Params(params)
-        , TuneProperties(tuneProperties)
-        , SelectedStream()
+        , TuneProperties(std::move(tuneProperties))
       {}
 
       Stream* AddStream(Binary::Container::Ptr data)
@@ -281,10 +263,10 @@ namespace Module::MTC
       {
         if (!SelectedStream)
         {
-          Dbg("Select stream from %1% candidates", Streams.size());
+          Dbg("Select stream from {} candidates", Streams.size());
           Require(!Streams.empty());
           SelectedStream = &*std::min_element(Streams.begin(), Streams.end());
-          Dbg(" selected %1%", SelectedStream->GetType());
+          Dbg(" selected {}", SelectedStream->GetType());
         }
         return *SelectedStream;
       }
@@ -293,7 +275,7 @@ namespace Module::MTC
       const Parameters::Accessor& Params;
       const Parameters::Accessor::Ptr TuneProperties;
       std::list<Stream> Streams;
-      mutable const Stream* SelectedStream;
+      mutable const Stream* SelectedStream = nullptr;
     };
 
     class Tune : public TrackEntity
@@ -314,7 +296,7 @@ namespace Module::MTC
       Module::Holder::Ptr GetHolder() const override
       {
         const std::size_t tracksCount = Tracks.size();
-        Dbg("Merge %1% tracks together", tracksCount);
+        Dbg("Merge {} tracks together", tracksCount);
         Require(tracksCount > 0);
         Module::Multi::HoldersArray holders(tracksCount);
         std::transform(Tracks.begin(), Tracks.end(), holders.begin(),
@@ -338,7 +320,7 @@ namespace Module::MTC
       }
 
     private:
-      static bool CompareByDuration(Module::Holder::Ptr lh, Module::Holder::Ptr rh)
+      static bool CompareByDuration(const Module::Holder::Ptr& lh, const Module::Holder::Ptr& rh)
       {
         return lh->GetModuleInformation()->Duration() < rh->GetModuleInformation()->Duration();
       }
@@ -351,8 +333,8 @@ namespace Module::MTC
 
   private:
     Tune Module;
-    Track* CurTrack;
-    Stream* CurStream;
+    Track* CurTrack = nullptr;
+    Stream* CurStream = nullptr;
     TrackEntity* CurEntity;
   };
 
@@ -373,7 +355,7 @@ namespace Module::MTC
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create MTC: %s", e.what());
+        Dbg("Failed to create MTC: {}", e.what());
       }
       return {};
     }
@@ -384,7 +366,7 @@ namespace ZXTune
 {
   void RegisterMTCSupport(PlayerPluginsRegistrator& registrator)
   {
-    const Char ID[] = {'M', 'T', 'C', 0};
+    const auto ID = "MTC"_id;
     const uint_t CAPS = Capabilities::Module::Type::MULTI | Capabilities::Module::Device::MULTI;
 
     auto decoder = Formats::Chiptune::CreateMultiTrackContainerDecoder();

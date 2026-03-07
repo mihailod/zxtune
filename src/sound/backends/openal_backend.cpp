@@ -8,28 +8,26 @@
  *
  **/
 
-// local includes
 #include "sound/backends/backend_impl.h"
 #include "sound/backends/gates/openal_api.h"
 #include "sound/backends/l10n.h"
 #include "sound/backends/openal.h"
 #include "sound/backends/storage.h"
 #include "sound/backends/volume_control.h"
-// common includes
-#include <byteorder.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <debug/log.h>
-#include <math/numeric.h>
-#include <sound/backend_attrs.h>
-#include <sound/backends_parameters.h>
-#include <sound/render_params.h>
-// std includes
-#include <functional>
-#include <thread>
 
-#define FILE_TAG 07CDA82B
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "sound/backends_parameters.h"
+#include "sound/render_params.h"
+
+#include "byteorder.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
+#include <functional>
+#include <memory>
+#include <thread>
+#include <utility>
 
 namespace Sound::OpenAl
 {
@@ -53,7 +51,7 @@ namespace Sound::OpenAl
     {
       if (const ALenum err = OalApi.alGetError())
       {
-        throw MakeFormattedError(loc, translate("Error in OpenAL backend: %1%."), err);
+        throw MakeFormattedError(loc, translate("Error in OpenAL backend: {}."), err);
       }
     }
 
@@ -73,14 +71,14 @@ namespace Sound::OpenAl
     ActiveContext(Api& api, ALCdevice& device)
       : ApiRef(api)
       , Previous(OalApi.alcGetCurrentContext())
-      , Current(OalApi.alcCreateContext(&device, 0), [&api](ALCcontext* ctx) { api.alcDestroyContext(ctx); })
+      , Current(OalApi.alcCreateContext(&device, nullptr), [&api](ALCcontext* ctx) { api.alcDestroyContext(ctx); })
     {
-      Dbg("Create context instead of current %p", Previous);
+      Dbg("Create context instead of current {}", static_cast<void*>(Previous));
       if (!Current)
       {
         RaiseError(THIS_LINE);
       }
-      Dbg("Set current context to %p", Current.get());
+      Dbg("Set current context to {}", static_cast<void*>(Current.get()));
       if (!OalApi.alcMakeContextCurrent(Current.get()))
       {
         RaiseError(THIS_LINE);
@@ -117,7 +115,7 @@ namespace Sound::OpenAl
       , Size(count)
       , Ids(new ALuint[count])
     {
-      Dbg("Generate %u buffers", count);
+      Dbg("Generate {} buffers", count);
       OalApi.alGetError();
       OalApi.alGenBuffers(Size, Ids.get());
       CheckError(THIS_LINE);
@@ -178,7 +176,7 @@ namespace Sound::OpenAl
       OalApi.alGetError();
       OalApi.alGenSources(1, &SrcId);
       CheckError(THIS_LINE);
-      Queue.reset(new Buffers(OalApi, buffersCount));
+      Queue = std::make_unique<Buffers>(OalApi, buffersCount);
       StartPlayback(buffersCount);
     }
 
@@ -276,15 +274,15 @@ namespace Sound::OpenAl
   public:
     Device(Api& api, const String& deviceName)
       : ApiRef(api)
-      , Dev(OalApi.alcOpenDevice(deviceName.empty() ? 0 : deviceName.c_str()),
+      , Dev(OalApi.alcOpenDevice(deviceName.empty() ? nullptr : deviceName.c_str()),
             [&api](ALCdevice* dev) { api.alcCloseDevice(dev); })
     {
-      Dbg("Open device %1%", deviceName);
+      Dbg("Open device {}", deviceName);
       if (!Dev)
       {
         RaiseError(THIS_LINE);
       }
-      Context.reset(new ActiveContext(OalApi, *Dev));
+      Context = std::make_unique<ActiveContext>(OalApi, *Dev);
     }
 
   private:
@@ -297,14 +295,13 @@ namespace Sound::OpenAl
   public:
     explicit BackendParameters(Parameters::Accessor::Ptr accessor)
       : Accessor(*accessor)
-      , RenderingParameters(RenderParameters::Create(accessor))
+      , RenderingParameters(RenderParameters::Create(std::move(accessor)))
     {}
 
     String GetDeviceName() const
     {
-      Parameters::StringType strVal = Parameters::ZXTune::Sound::Backends::OpenAl::DEVICE_DEFAULT;
-      Accessor.FindValue(Parameters::ZXTune::Sound::Backends::OpenAl::DEVICE, strVal);
-      return strVal;
+      using namespace Parameters::ZXTune::Sound::Backends::OpenAl;
+      return Parameters::GetString(Accessor, DEVICE, DEVICE_DEFAULT);
     }
 
     uint_t GetSoundFreq() const
@@ -314,15 +311,15 @@ namespace Sound::OpenAl
 
     uint_t GetBuffersCount() const
     {
-      Parameters::IntType val = Parameters::ZXTune::Sound::Backends::OpenAl::BUFFERS_DEFAULT;
-      if (Accessor.FindValue(Parameters::ZXTune::Sound::Backends::OpenAl::BUFFERS, val)
-          && !Math::InRange<Parameters::IntType>(val, BUFFERS_MIN, BUFFERS_MAX))
+      using namespace Parameters::ZXTune::Sound::Backends::OpenAl;
+      const auto val = Parameters::GetInteger<uint_t>(Accessor, BUFFERS, BUFFERS_DEFAULT);
+      if (!Math::InRange(val, BUFFERS_MIN, BUFFERS_MAX))
       {
         throw MakeFormattedError(THIS_LINE,
-                                 translate("OpenAL backend error: buffers count (%1%) is out of range (%2%..%3%)."),
-                                 static_cast<int_t>(val), BUFFERS_MIN, BUFFERS_MAX);
+                                 translate("OpenAL backend error: buffers count ({0}) is out of range ({1}..{2})."),
+                                 val, BUFFERS_MIN, BUFFERS_MAX);
       }
-      return static_cast<uint_t>(val);
+      return val;
     }
 
   private:
@@ -337,13 +334,13 @@ namespace Sound::OpenAl
       : Src(src)
     {}
 
-    virtual Gain GetVolume() const
+    Gain GetVolume() const override
     {
       const Gain::Type val(Src.GetGain());
-      return Gain(val, val);
+      return {val, val};
     }
 
-    virtual void SetVolume(const Gain& vol)
+    void SetVolume(const Gain& vol) override
     {
       const float val = ALfloat(vol.Left().Raw() + vol.Right().Raw()) / (2 * Gain::Type::PRECISION);
       Src.SetGain(val);
@@ -370,44 +367,44 @@ namespace Sound::OpenAl
   {
   public:
     BackendWorker(Api::Ptr api, Parameters::Accessor::Ptr params)
-      : OalApi(api)
-      , Params(params)
+      : OalApi(std::move(api))
+      , Params(std::move(params))
     {}
 
-    virtual void Startup()
+    void Startup() override
     {
       Dbg("Starting playback");
 
       const BackendParameters params(Params);
-      Stat.reset(new State(*OalApi, params));
+      Stat = std::make_unique<State>(*OalApi, params);
     }
 
-    virtual void Shutdown()
+    void Shutdown() override
     {
       Dbg("Shutdown");
       Stat.reset();
     }
 
-    virtual void Pause()
+    void Pause() override
     {
       Dbg("Pause");
       Stat->Src->Pause();
     }
 
-    virtual void Resume()
+    void Resume() override
     {
       Dbg("Resume");
       Stat->Src->Play();
     }
 
-    virtual void FrameStart(const Module::State& /*state*/) {}
+    void FrameStart(const Module::State& /*state*/) override {}
 
-    virtual void FrameFinish(Chunk buffer)
+    void FrameFinish(Chunk buffer) override
     {
       Stat->Src->Write(buffer);
     }
 
-    virtual VolumeControl::Ptr GetVolumeControl() const
+    VolumeControl::Ptr GetVolumeControl() const override
     {
       return CreateVolumeControlDelegate(Stat->Vol);
     }
@@ -422,10 +419,10 @@ namespace Sound::OpenAl
   {
   public:
     explicit BackendWorkerFactory(Api::Ptr api)
-      : OalApi(api)
+      : OalApi(std::move(api))
     {}
 
-    virtual BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr /*holder*/) const
+    BackendWorker::Ptr CreateWorker(Parameters::Accessor::Ptr params, Module::Holder::Ptr /*holder*/) const override
     {
       return MakePtr<BackendWorker>(OalApi, params);
     }
@@ -441,14 +438,14 @@ namespace Sound
   {
     try
     {
-      const OpenAl::Api::Ptr api = OpenAl::LoadDynamicApi();
+      auto api = OpenAl::LoadDynamicApi();
       const char* const version = api->alGetString(AL_VERSION);
       const char* const vendor = api->alGetString(AL_VENDOR);
       const char* const renderer = api->alGetString(AL_RENDERER);
-      OpenAl::Dbg("Detected OpenAL v%1% by '%2%' (renderer '%3%')", version, vendor,
+      OpenAl::Dbg("Detected OpenAL v{} by '{}' (renderer '{}')", version, vendor,
                   renderer);  // usually empty strings...
-      const BackendWorkerFactory::Ptr factory = MakePtr<OpenAl::BackendWorkerFactory>(api);
-      storage.Register(OpenAl::BACKEND_ID, OpenAl::BACKEND_DESCRIPTION, OpenAl::CAPABILITIES, factory);
+      auto factory = MakePtr<OpenAl::BackendWorkerFactory>(std::move(api));
+      storage.Register(OpenAl::BACKEND_ID, OpenAl::BACKEND_DESCRIPTION, OpenAl::CAPABILITIES, std::move(factory));
     }
     catch (const Error& e)
     {
@@ -464,12 +461,12 @@ namespace Sound
       try
       {
         const Api::Ptr api = LoadDynamicApi();
-        if (const char* str = api->alcGetString(0, ALC_DEVICE_SPECIFIER))
+        if (const char* str = api->alcGetString(nullptr, ALC_DEVICE_SPECIFIER))
         {
           while (*str)
           {
             const char* end = std::strchr(str, 0);
-            result.push_back(String(str, end));
+            result.emplace_back(str, end);
             str = end + 1;
           }
         }
@@ -480,5 +477,3 @@ namespace Sound
     }
   }  // namespace OpenAl
 }  // namespace Sound
-
-#undef FILE_TAG

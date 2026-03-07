@@ -8,11 +8,10 @@
  *
  **/
 
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <analysis/result.h>
-// std includes
+#include "analysis/result.h"
+
+#include "make_ptr.h"
+
 #include <utility>
 
 namespace Analysis
@@ -73,7 +72,7 @@ namespace Analysis
 
   Result::Ptr CreateUnmatchedResult(Binary::Format::Ptr format, Binary::Container::Ptr data)
   {
-    return MakePtr<UnmatchedResult>(format, data);
+    return MakePtr<UnmatchedResult>(std::move(format), std::move(data));
   }
 
   Result::Ptr CreateUnmatchedResult(std::size_t unmatchedSize)

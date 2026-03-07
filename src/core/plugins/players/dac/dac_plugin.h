@@ -10,14 +10,13 @@
 
 #pragma once
 
-// local includes
 #include "core/plugins/player_plugin.h"
-// library includes
-#include <formats/chiptune.h>
-#include <module/players/dac/dac_factory.h>
+#include "module/players/dac/dac_factory.h"
+
+#include "formats/chiptune.h"
 
 namespace ZXTune
 {
-  PlayerPlugin::Ptr CreatePlayerPlugin(const String& id, Formats::Chiptune::Decoder::Ptr decoder,
+  PlayerPlugin::Ptr CreatePlayerPlugin(PluginId id, Formats::Chiptune::Decoder::Ptr decoder,
                                        Module::DAC::Factory::Ptr factory);
 }

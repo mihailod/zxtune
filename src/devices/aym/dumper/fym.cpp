@@ -8,17 +8,15 @@
  *
  **/
 
-// local includes
 #include "devices/aym/dumper/dump_builder.h"
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-// library includes
-#include <binary/compression/zlib_stream.h>
-// std includes
-#include <algorithm>
-#include <iterator>
+
+#include "binary/compression/zlib_stream.h"
+#include "binary/data_builder.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+
 #include <utility>
 
 namespace Devices::AYM
@@ -47,16 +45,15 @@ namespace Devices::AYM
       return Delegate->Initialize();
     }
 
-    void GetResult(Binary::Dump& data) const override
+    Binary::Data::Ptr GetResult() override
     {
-      Binary::Dump unpacked;
-      GetUnpackedResult(unpacked);
       Binary::DataBuilder output;
       {
-        Binary::DataInputStream input(unpacked);
+        const auto unpacked = GetUnpackedResult();
+        Binary::DataInputStream input(*unpacked);
         Binary::Compression::Zlib::Compress(input, output);
       }
-      output.CaptureResult(data);
+      return output.CaptureResult();
     }
 
     void WriteFrame(uint_t framesPassed, const Registers& state, const Registers& update) override
@@ -65,21 +62,21 @@ namespace Devices::AYM
     }
 
   private:
-    void GetUnpackedResult(Binary::Dump& result) const
+    Binary::Data::Ptr GetUnpackedResult() const
     {
-      Binary::Dump rawDump;
-      Delegate->GetResult(rawDump);
-      Require(0 == rawDump.size() % Registers::TOTAL);
-      const uint32_t framesCount = rawDump.size() / Registers::TOTAL;
+      const auto rawDump = Delegate->GetResult();
+      Require(0 == rawDump->Size() % Registers::TOTAL);
+      const uint32_t framesCount = rawDump->Size() / Registers::TOTAL;
       const uint_t storedRegisters = Registers::TOTAL;
+      const auto* const input = static_cast<const uint8_t*>(rawDump->Start());
 
-      const String& title = Params->Title();
-      const String author = Params->Author();
+      const auto& title = Params->Title();
+      const auto& author = Params->Author();
       const uint32_t headerSize = sizeof(FYMHeader) + (title.size() + 1) + (author.size() + 1);
       const std::size_t contentSize = framesCount * storedRegisters;
 
       Binary::DataBuilder builder(headerSize + contentSize);
-      FYMHeader& header = builder.Add<FYMHeader>();
+      auto& header = builder.Add<FYMHeader>();
       header.HeaderSize = headerSize;
       header.FramesCount = framesCount;
       header.LoopFrame = Params->LoopFrame();
@@ -90,13 +87,13 @@ namespace Devices::AYM
 
       for (uint_t reg = 0; reg < storedRegisters; ++reg)
       {
-        uint8_t* const result = static_cast<uint8_t*>(builder.Allocate(framesCount));
+        auto* const result = static_cast<uint8_t*>(builder.Allocate(framesCount));
         for (uint_t frm = 0, inOffset = reg; frm < framesCount; ++frm, inOffset += Registers::TOTAL)
         {
-          result[frm] = rawDump[inOffset];
+          result[frm] = input[inOffset];
         }
       }
-      builder.CaptureResult(result);
+      return builder.CaptureResult();
     }
 
   private:
@@ -106,7 +103,7 @@ namespace Devices::AYM
 
   Dumper::Ptr CreateFYMDumper(FYMDumperParameters::Ptr params)
   {
-    const FramedDumpBuilder::Ptr builder = MakePtr<FYMBuilder>(params);
-    return CreateDumper(params, builder);
+    auto builder = MakePtr<FYMBuilder>(std::move(params));
+    return CreateDumper(*params, std::move(builder));
   }
 }  // namespace Devices::AYM

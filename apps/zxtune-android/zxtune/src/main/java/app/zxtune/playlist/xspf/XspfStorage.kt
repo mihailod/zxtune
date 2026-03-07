@@ -19,11 +19,10 @@ class XspfStorage @VisibleForTesting constructor(
     private val storage: PersistentStorage.Subdirectory,
 ) {
     constructor(ctx: Context) : this(
-        ctx.contentResolver,
-        PersistentStorage.instance.subdirectory(PLAYLISTS_DIR)
+        ctx.contentResolver, PersistentStorage.instance.subdirectory(PLAYLISTS_DIR)
     )
 
-    fun enumeratePlaylists() = ArrayList<String>().apply {
+    suspend fun enumeratePlaylists() = ArrayList<String>().apply {
         storage.tryGet()?.listFiles()?.forEach { doc ->
             val filename = doc.name.takeIf { doc.isFile } ?: return@forEach
             val extPos = filename.lastIndexOf(EXTENSION, ignoreCase = true)
@@ -33,26 +32,28 @@ class XspfStorage @VisibleForTesting constructor(
         }
     }
 
-    fun findPlaylistUri(name: String) =
+    suspend fun findPlaylistUri(name: String) =
         storage.tryGet()?.findFile(makeFilename(name))?.takeIf { it.isFile }?.uri
 
     @Throws(IOException::class)
-    fun createPlaylist(name: String, cursor: Cursor) {
+    suspend fun createPlaylist(name: String, cursor: Cursor) {
+        val targetName = name + EXTENSION
+        val dir = storage.tryGet(createIfAbsent = true)
+        // TODO: transactional
         val doc = checkNotNull(
-            storage.tryGet(createIfAbsent = true)?.createFile("", name + EXTENSION)
+            dir?.findFile(targetName) ?: dir?.createFile("", targetName)
         ) {
             "cannot create file $name"
         }
-        LOG.d { "Created playlist $name at ${doc.uri}" }
-        checkNotNull(resolver.openOutputStream(doc.uri)) { "cannot open output stream ${doc.uri}" }
-            .use { stream ->
-                Builder(stream).apply {
-                    writePlaylistProperties(name, cursor.count)
-                    while (cursor.moveToNext()) {
-                        writeTrack(Item(cursor))
-                    }
-                }.finish()
-            }
+        LOG.d { "Playlist $name at ${doc.uri}" }
+        checkNotNull(resolver.openOutputStream(doc.uri)) { "cannot open output stream ${doc.uri}" }.use { stream ->
+            Builder(stream).apply {
+                writePlaylistProperties(name, cursor.count)
+                while (cursor.moveToNext()) {
+                    writeTrack(Item(cursor))
+                }
+            }.finish()
+        }
     }
 
     companion object {

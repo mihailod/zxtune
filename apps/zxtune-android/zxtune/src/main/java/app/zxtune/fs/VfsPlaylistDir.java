@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 
 import app.zxtune.Log;
+import app.zxtune.Util;
 import app.zxtune.core.Identifier;
 import app.zxtune.playlist.AylIterator;
 import app.zxtune.playlist.ReferencesIterator.Entry;
@@ -89,7 +90,6 @@ final class VfsPlaylistDir implements VfsDir {
 
   @Override
   public void enumerate(Visitor visitor) {
-    visitor.onItemsCount(entries.size());
     for (int idx = 0, lim = entries.size(); idx < lim; ++idx) {
       visitor.onFile(new PlaylistEntryFile(this, entries.get(idx), idx));
     }
@@ -116,7 +116,7 @@ final class VfsPlaylistDir implements VfsDir {
 
     @Override
     public String getName() {
-      return entry.title.length() != 0 ? entry.title : id.getDisplayFilename();
+      return Util.formatTrackTitle(entry.title, id);
     }
 
     @Override

@@ -8,18 +8,19 @@
  *
  **/
 
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <debug/log.h>
-#include <module/holder.h>
-#include <module/players/pipeline.h>
-#include <parameters/merged_accessor.h>
-#include <parameters/tracking_helper.h>
-#include <sound/gainer.h>
-#include <sound/render_params.h>
-#include <sound/sound_parameters.h>
-// std includes
+#include "module/players/pipeline.h"
+
+#include "debug/log.h"
+#include "module/holder.h"
+#include "module/loop.h"
+#include "parameters/merged_accessor.h"
+#include "parameters/tracking_helper.h"
+#include "sound/gainer.h"
+#include "sound/render_params.h"
+#include "sound/sound_parameters.h"
+
+#include "make_ptr.h"
+
 #include <algorithm>
 
 namespace Module
@@ -31,8 +32,7 @@ namespace Module
   Time::Duration<TimeUnit> GetDurationValue(const Parameters::Accessor& params, Parameters::Identifier name,
                                             Parameters::IntType def, Parameters::IntType precision)
   {
-    auto value = def;
-    params.FindValue(name, value);
+    const auto value = Parameters::GetInteger(params, name, def);
     return Time::Duration<TimeUnit>::FromRatio(value, precision);
   }
 
@@ -47,7 +47,7 @@ namespace Module
       , FadeOut(fadeOut)
       , Duration(duration)
     {
-      Debug("Fading: %u+%u/%u ms", fadeIn.Get(), fadeOut.Get(), duration.Get());
+      Debug("Fading: {}+{}/{} ms", fadeIn.Get(), fadeOut.Get(), duration.Get());
     }
 
     bool IsValid() const
@@ -55,24 +55,15 @@ namespace Module
       return FadeIn + FadeOut < Duration;
     }
 
-    bool IsFadein(Time::Instant<TimeUnit> pos) const
-    {
-      return pos.Get() < FadeIn.Get();
-    }
-
-    bool IsFadeout(Time::Instant<TimeUnit> pos) const
-    {
-      return FadeOut && Duration.Get() < FadeOut.Get() + pos.Get();
-    }
-
     Sound::Gain::Type GetFadein(Sound::Gain::Type vol, Time::Instant<TimeUnit> pos) const
     {
-      return vol * pos.Get() / FadeIn.Get();
+      return pos.Get() < FadeIn.Get() ? vol * pos.Get() / FadeIn.Get() : vol;
     }
 
     Sound::Gain::Type GetFadeout(Sound::Gain::Type vol, Time::Instant<TimeUnit> pos) const
     {
-      return vol * (Duration.Get() - pos.Get()) / FadeOut.Get();
+      return FadeOut && Duration.Get() < FadeOut.Get() + pos.Get() ? vol * (Duration.Get() - pos.Get()) / FadeOut.Get()
+                                                                   : vol;
     }
 
     static FadeInfo Create(Time::Milliseconds duration, const Parameters::Accessor& params)
@@ -80,7 +71,7 @@ namespace Module
       using namespace Parameters::ZXTune::Sound;
       const auto fadeIn = GetDurationValue(params, FADEIN, FADEIN_DEFAULT, FADEIN_PRECISION);
       const auto fadeOut = GetDurationValue(params, FADEOUT, FADEOUT_DEFAULT, FADEOUT_PRECISION);
-      return FadeInfo(fadeIn, fadeOut, duration);
+      return {fadeIn, fadeOut, duration};
     }
   };
 
@@ -118,7 +109,7 @@ namespace Module
       using namespace Parameters::ZXTune::Sound;
       const auto duration = GetDurationValue(params, SILENCE_LIMIT, SILENCE_LIMIT_DEFAULT, SILENCE_LIMIT_PRECISION);
       const auto limit = std::size_t(samplerate) * duration.Get() / duration.PER_SECOND;
-      Debug("Silence detection: %u ms (%u samples)", duration.Get(), limit);
+      Debug("Silence detection: {} ms ({} samples)", duration.Get(), limit);
       return SilenceDetector(limit);
     }
 
@@ -150,15 +141,20 @@ namespace Module
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& loop) override
+    Sound::Chunk Render() override
     {
-      auto data = Delegate->Render(loop);
+      UpdateParameters();
+      if (!Loop(State->LoopCount()))
+      {
+        return {};
+      }
+      const auto posBefore = State->At();
+      auto data = Delegate->Render();
       if (Silence.Detected(data))
       {
         return {};
       }
-      // Apply fading at post-rendering position to avoid absolute silence at the beginning
-      Gainer->SetGain(CalculateGain(loop));
+      Gainer->SetGain(CalculateGain(posBefore));
       return Gainer->Apply(std::move(data));
     }
 
@@ -176,33 +172,34 @@ namespace Module
     }
 
   private:
-    Sound::Gain::Type CalculateGain(const Sound::LoopParameters& loop)
+    void UpdateParameters()
     {
       if (Params.IsChanged())
       {
         using namespace Parameters::ZXTune::Sound;
-        auto val = GAIN_DEFAULT;
-        Params->FindValue(GAIN, val);
+        const auto val = Parameters::GetInteger(*Params, GAIN, GAIN_DEFAULT);
         Preamp = Sound::Gain::Type(val, GAIN_PRECISION);
-        Debug("Preamp: %u%%", val);
+        Debug("Preamp: {}%", val);
+        Loop = Sound::GetLoopParameters(*Params);
       }
+    }
+
+    Sound::Gain::Type CalculateGain(Time::AtMillisecond posBefore)
+    {
       if (!Fading.IsValid())
       {
         return Preamp;
       }
-      const auto pos = State->At();
-      if (Fading.IsFadein(pos) && !State->LoopCount())
-      {
-        return Fading.GetFadein(Preamp, pos);
-      }
-      else if (!loop.Enabled && Fading.IsFadeout(pos))
-      {
-        return Fading.GetFadeout(Preamp, pos);
-      }
-      else
-      {
-        return Preamp;
-      }
+      // Invariants:
+      // if doneLoops == 0 then always posAfter > posBefore
+      const auto posAfter = State->At();
+      const auto doneLoops = State->LoopCount();
+      const auto lastIteration = !Loop(doneLoops + 1);
+
+      // If looped, do not allow fadein
+      // to avoid absolute silence
+      const auto part1 = doneLoops ? Preamp : Fading.GetFadein(Preamp, posAfter);
+      return lastIteration ? Fading.GetFadeout(part1, std::min(posBefore, posAfter)) : part1;
     }
 
   private:
@@ -213,6 +210,7 @@ namespace Module
     const Sound::Gainer::Ptr Gainer;
     SilenceDetector Silence;
     Sound::Gain::Type Preamp;
+    LoopParameters Loop;
   };
 
   Renderer::Ptr CreatePipelinedRenderer(const Holder& holder, Parameters::Accessor::Ptr globalParams)

@@ -10,28 +10,22 @@
 
 #pragma once
 
-// common includes
-#include <contract.h>
-// std includes
-#include <functional>
-// qt includes
-#include <QtCore/QMetaObject>
-#include <QtCore/QObject>
+#include "contract.h"
 
-class IOThread : public QObject
+#include <QtCore/QMetaObject>
+#include <QtCore/QPointer>
+#include <QtCore/QThreadPool>
+
+#include <functional>
+
+class IOThread
 {
 public:
   template<class F>
   static void Execute(F&& func)
   {
-    Require(QMetaObject::invokeMethod(Instance(), std::forward<F>(func)));
+    QThreadPool::globalInstance()->start(std::forward<F>(func));
   }
-
-  static bool IsCurrent();
-
-private:
-  IOThread();
-  static IOThread* Instance();
 };
 
 class SelfThread
@@ -41,6 +35,15 @@ public:
   static void Execute(Self* self, F&& func, P&&... p)
   {
     Require(QMetaObject::invokeMethod(self, std::bind(std::forward<F>(func), self, std::forward<P>(p)...)));
+  }
+
+  template<class Self, class F, class... P>
+  static void Execute(QPointer<Self> self, F&& func, P&&... p)
+  {
+    if (auto* ptr = self.data())
+    {
+      Execute(ptr, std::forward<F>(func), std::forward<P>(p)...);
+    }
   }
 };
 

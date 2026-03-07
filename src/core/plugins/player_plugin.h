@@ -10,13 +10,12 @@
 
 #pragma once
 
-// local includes
 #include "core/src/location.h"
-// library includes
-#include <analysis/result.h>
-#include <core/plugin.h>
-#include <module/holder.h>
-#include <parameters/container.h>
+
+#include "analysis/result.h"
+#include "core/plugin.h"
+#include "module/holder.h"
+#include "parameters/container.h"
 
 namespace Module
 {
@@ -28,7 +27,7 @@ namespace ZXTune
   class PlayerPlugin : public Plugin
   {
   public:
-    typedef std::shared_ptr<const PlayerPlugin> Ptr;
+    using Ptr = std::shared_ptr<const PlayerPlugin>;
 
     static const std::vector<Ptr>& Enumerate();
 

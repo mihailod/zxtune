@@ -8,18 +8,17 @@
  *
  **/
 
-// common includes
-#include <byteorder.h>
-#include <contract.h>
-#include <make_ptr.h>
-#include <pointers.h>
-// library includes
-#include <binary/container_base.h>
-#include <binary/crc.h>
-#include <binary/format_factories.h>
-#include <formats/multitrack.h>
-#include <math/numeric.h>
-// std includes
+#include "binary/container_base.h"
+#include "binary/crc.h"
+#include "binary/format_factories.h"
+#include "formats/multitrack.h"
+#include "math/numeric.h"
+
+#include "byteorder.h"
+#include "contract.h"
+#include "make_ptr.h"
+#include "pointers.h"
+
 #include <array>
 #include <cstring>
 #include <utility>
@@ -28,9 +27,9 @@ namespace Formats::Multitrack
 {
   namespace NSF
   {
-    typedef std::array<uint8_t, 5> SignatureType;
+    using SignatureType = std::array<uint8_t, 5>;
 
-    typedef std::array<char, 32> StringType;
+    using StringType = std::array<char, 32>;
 
     const SignatureType SIGNATURE = {{'N', 'E', 'S', 'M', '\x1a'}};
 
@@ -66,9 +65,9 @@ namespace Formats::Multitrack
         "01-ff"
         // gme supports nfs load/init address starting from 0x8000 or zero
         "(? 80-ff){2}"
-        ""_sv;
+        ""sv;
 
-    const Char DESCRIPTION[] = "NES Sound Format";
+    const auto DESCRIPTION = "NES Sound Format"sv;
 
     const std::size_t MIN_SIZE = 256;
 
@@ -78,7 +77,7 @@ namespace Formats::Multitrack
       {
         return nullptr;
       }
-      const RawHeader* hdr = safe_ptr_cast<const RawHeader*>(rawData.Start());
+      const auto* hdr = safe_ptr_cast<const RawHeader*>(rawData.Start());
       if (hdr->Signature != SIGNATURE)
       {
         return nullptr;
@@ -133,7 +132,7 @@ namespace Formats::Multitrack
         : Format(Binary::CreateMatchOnlyFormat(FORMAT, MIN_SIZE))
       {}
 
-      String GetDescription() const override
+      StringView GetDescription() const override
       {
         return DESCRIPTION;
       }

@@ -8,34 +8,26 @@
  *
  **/
 
-// local includes
 #include "core/plugins/player_plugins_registrator.h"
 #include "core/plugins/players/plugin.h"
-// common includes
-#include <contract.h>
-#include <error_tools.h>
-#include <make_ptr.h>
-// library includes
-#include <core/plugin_attrs.h>
-#include <debug/log.h>
-#include <formats/chiptune/decoders.h>
-#include <formats/chiptune/music/oggvorbis.h>
-#include <module/players/properties_helper.h>
-#include <module/players/properties_meta.h>
-#include <module/players/streaming.h>
-#include <sound/resampler.h>
-// 3rdparty
-#define STB_VORBIS_NO_STDIO
-//#define STB_VORBIS_NO_PUSHDATA_API
-//#define STB_VORBIS_MAX_CHANNELS 2
-#if BOOST_ENDIAN_BIG_BYTE
-#  define STB_VORBIS_BIG_ENDIAN
-#endif
-#include <3rdparty/stb/stb_vorbis.c>
-// std includes
-#include <unordered_map>
+#include "formats/chiptune/music/oggvorbis.h"
+#include "module/players/properties_helper.h"
+#include "module/players/properties_meta.h"
+#include "module/players/streaming.h"
 
-#define FILE_TAG B064CB04
+#include "core/plugin_attrs.h"
+#include "debug/log.h"
+#include "math/numeric.h"
+#include "sound/resampler.h"
+
+#include "contract.h"
+#include "error_tools.h"
+#include "make_ptr.h"
+
+#include "3rdparty/vorbis/vorbisfile.h"
+
+#include <algorithm>
+#include <unordered_map>
 
 namespace Module::Ogg
 {
@@ -47,8 +39,147 @@ namespace Module::Ogg
     using Ptr = std::shared_ptr<const Model>;
 
     uint_t Frequency = 0;
-    uint_t TotalSamples = 0;
+    uint64_t TotalSamples = 0;
     Binary::Data::Ptr Content;
+  };
+
+  class VorbisDecoder
+  {
+  public:
+    using Ptr = std::unique_ptr<VorbisDecoder>;
+
+    explicit VorbisDecoder(Binary::View data)
+      : Data(data)
+    {
+      const ov_callbacks cb = {.read_func = &DoRead, .seek_func = &DoSeek, .close_func = nullptr, .tell_func = &DoTell};
+      const auto res = ::ov_open_callbacks(this, &File, nullptr, 0, cb);
+      if (res != 0)
+      {
+        throw MakeFormattedError(THIS_LINE, "Failed to open OGG Vorbis: {}", res);
+      }
+      Channels = ::ov_info(&File, -1)->channels;
+    }
+
+    ~VorbisDecoder()
+    {
+      ::ov_clear(&File);
+    }
+
+    void Seek(uint64_t sample)
+    {
+      const auto res = ::ov_pcm_seek_lap(&File, sample);
+      if (res != 0)
+      {
+        throw MakeFormattedError(THIS_LINE, "Failed to seek OGG stream: {}", res);
+      }
+    }
+
+    std::size_t Render(Sound::Sample* target, std::size_t avail)
+    {
+      std::size_t done = 0;
+      while (done < avail)
+      {
+        float** pcm = nullptr;
+        const auto res = ::ov_read_float(&File, &pcm, std::min(2048, int(avail - done)), nullptr);
+        if (res == 0)
+        {
+          break;
+        }
+        else if (res < 0)
+        {
+          continue;
+        }
+        Convert(pcm, target + done, res);
+        done += res;
+      }
+      return done;
+    }
+
+  private:
+    static size_t DoRead(void* target, size_t size, size_t count, void* ctx)
+    {
+      auto* const self = static_cast<VorbisDecoder*>(ctx);
+      const auto avail = (self->Data.Size() - self->Position) / size;
+      const auto toRead = std::min(avail, count);
+      if (toRead)
+      {
+        std::memcpy(target, self->Data.As<uint8_t>() + self->Position, toRead * size);
+        self->Position += toRead * size;
+      }
+      return toRead;
+    }
+
+    static int DoSeek(void* ctx, ogg_int64_t offset, int whence)
+    {
+      auto* const self = static_cast<VorbisDecoder*>(ctx);
+      std::size_t newPos = offset;
+      switch (whence)
+      {
+      case SEEK_SET:
+        break;
+      case SEEK_CUR:
+        newPos += self->Position;
+        break;
+      case SEEK_END:
+        newPos = self->Data.Size();
+        break;
+      default:
+        return -1;
+      }
+      if (newPos <= self->Data.Size())
+      {
+        self->Position = newPos;
+        return 0;
+      }
+      else
+      {
+        return -1;
+      }
+    }
+
+    static long DoTell(void* ctx)
+    {
+      auto* const self = static_cast<VorbisDecoder*>(ctx);
+      return self->Position;
+    }
+
+    void Convert(float** in, Sound::Sample* out, std::size_t samples) const
+    {
+      static_assert(Sound::Sample::CHANNELS == 2, "Incompatible sound sample channels count");
+      static_assert(Sound::Sample::BITS == 16, "Incompatible sound sample bits count");
+      static_assert(Sound::Sample::MID == 0, "Incompatible sound sample type");
+      if (Channels == 1)
+      {
+        std::transform(in[0], in[0] + samples, out, &MakeMonoSample);
+      }
+      else
+      {
+        std::transform(in[0], in[0] + samples, in[1], out, &MakeStereoSample);
+      }
+    }
+
+    inline static Sound::Sample::Type MakeSample(float s)
+    {
+      const auto wide = static_cast<Sound::Sample::WideType>(s * Sound::Sample::MAX);
+      return Math::Clamp<Sound::Sample::WideType>(wide, Sound::Sample::MIN, Sound::Sample::MAX);
+    }
+
+    inline static Sound::Sample MakeMonoSample(float f)
+    {
+      const auto smp = MakeSample(f);
+      return {smp, smp};
+    }
+
+    inline static Sound::Sample MakeStereoSample(float l, float r)
+    {
+      return {MakeSample(l), MakeSample(r)};
+    }
+
+  private:
+    const Binary::View Data;
+    std::size_t Position = 0;
+    OggVorbis_File File;
+    int Channels = 0;
   };
 
   class OggTune
@@ -58,8 +189,6 @@ namespace Module::Ogg
       : Data(std::move(data))
     {
       Reset();
-      static_assert(Sound::Sample::BITS == 16, "Incompatible sound sample bits count");
-      static_assert(Sound::Sample::MID == 0, "Incompatible sound sample type");
     }
 
     uint_t GetFrequency() const
@@ -70,44 +199,30 @@ namespace Module::Ogg
     Sound::Chunk RenderFrame()
     {
       Sound::Chunk chunk(Data->Frequency / 10);
-      const auto done = ::stb_vorbis_get_samples_short_interleaved(Decoder.get(), Sound::Sample::CHANNELS,
-                                                                   safe_ptr_cast<short*>(chunk.data()),
-                                                                   int(Sound::Sample::CHANNELS * chunk.size()));
+      const auto done = Decoder->Render(chunk.data(), chunk.size());
       chunk.resize(done);
       return chunk;
     }
 
     void Reset()
     {
-      int error = 0;
-      const auto decoder = VorbisPtr(::stb_vorbis_open_memory(static_cast<const uint8_t*>(Data->Content->Start()),
-                                                              int(Data->Content->Size()), &error, nullptr),
-                                     &::stb_vorbis_close);
-      if (!decoder)
-      {
-        throw MakeFormattedError(THIS_LINE, "Failed to create decoder. Error: %1%", error);
-      }
-      Decoder = decoder;
+      Decoder = MakePtr<VorbisDecoder>(*Data->Content);
     }
 
     void Seek(uint64_t sample)
     {
-      if (!::stb_vorbis_seek(Decoder.get(), sample))
-      {
-        throw Error(THIS_LINE, "Failed to seek");
-      }
+      Decoder->Seek(sample);
     }
 
   private:
     const Model::Ptr Data;
-    using VorbisPtr = std::shared_ptr<stb_vorbis>;
-    VorbisPtr Decoder;
+    VorbisDecoder::Ptr Decoder;
   };
 
   class Renderer : public Module::Renderer
   {
   public:
-    Renderer(Model::Ptr data, Sound::Converter::Ptr target)
+    Renderer(const Model::Ptr& data, Sound::Converter::Ptr target)
       : Tune(data)
       , State(MakePtr<SampledState>(data->TotalSamples, data->Frequency))
       , Target(std::move(target))
@@ -118,16 +233,10 @@ namespace Module::Ogg
       return State;
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!State->IsValid())
-      {
-        return {};
-      }
-      const auto loops = State->LoopCount();
       auto frame = Tune.RenderFrame();
-      State->Consume(frame.size(), looped);
-      if (State->LoopCount() != loops)
+      if (0 != State->Consume(frame.size()))
       {
         Tune.Seek(0);
       }
@@ -206,7 +315,7 @@ namespace Module::Ogg
       }
     }
 
-    void AddUnknownPacket(Binary::View data) override {}
+    void AddUnknownPacket(Binary::View /*data*/) override {}
 
     void SetProperties(uint_t /*channels*/, uint_t frequency, uint_t /*blockSizeLo*/, uint_t /*blockSizeHi*/) override
     {
@@ -215,19 +324,19 @@ namespace Module::Ogg
 
     void SetSetup(Binary::View /*data*/) override {}
 
-    void AddFrame(std::size_t /*offset*/, uint_t samples, Binary::View /*data*/) override
+    void AddFrame(std::size_t /*offset*/, uint64_t positionInFrames, Binary::View /*data*/) override
     {
       if (CurrentStream)
       {
-        CurrentStream->TotalSamples += samples;
+        CurrentStream->TotalSamples = positionInFrames;
       }
       else
       {
-        Dbg("Ignore frame to unallocated stream %1%", CurrentStreamId);
+        Dbg("Ignore frame to unallocated stream {}", CurrentStreamId);
       }
     }
 
-    void SetContent(Binary::Data::Ptr data)
+    void SetContent(const Binary::Data::Ptr& data)
     {
       for (auto& stream : Streams)
       {
@@ -239,7 +348,7 @@ namespace Module::Ogg
     {
       if (Streams.size() > 1)
       {
-        Dbg("Multistream file with %1% streams", Streams.size());
+        Dbg("Multistream file with {} streams", Streams.size());
       }
       if (DefaultStream && DefaultStream->TotalSamples)
       {
@@ -295,7 +404,7 @@ namespace Module::Ogg
       }
       catch (const std::exception& e)
       {
-        Dbg("Failed to create OGG: %s", e.what());
+        Dbg("Failed to create OGG: {}", e.what());
       }
       return {};
     }
@@ -306,14 +415,12 @@ namespace ZXTune
 {
   void RegisterOGGPlugin(PlayerPluginsRegistrator& registrator)
   {
-    const Char ID[] = {'O', 'G', 'G', 0};
+    const auto ID = "OGG"_id;
     const uint_t CAPS = Capabilities::Module::Type::STREAM | Capabilities::Module::Device::DAC;
 
-    const auto decoder = Formats::Chiptune::CreateOGGDecoder();
-    const auto factory = MakePtr<Module::Ogg::Factory>();
-    const PlayerPlugin::Ptr plugin = CreatePlayerPlugin(ID, CAPS, decoder, factory);
-    registrator.RegisterPlugin(plugin);
+    auto decoder = Formats::Chiptune::CreateOGGDecoder();
+    auto factory = MakePtr<Module::Ogg::Factory>();
+    auto plugin = CreatePlayerPlugin(ID, CAPS, std::move(decoder), std::move(factory));
+    registrator.RegisterPlugin(std::move(plugin));
   }
 }  // namespace ZXTune
-
-#undef FILE_TAG

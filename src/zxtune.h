@@ -10,14 +10,10 @@
 
 #pragma once
 
-// library includes
-#include <parameters/identifier.h>
+#include "parameters/identifier.h"
 
-namespace Parameters
+namespace Parameters::ZXTune
 {
-  namespace ZXTune
-  {
-    //! @brief Parameters#ZXTune namespace prefix
-    const auto PREFIX = "zxtune"_id;
-  }  // namespace ZXTune
-}  // namespace Parameters
+  //! @brief Parameters#ZXTune namespace prefix
+  const auto PREFIX = "zxtune"_id;
+}  // namespace Parameters::ZXTune

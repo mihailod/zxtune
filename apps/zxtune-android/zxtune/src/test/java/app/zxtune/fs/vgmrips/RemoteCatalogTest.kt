@@ -1,310 +1,252 @@
 package app.zxtune.fs.vgmrips
 
 import app.zxtune.BuildConfig
-import app.zxtune.TimeStamp
 import app.zxtune.fs.http.HttpProviderFactory
 import app.zxtune.fs.http.MultisourceHttpProvider
 import app.zxtune.utils.ProgressCallback
-import org.junit.Assert.*
+import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.AdditionalMatchers.geq
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
+import org.mockito.kotlin.atLeast
+import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoMoreInteractions
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class RemoteCatalogTest {
 
     private lateinit var catalog: RemoteCatalog
+    private lateinit var groupsVisitor: Catalog.Visitor<Group>
+    private lateinit var packsVisitor: Catalog.Visitor<Pack>
+    private lateinit var tracksVisitor: Catalog.Visitor<FilePath>
+    private lateinit var progress: ProgressCallback
 
     @Before
-    fun setUp() = with(HttpProviderFactory.createTestProvider()) {
-        catalog = RemoteCatalog(MultisourceHttpProvider(this))
+    fun setUp() {
+        catalog = RemoteCatalog(MultisourceHttpProvider(HttpProviderFactory.createTestProvider()))
+        groupsVisitor = mock {}
+        packsVisitor = mock {}
+        tracksVisitor = mock {}
+        progress = mock {}
     }
 
-    @Test
-    fun `test companies`() {
-        val checkpoints = arrayOf( //first
-            Group("konami", "Konami", 219),
-            Group("naxat-soft", "Naxat Soft", 5),
-            Group("c-s-ware", "C's Ware", 4),
-            Group("crea-tech", "Crea-Tech", 1)
-        )
-        with(GroupsChecker()) {
-            catalog.companies().query(this)
-            check(555, checkpoints)
-        }
-    }
+    @After
+    fun tearDown() = verifyNoMoreInteractions(groupsVisitor, packsVisitor, tracksVisitor, progress)
 
     @Test
-    fun `test company packs`() {
-        val checkpoints = arrayOf( // first
-            makePack("solitaire-nes", "Solitaire", 4, 25, 3)
-        )
-        with(PacksChecker()) {
-            catalog.companies().queryPacks("odyssey-software", this, this)
-            check(4, checkpoints)
-            checkProgress(4, 4)
-        }
-    }
+    fun `test companies`() = checkGroups(
+        catalog.companies(),
+        groupsMin = 555,
+        makeGroup("konami", "Konami", 219, "icons/companies/konami.png"),
+        makeGroup("naxat-soft", "Naxat Soft", 5),
+        makeGroup("c-s-ware", "C's Ware", 4),
+        makeGroup("crea-tech", "Crea-Tech", 1)
+    )
 
     @Test
-    fun `test composers`() {
-        val checkpoints = arrayOf( //first
-            Group("konami-kukeiha-club", "Konami Kukeiha Club", 61),
-            Group("mariko-egawa", "Mariko Egawa", 2),  //last
-            Group("zuntata-sound-team", "Zuntata Sound Team", 1)
+    fun `test company packs`() = checkPacks(
+        catalog.companies(), "odyssey-software", packsMin = 4, pagesMin = 1, makePack(
+            "solitaire-nes",
+            "Solitaire",
+            4,
+            "13.5 KB",
+            "NES/Solitaire_(NES).zip",
+            "NES/Solitaire_(NES).png"
         )
-        with(GroupsChecker()) {
-            catalog.composers().query(this)
-            check(1541, checkpoints)
-        }
-    }
+    )
 
     @Test
-    fun `test composer packs`() {
-        val checkpoints = arrayOf( // first
-            makePack(
-                "street-fighter-ii-champion-edition-cp-system",
-                "Street Fighter II: Champion Edition",
-                47,
-                45,
-                13
-            )
-        )
-        with(PacksChecker()) {
-            catalog.composers().queryPacks("yoko-shimomura", this, this)
-            check(15, checkpoints)
-            checkProgress(15, 15)
-        }
-    }
+    fun `test composers`() = checkGroups(
+        catalog.composers(),
+        groupsMin = 1540,
+        makeGroup("konami-kukeiha-club", "Konami Kukeiha Club", 61),
+        makeGroup("mariko-egawa", "Mariko Egawa", 2),
+        makeGroup("zuntata-sound-team", "Zuntata Sound Team", 1)
+    )
 
     @Test
-    fun `test chips`() {
-        val checkpoints = arrayOf( //first
-            Group("nes-apu", "NES APU", 437),  //last
-            Group("vrc7", "VRC7", 1)
+    fun `test composer packs`() = checkPacks(
+        catalog.composers(), "yoko-shimomura", packsMin = 18, pagesMin = 1, makePack(
+            "street-fighter-ii-champion-edition-cp-system",
+            "Street Fighter II: Champion Edition",
+            47,
+            "823.14 KB",
+            "Arcade/Capcom/Street_Fighter_II_-_Champion_Edition_(CP_System).zip",
+            "Arcade/Capcom/Street_Fighter_II_-_Champion_Edition_(CP_System).png"
         )
-        with(GroupsChecker()) {
-            catalog.chips().query(this)
-            check(51, checkpoints)
-        }
-    }
+    )
 
     @Test
-    fun `test chip packs`() {
-        val checkpoints = arrayOf( //first
-            makePack(
-                "sound-blaster-series-demo-songs-ibm-pc-xt-at",
-                "Sound Blaster Series Demo Songs",
-                17,
-                30,
-                4
-            )
-        )
-        with(PacksChecker()) {
-            catalog.chips().queryPacks("saa1099", this, this)
-            check(4, checkpoints)
-            checkProgress(4, 4)
-        }
-    }
+    fun `test chips`() = checkGroups(
+        catalog.chips(),
+        groupsMin = 50,
+        makeGroup("nes-apu", "NES APU", 437, "icons/chips/nes-apu.png"),
+        makeGroup("ncr8496", "NCR8496", 3, "icons/chips/chip.png")
+    )
 
     @Test
-    fun `test systems`() {
-        val checkpoins = arrayOf( //first
-            Group(
-                "nintendo/family-computer", "Family Computer",
-                333
-            ),
-            Group("ascii/msx", "MSX", 89) //last
-            //checkpoins.append(182, new System("snk/neo-geo-pocket", "Neo Geo Pocket", 1));
+    fun `test chip packs`() = checkPacks(
+        catalog.chips(), "saa1099", packsMin = 4, pagesMin = 1, makePack(
+            "sound-blaster-series-demo-songs-ibm-pc-xt-at",
+            "Sound Blaster Series Demo Songs",
+            17,
+            "102.26 KB",
+            "Computers/IBM_PC/Sound_Blaster_Series_Demo_Songs_(IBM_PC_XT_AT).zip",
+            "Computers/IBM_PC/Sound_Blaster_Series_Demo_Songs_(IBM_PC_XT_AT)_D1.png"
         )
-        with(GroupsChecker()) {
-            catalog.systems().query(this)
-            check(186, checkpoins)
-        }
-    }
+    )
 
     @Test
-    fun `test system packs`() {
-        val checkpoints = arrayOf( //first
-            makePack(
-                "the-ninja-warriors-zx-spectrum-128", "The Ninja Warriors",
-                1, 45, 8
-            ),  //last
-            makePack(
-                "altered-beast-zx-spectrum-128", "Altered Beast",
-                5, 15, 4
-            )
+    fun `test systems`() = checkGroups(
+        catalog.systems(),
+        groupsMin = 180,
+        makeGroup(
+            "nintendo/family-computer",
+            "Family Computer",
+            333,
+            "icons/systems/nintendo/family-computer.png"
+        ),
+        makeGroup("ascii/msx", "MSX", 89, "icons/systems/ascii/msx.png"),
+        makeGroup("snk/neo-geo-pocket", "Neo Geo Pocket", 1)
+    )
+
+    @Test
+    fun `test system packs`() = checkPacks(
+        catalog.systems(), "sinclair/zx-spectrum-128", packsMin = 34, pagesMin = 2, makePack(
+            "the-ninja-warriors-zx-spectrum-128",
+            "The Ninja Warriors",
+            1,
+            "68.61 KB",
+            "Computers/ZX_Spectrum/The_Ninja_Warriors_(ZX_Spectrum_128).zip",
+            "Computers/ZX_Spectrum/The_Ninja_Warriors_(ZX_Spectrum_128).png"
+        ), makePack(
+            "altered-beast-zx-spectrum-128",
+            "Altered Beast",
+            5,
+            "42.52 KB",
+            "Computers/ZX_Spectrum/Altered_Beast_(ZX_Spectrum_128).zip",
+            "Computers/ZX_Spectrum/Altered_Beast_(ZX_Spectrum_128).png"
         )
-        with(PacksChecker()) {
-            catalog.systems().queryPacks("sinclair/zx-spectrum-128", this, this)
-            check(32, checkpoints)
-            checkProgress(32, 32)
+    )
+
+    @Test
+    fun `test random pack`() {
+        requireNotNull(catalog.findRandomPack(tracksVisitor)).run {
+            assertEquals(0, songs)
         }
+        verify(tracksVisitor, atLeastOnce()).accept(any())
     }
 
     @Test
     fun `test pack tracks`() {
-        val checkpoints = arrayOf( //first
-            Track(
-                1,
-                "Into The Lair",
-                TimeStamp.fromSeconds(54),
-                "Computers/NEC/The_Scheme_(NEC_PC-8801,_OPNA)/01 Into The Lair.vgz"
-            ),  //last
-            Track(
-                17,
-                "Theme of Gigaikotsu",
-                TimeStamp.fromSeconds(121),
-                "Computers/NEC/The_Scheme_(NEC_PC-8801,_OPNA)/17 Theme of Gigaikotsu.vgz"
-            )
+        val pack =
+            catalog.findPackInternal("/packs/pack/the-scheme-nec-pc-8801-opna", tracksVisitor)
+        val tracksMin = 17
+        verify(tracksVisitor).accept(
+            FilePath("Computers/NEC/The_Scheme_(NEC_PC-8801,_OPNA)/01 Into The Lair.vgz")
         )
-        with(TracksChecker()) {
-            val pack = catalog.findPack("the-scheme-nec-pc-8801-opna", this)
-            assertTrue(
-                matches(
-                    makePack("the-scheme-nec-pc-8801-opna", "The Scheme", 17, 45, 34),
-                    pack
+        verify(tracksVisitor).accept(
+            FilePath("Computers/NEC/The_Scheme_(NEC_PC-8801,_OPNA)/17 Theme of Gigaikotsu.vgz")
+        )
+        verify(tracksVisitor, atLeast(tracksMin)).accept(any())
+        // To have detailed log if something mismatched
+        packsVisitor.accept(requireNotNull(pack))
+        verify(packsVisitor).accept(argThat {
+            matches(
+                makePack(
+                    "the-scheme-nec-pc-8801-opna",
+                    "The Scheme",
+                    0,
+                    "",
+                    "Computers/NEC/The_Scheme_(NEC_PC-8801,_OPNA).zip",
+                    "Computers/NEC/The_Scheme_(NEC_PC-8801,_OPNA).png"
                 )
             )
-            check(17, checkpoints)
-        }
+        })
+    }
+
+    @Test
+    fun `test getPackUris`() = with(
+        RemoteCatalog.getRemoteUris(FilePath("pack/file.zip"))
+    ) {
+        assertEquals(2L, size.toLong())
+        assertEquals(
+            "${BuildConfig.CDN_ROOT}/download/vgmrips/files/pack/file.zip", get(0).toString()
+        )
+        assertEquals(
+            "https://vgmrips.net/files/pack/file.zip", get(1).toString()
+        )
     }
 
     @Test
     fun `test getTrackUris`() = with(
-        RemoteCatalog.getRemoteUris(
-            Track(
-                123,
-                "Unused",
-                TimeStamp.EMPTY,
-                "track/location/file.gz"
-            )
-        )
+        RemoteCatalog.getRemoteUris(FilePath("track/location/file.vgz"))
     ) {
         assertEquals(2L, size.toLong())
         assertEquals(
-            "${BuildConfig.CDN_ROOT}/download/vgmrips/track/location/file.gz",
+            "${BuildConfig.CDN_ROOT}/download/vgmrips/track/location/file.vgz", get(0).toString()
+        )
+        assertEquals(
+            "https://vgmrips.net/packs/vgm/track/location/file.vgz", get(1).toString()
+        )
+    }
+
+    @Test
+    fun `test getImageUris`() = with(
+        RemoteCatalog.getRemoteUris(FilePath("images/pack/file.PNG"))
+    ) {
+        assertEquals(2L, size.toLong())
+        assertEquals(
+            "${BuildConfig.CDN_ROOT}/download/vgmrips/packs/images/pack/file.PNG",
             get(0).toString()
         )
         assertEquals(
-            "https://vgmrips.net/packs/vgm/track/location/file.gz",
-            get(1).toString()
+            "https://vgmrips.net/packs/images/pack/file.PNG", get(1).toString()
         )
     }
 
-    private class GroupsChecker : Catalog.Visitor<Group> {
+    private fun checkGroups(grouping: Catalog.Grouping, groupsMin: Int, vararg groups: Group) {
+        grouping.query(groupsVisitor)
 
-        val result = ArrayList<Group>()
-
-        override fun accept(obj: Group) {
-            assertEquals(obj.id, obj.id.trim())
-            assertEquals(obj.title, obj.title.trim())
-            assertNotEquals(0, obj.packs)
-            result.add(obj)
+        groups.forEach { expected ->
+            verify(groupsVisitor).accept(argThat { matches(expected) })
         }
-
-        fun check(size: Int, checkpoints: Array<Group>) {
-            check(size, checkpoints, result)
-        }
+        verify(groupsVisitor, atLeast(groupsMin)).accept(any())
     }
 
-    private class PacksChecker : Catalog.Visitor<Pack>, ProgressCallback {
+    private fun checkPacks(
+        grouping: Catalog.Grouping,
+        groupId: String,
+        packsMin: Int,
+        pagesMin: Int,
+        vararg packs: Pack
+    ) {
+        grouping.queryPacks(Group.Id(groupId), packsVisitor, progress)
 
-        val result = ArrayList<Pack>()
-        val lastProgress = intArrayOf(-1, -1)
-
-        override fun accept(obj: Pack) {
-            assertEquals(obj.id, obj.id.trim())
-            assertEquals(obj.title, obj.title.trim())
-            result.add(obj)
+        packs.forEach { expected ->
+            verify(packsVisitor).accept(argThat { matches(expected) })
         }
-
-        fun check(size: Int, checkpoints: Array<Pack>) {
-            check(size, checkpoints, result)
-        }
-
-        override fun onProgressUpdate(done: Int, total: Int) {
-            lastProgress[0] = done
-            lastProgress[1] = total
-        }
-
-        fun checkProgress(done: Int, total: Int) {
-            assertEquals(done, lastProgress[0])
-            assertEquals(total, lastProgress[1])
-        }
-    }
-
-    private class TracksChecker : Catalog.Visitor<Track> {
-
-        val result = ArrayList<Track>()
-
-        override fun accept(obj: Track) {
-            assertEquals(obj.title, obj.title.trim())
-            assertEquals(obj.location, obj.location.trim())
-            result.add(obj)
-        }
-
-        fun check(size: Int, checkpoints: Array<Track>) {
-            check(size, checkpoints, result)
-        }
+        verify(packsVisitor, atLeast(packsMin)).accept(any())
+        verify(progress, atLeast(pagesMin)).onProgressUpdate(any(), geq(packsMin))
     }
 }
 
-private fun <T> check(minSize: Int, expectedSubset: Array<T>, actual: ArrayList<T>) {
-    assertTrue(actual.size >= minSize)
-    for (expected in expectedSubset) {
-        assertTrue("Not found $expected", contains(actual, expected))
-    }
-}
+private fun Group.matches(expected: Group) =
+    id == expected.id && title == expected.title && packs >= expected.packs && image == expected.image
 
-private fun <T> contains(actual: ArrayList<T>, expected: T) =
-    actual.find { matches(expected, it) } != null
+private fun Pack.matches(expected: Pack) =
+    id == expected.id && title == expected.title && songs == expected.songs && size == expected.size && archive == expected.archive && image == expected.image
 
-private fun <T> matches(expected: T, actual: T) = when (expected) {
-    is Group -> matches(expected, actual as Group)
-    is Pack -> matches(expected, actual as Pack)
-    is Track -> matches(expected, actual as Track)
-    else -> {
-        fail("Unknown type $expected")
-        false
-    }
-}
+private fun makeGroup(id: String, title: String, packs: Int, image: String? = null) =
+    Group(Group.Id(id), title, packs, image?.let { FilePath(it) })
 
-// Match only visible in UI attributes
-private fun matches(expected: Group, actual: Group) =
-    if (expected.id == actual.id) {
-        assertEquals(expected.id, expected.title, actual.title)
-        assertTrue(expected.id, actual.packs >= expected.packs)
-        true
-    } else {
-        false
-    }
-
-private fun matches(expected: Pack, actual: Pack?) =
-    if (expected.id == actual!!.id) {
-        assertEquals(expected.id, expected.title, actual.title)
-        //assertEquals(expected.id, expected.ratings, actual.ratings);
-        //assertEquals(expected.id, expected.score, actual.score);
-        assertEquals(expected.id, expected.songs.toLong(), actual.songs.toLong())
-        true
-    } else {
-        false
-    }
-
-private fun matches(expected: Track, actual: Track) =
-    if (expected.location == actual.location) {
-        assertEquals(expected.location, expected.title, actual.title)
-        assertEquals(expected.location, expected.number, actual.number)
-        assertEquals(expected.location, expected.duration, actual.duration)
-        true
-    } else {
-        false
-    }
-
-private fun makePack(id: String, title: String, songs: Int, score: Int, ratings: Int) =
-    Pack(id, title).apply {
-        this.songs = songs
-        this.score = score
-        this.ratings = ratings
-    }
+private fun makePack(
+    id: String, title: String, songs: Int, size: String, archive: String, image: String
+) = Pack(Pack.Id(id), title, FilePath(archive), FilePath(image), songs, size)

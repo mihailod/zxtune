@@ -10,40 +10,33 @@
 
 #pragma once
 
-// common includes
-#include <types.h>
-// std includes
+#include "string_type.h"
+#include "types.h"
+
+#include "3rdparty/fmt/include/fmt/core.h"
+
 #include <utility>
-// boost includes
-#include <boost/format.hpp>
 
 namespace Strings
 {
-  namespace Details
-  {
-    template<class F>
-    F DoFormat(F&& fmt) noexcept
-    {
-      return fmt;
-    }
+  template<class... P>
+  using FormatString = fmt::format_string<P...>;
 
-    template<class F, class P, class... R>
-    F DoFormat(F&& fmt, P&& p, R&&... rest)
-    {
-      fmt % std::forward<P>(p);
-      return DoFormat(std::forward<F>(fmt), rest...);
-    }
-  }  // namespace Details
   //! @brief Format functions
   //! @code
   //! const String& txt = Strings::Format(FORMAT_STRING, param1, param2);
   //! @endcode
-  //! <A HREF="http://www.boost.org/doc/libs/1_41_0/libs/format/doc/format.html#syntax">Syntax of format string</A>
-  template<class S, class... P>
-  String Format(S&& format, P&&... params)
+  template<class... P>
+  String Format(FormatString<P...> format, P&&... params) noexcept
   {
-    return Details::DoFormat(boost::basic_format<Char>(format), params...).str();
+    return fmt::format(format, std::forward<P>(params)...);
   }
 
-  String FormatTime(uint_t hours, uint_t minutes, uint_t seconds, uint_t frames);
+  template<class... P>
+  String FormatRuntime(fmt::string_view format, P&&... params)
+  {
+    return fmt::format(fmt::runtime(format), std::forward<P>(params)...);
+  }
+
+  String FormatTime(uint_t hours, uint_t minutes, uint_t seconds, uint_t frames) noexcept;
 }  // namespace Strings

@@ -8,13 +8,11 @@
  *
  **/
 
-// local includes
 #include "module/players/dac/dac_base.h"
-// common includes
-#include <make_ptr.h>
-// library includes
-#include <sound/loop.h>
-#include <sound/multichannel_sample.h>
+
+#include "sound/multichannel_sample.h"
+
+#include "make_ptr.h"
 
 namespace Module
 {
@@ -36,14 +34,9 @@ namespace Module
       FillCurrentData();
     }
 
-    bool IsValid() const override
+    void NextFrame() override
     {
-      return Delegate->IsValid();
-    }
-
-    void NextFrame(const Sound::LoopParameters& looped) override
-    {
-      Delegate->NextFrame(looped);
+      Delegate->NextFrame();
       FillCurrentData();
     }
 
@@ -60,16 +53,9 @@ namespace Module
   private:
     void FillCurrentData()
     {
-      if (Delegate->IsValid())
-      {
-        DAC::TrackBuilder builder;
-        Render->SynthesizeData(*State, builder);
-        builder.GetResult(CurrentData);
-      }
-      else
-      {
-        CurrentData.clear();
-      }
+      DAC::TrackBuilder builder;
+      Render->SynthesizeData(*State, builder);
+      builder.GetResult(CurrentData);
     }
 
   private:
@@ -93,14 +79,10 @@ namespace Module
       return Iterator->GetStateObserver();
     }
 
-    Sound::Chunk Render(const Sound::LoopParameters& looped) override
+    Sound::Chunk Render() override
     {
-      if (!Iterator->IsValid())
-      {
-        return {};
-      }
       TransferChunk();
-      Iterator->NextFrame(looped);
+      Iterator->NextFrame();
       LastChunk.TimeStamp += FrameDuration;
       return Device->RenderTill(LastChunk.TimeStamp);
     }
@@ -126,9 +108,9 @@ namespace Module
         Iterator->GetData(LastChunk.Data);
         Device->UpdateState(LastChunk);
       }
-      while (state->At() < request && Iterator->IsValid())
+      while (state->At() < request)
       {
-        Iterator->NextFrame({});
+        Iterator->NextFrame();
         LastChunk.TimeStamp += FrameDuration;
         Iterator->GetData(LastChunk.Data);
         Device->UpdateState(LastChunk);
@@ -150,42 +132,38 @@ namespace Module
   };
 }  // namespace Module
 
-namespace Module
+namespace Module::DAC
 {
-  namespace DAC
+  ChannelDataBuilder TrackBuilder::GetChannel(uint_t chan)
   {
-    ChannelDataBuilder TrackBuilder::GetChannel(uint_t chan)
+    using namespace Devices::DAC;
+    const auto existing =
+        std::find_if(Data.begin(), Data.end(), [chan](const ChannelData& data) { return data.Channel == chan; });
+    if (existing != Data.end())
     {
-      using namespace Devices::DAC;
-      const auto existing =
-          std::find_if(Data.begin(), Data.end(), [chan](const ChannelData& data) { return data.Channel == chan; });
-      if (existing != Data.end())
-      {
-        return ChannelDataBuilder(*existing);
-      }
-      Data.push_back(ChannelData());
-      ChannelData& newOne = Data.back();
-      newOne.Channel = chan;
-      return ChannelDataBuilder(newOne);
+      return ChannelDataBuilder(*existing);
     }
+    Data.emplace_back();
+    ChannelData& newOne = Data.back();
+    newOne.Channel = chan;
+    return ChannelDataBuilder(newOne);
+  }
 
-    void TrackBuilder::GetResult(Devices::DAC::Channels& result)
-    {
-      using namespace Devices::DAC;
-      const auto last =
-          std::remove_if(Data.begin(), Data.end(), [](const ChannelData& data) { return data.Mask == 0; });
-      result.assign(Data.begin(), last);
-    }
+  void TrackBuilder::GetResult(Devices::DAC::Channels& result)
+  {
+    using namespace Devices::DAC;
+    const auto last = std::remove_if(Data.begin(), Data.end(), [](const ChannelData& data) { return data.Mask == 0; });
+    result.assign(Data.begin(), last);
+  }
 
-    DataIterator::Ptr CreateDataIterator(TrackStateIterator::Ptr iterator, DataRenderer::Ptr renderer)
-    {
-      return MakePtr<DACDataIterator>(std::move(iterator), std::move(renderer));
-    }
+  DataIterator::Ptr CreateDataIterator(TrackStateIterator::Ptr iterator, DataRenderer::Ptr renderer)
+  {
+    return MakePtr<DACDataIterator>(std::move(iterator), std::move(renderer));
+  }
 
-    Renderer::Ptr CreateRenderer(Time::Microseconds frameDuration, DAC::DataIterator::Ptr iterator,
-                                 Devices::DAC::Chip::Ptr device)
-    {
-      return MakePtr<DACRenderer>(frameDuration, std::move(iterator), std::move(device));
-    }
-  }  // namespace DAC
-}  // namespace Module
+  Renderer::Ptr CreateRenderer(Time::Microseconds frameDuration, DAC::DataIterator::Ptr iterator,
+                               Devices::DAC::Chip::Ptr device)
+  {
+    return MakePtr<DACRenderer>(frameDuration, std::move(iterator), std::move(device));
+  }
+}  // namespace Module::DAC

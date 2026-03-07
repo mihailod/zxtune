@@ -8,18 +8,19 @@
  *
  **/
 
-// local includes
-#include "sound_win32.h"
+#include "apps/zxtune-qt/ui/preferences/sound_win32.h"
+
+#include "apps/zxtune-qt/supp/options.h"
+#include "apps/zxtune-qt/ui/tools/parameters_helpers.h"
+#include "apps/zxtune-qt/ui/utils.h"
 #include "sound_win32.ui.h"
-#include "supp/options.h"
-#include "ui/tools/parameters_helpers.h"
-#include "ui/utils.h"
-// common includes
-#include <contract.h>
-// library includes
-#include <debug/log.h>
-#include <sound/backends/win32.h>
-#include <sound/backends_parameters.h>
+
+#include "sound/backends/win32.h"
+
+#include "debug/log.h"
+#include "sound/backends_parameters.h"
+
+#include "contract.h"
 
 namespace
 {
@@ -30,9 +31,7 @@ namespace
 {
   struct Device
   {
-    Device()
-      : Id()
-    {}
+    Device() = default;
 
     explicit Device(const Sound::Win32::Device& in)
       : Name(ToQString(in.Name()))
@@ -40,7 +39,7 @@ namespace
     {}
 
     QString Name;
-    int_t Id;
+    int_t Id = 0;
   };
 
   class Win32OptionsWidget
@@ -60,24 +59,17 @@ namespace
 
       using namespace Parameters::ZXTune::Sound::Backends::Win32;
       Parameters::IntegerValue::Bind(*buffers, *Options, BUFFERS, BUFFERS_DEFAULT);
-      Require(connect(devices, SIGNAL(currentIndexChanged(const QString&)), SLOT(DeviceChanged(const QString&))));
+      Require(connect(devices, &QComboBox::currentTextChanged, this, &Win32OptionsWidget::DeviceNameChanged));
     }
 
-    String GetBackendId() const override
+    StringView GetBackendId() const override
     {
-      static const Char ID[] = {'w', 'i', 'n', '3', '2', '\0'};
-      return ID;
+      return "win32"sv;
     }
 
     QString GetDescription() const override
     {
       return nameGroup->title();
-    }
-
-    void DeviceChanged(const QString& name) override
-    {
-      Dbg("Selecting device '%1%'", FromQString(name));
-      DeviceChanged([&name](const Device& dev) { return dev.Name == name; });
     }
 
     // QWidget
@@ -91,11 +83,16 @@ namespace
     }
 
   private:
+    void DeviceNameChanged(const QString& name)
+    {
+      Dbg("Selecting device '{}'", FromQString(name));
+      DeviceChanged([&name](const Device& dev) { return dev.Name == name; });
+    }
+
     void SelectDevice()
     {
       using namespace Parameters::ZXTune::Sound::Backends::Win32;
-      Parameters::IntType curDevice = DEVICE_DEFAULT;
-      Options->FindValue(DEVICE, curDevice);
+      const auto curDevice = Parameters::GetInteger(*Options, DEVICE, DEVICE_DEFAULT);
       DeviceChanged([curDevice](const Device& dev) { return dev.Id == curDevice; });
     }
 
@@ -117,18 +114,18 @@ namespace
     void FillDevices()
     {
       using namespace Sound;
-      for (Win32::Device::Iterator::Ptr availableDevices = Win32::EnumerateDevices(); availableDevices->IsValid();
+      for (const auto availableDevices = Win32::EnumerateDevices(); availableDevices->IsValid();
            availableDevices->Next())
       {
         const Win32::Device::Ptr cur = availableDevices->Get();
-        Devices.push_back(Device(*cur));
+        Devices.emplace_back(*cur);
         devices->addItem(Devices.back().Name);
       }
     }
 
   private:
     const Parameters::Container::Ptr Options;
-    typedef std::vector<Device> DevicesArray;
+    using DevicesArray = std::vector<Device>;
     DevicesArray Devices;
   };
 }  // namespace

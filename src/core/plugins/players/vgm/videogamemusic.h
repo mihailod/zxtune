@@ -10,13 +10,11 @@
 
 #pragma once
 
-// library includes
-#include <binary/view.h>
+#include "binary/view.h"
 
-namespace Module
+#include "string_view.h"
+
+namespace Module::VideoGameMusic
 {
-  namespace VideoGameMusic
-  {
-    StringView DetectPlatform(Binary::View blob);
-  }
-}  // namespace Module
+  StringView DetectPlatform(Binary::View data);
+}  // namespace Module::VideoGameMusic

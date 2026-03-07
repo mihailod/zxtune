@@ -8,16 +8,18 @@
  *
  **/
 
-#include "../../utils.h"
-#include <formats/chiptune/aym/soundtracker.h>
+#include "formats/chiptune/aym/soundtracker.h"
+#include "formats/test/utils.h"
+
+#include "string_view.h"
 
 namespace
 {
   using namespace Formats::Chiptune::SoundTracker;
 
-  Char ToHex(uint_t val)
+  auto ToHex(uint_t val)
   {
-    return val >= 10 ? (val - 10 + 'A') : val + '0';
+    return val >= 10 ? 'A' + (val - 10) : '0' + val;
   }
 
   inline std::string GetNote(uint_t note)
@@ -59,18 +61,23 @@ namespace
 
     void SetStrings(const Strings::Array& /*strings*/) override {}
 
+    void SetComment(StringView comment) override
+    {
+      std::cout << "Comment: " << comment << std::endl;
+    }
+
     // Builder
     void SetInitialTempo(uint_t tempo) override
     {
       std::cout << "Tempo: " << tempo << std::endl;
     }
 
-    void SetSample(uint_t index, Sample sample) override
+    void SetSample(uint_t index, Sample /*sample*/) override
     {
       std::cout << "Sample" << index << std::endl;
     }
 
-    void SetOrnament(uint_t index, Ornament ornament) override
+    void SetOrnament(uint_t index, Ornament /*ornament*/) override
     {
       std::cout << "Ornament" << index << std::endl;
     }
@@ -149,7 +156,7 @@ namespace
 
   private:
     String Line;
-    Char* ChanPtr;
+    char* ChanPtr;
   };
 
   Formats::Chiptune::SoundTracker::Decoder::Ptr CreateDecoder(const std::string& type)
@@ -181,12 +188,10 @@ int main(int argc, char* argv[])
     {
       return 0;
     }
-    std::unique_ptr<Binary::Dump> rawData(new Binary::Dump());
-    Test::OpenFile(argv[2], *rawData);
-    const Binary::Container::Ptr data = Binary::CreateContainer(std::move(rawData));
+    const auto data = Test::OpenFile(argv[2]);
     const std::string type(argv[1]);
     STDumpBuilder builder;
-    const Formats::Chiptune::SoundTracker::Decoder::Ptr decoder = CreateDecoder(type);
+    const auto decoder = CreateDecoder(type);
     decoder->Parse(*data, builder);
   }
   catch (const std::exception& e)

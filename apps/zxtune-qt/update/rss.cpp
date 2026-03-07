@@ -8,12 +8,12 @@
  *
  **/
 
-// local includes
-#include "rss.h"
+#include "apps/zxtune-qt/update/rss.h"
+
 #include "apps/zxtune-qt/ui/utils.h"
-// library includes
-#include <debug/log.h>
-// qt includes
+
+#include "debug/log.h"
+
 #include <QtCore/QXmlStreamReader>
 
 namespace
@@ -90,7 +90,7 @@ namespace RSS
 {
   bool Parse(const QByteArray& rss, Visitor& visitor)
   {
-    Dbg("Parsing rss feed in %1% bytes", rss.size());
+    Dbg("Parsing rss feed in {} bytes", rss.size());
     QXmlStreamReader xml(rss);
     if (!xml.readNextStartElement() || xml.name() != RSS::FEED)
     {

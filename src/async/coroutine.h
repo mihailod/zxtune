@@ -10,8 +10,7 @@
 
 #pragma once
 
-// library includes
-#include <async/job.h>
+#include "async/job.h"
 
 namespace Async
 {
@@ -26,7 +25,7 @@ namespace Async
   class Coroutine
   {
   public:
-    typedef std::shared_ptr<Coroutine> Ptr;
+    using Ptr = std::shared_ptr<Coroutine>;
     virtual ~Coroutine() = default;
 
     virtual void Initialize() = 0;
