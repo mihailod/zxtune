@@ -35,7 +35,7 @@ static cfg_string player_plugins_disabled_cfg(player_plugins_disabled_guid, "");
 static pfc::string8 PlayerPluginHash(const ZXTune::PlayerPlugin::Ptr& pp)
 {
 	auto d = pp->Description();
-	auto hash = static_api_ptr_t<hasher_md5>()->process_single_string(d.c_str()).asString();
+	auto hash = static_api_ptr_t<hasher_md5>()->process_single(d.data(), d.length()).asString();
 	if(hash.length() > 8)
 		hash.truncate(8);
 	return hash;
@@ -107,12 +107,15 @@ private:
 			if(item < ZXTune::player_plugins.size())
 			{
 				auto pp = ZXTune::player_plugins[item];
+				StringView out1;
 				switch(subItem)
 				{
-				case 1: out = pp->Id().c_str();			return true;
-				case 2: out = pp->Description().c_str();	return true;
+				case 1: out1 = pp->Id(); break;
+				case 2: out1 = pp->Description(); break;
 				default: return false;
 				}
+				out.set_string(out1.data(), out1.length());
+				return true;
 			}
 			return false;
 		}

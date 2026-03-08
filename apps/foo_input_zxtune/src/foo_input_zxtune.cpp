@@ -170,10 +170,10 @@ public:
 	{
 		file_dir.truncate_to_parent_path();
 	}
-	virtual Binary::Container::Ptr Get(const String& _name) const override
+	virtual Binary::Container::Ptr Get(StringView _name) const override
 	{
 		pfc::string8 file_path = file_dir;
-		file_path += _name.c_str();
+		file_path.add_string(_name.data(), _name.length());
 		service_ptr_t<file> file;
 		input_open_file_helper(file, file_path.c_str(), input_open_info_read, m_abort);
 		t_size size = (t_size)file->get_size(m_abort);
@@ -193,7 +193,7 @@ void input_zxtune::ParseModules(abort_callback& p_abort)
 	struct ModuleDetector : public Module::DetectCallback, public FoobarFilesSource
 	{
 		ModuleDetector(Modules* _mods, abort_callback& _abort, const std::string& _file_path) : modules(_mods), FoobarFilesSource(_abort, _file_path) {}
-		Parameters::Container::Ptr CreateInitialProperties(const String&) const override
+		Parameters::Container::Ptr CreateInitialProperties(StringView subpath) const override
 		{
 			return Parameters::Container::Create();
 		}
@@ -299,7 +299,7 @@ void input_zxtune::get_info(t_uint32 p_subsong, file_info & p_info,abort_callbac
 	double len = mi->Duration().CastTo<Time::Second>().Get();
 	p_info.set_length(len);
 	Parameters::IntType size;
-	if(props->FindValue(Module::ATTR_SIZE, size))
+	if(Parameters::FindValue(*props, Module::ATTR_SIZE, size))
 		p_info.info_calculate_bitrate(size, len);
 
 	//note that the values below should be based on contents of the file itself, NOT on user-configurable variables for an example. To report info that changes independently from file contents, use get_dynamic_info/get_dynamic_info_track instead.
@@ -308,21 +308,21 @@ void input_zxtune::get_info(t_uint32 p_subsong, file_info & p_info,abort_callbac
 	p_info.info_set_int("bitspersample", raw_bits_per_sample);
 	p_info.info_set("encoding", "synthesized");
 	String type;
-	if(props->FindValue(Module::ATTR_TYPE, type))
+	if(Parameters::FindValue(*props, Module::ATTR_TYPE, type))
 		p_info.info_set("codec", type.c_str());
 	String author;
-	if(props->FindValue(Module::ATTR_AUTHOR, author) && !author.empty())
+	if(Parameters::FindValue(*props, Module::ATTR_AUTHOR, author) && !author.empty())
 		p_info.meta_set("ARTIST", author.c_str());
 	String title;
-	if(props->FindValue(Module::ATTR_TITLE, title) && !title.empty())
+	if(Parameters::FindValue(*props, Module::ATTR_TITLE, title) && !title.empty())
 		p_info.meta_set("TITLE", title.c_str());
 	else if(subname.length())
 		p_info.meta_set("TITLE", subname.c_str());
 	String comment;
-	if(props->FindValue(Module::ATTR_COMMENT, comment) && !comment.empty())
+	if(Parameters::FindValue(*props, Module::ATTR_COMMENT, comment) && !comment.empty())
 		p_info.meta_set("COMMENT", comment.c_str());
 	String program;
-	if(props->FindValue(Module::ATTR_PROGRAM, program) && !program.empty())
+	if(Parameters::FindValue(*props, Module::ATTR_PROGRAM, program) && !program.empty())
 		p_info.meta_set("PERFORMER", program.c_str());
 	if(input_modules.size() > 1)
 	{
@@ -356,14 +356,16 @@ void input_zxtune::decode_initialize(t_uint32 p_subsong, unsigned p_flags, abort
 
 	auto props = input_module->GetModuleProperties();
 	String type;
-	if(props && props->FindValue(Module::ATTR_TYPE, type))
+	if(props && Parameters::FindValue(*props, Module::ATTR_TYPE, type))
 	{
 		using namespace ZXTune;
 		auto it = std::find_if(player_plugins.begin(), player_plugins.end(), [&type](const PlayerPlugin::Ptr& p) { return p->Id() == type; });
 		if(it != player_plugins.end())
 		{
 			console::formatter out;
-			out << "ZXTune: using codec " << type.c_str() << " (" << (*it)->Description().c_str() << ")";
+			auto it_desc = (*it)->Description();
+			pfc::string desc(it_desc.data(), it_desc.length());
+			out << "ZXTune: using codec " << type.c_str() << " (" << desc << ")";
 		}
 	}
 }

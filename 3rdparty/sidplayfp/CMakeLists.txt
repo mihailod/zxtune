@@ -1,8 +1,8 @@
 project(libsidplayfp)
 
-add_definitions(-DHAVE_CONFIG_H)
+add_definitions(-DHAVE_CONFIG_H -DSID_EXTERN=)
 include_directories(".")
-include_directories("sidplayfp")
+include_directories("src")
 
 file(GLOB SRCS_CXX "src/sidplayfp/*.cpp" "src/c64/*.cpp" "src/c64/CIA/*.cpp" "src/c64/CPU/*.cpp" "src/c64/VIC_II/*.cpp" "src/sidtune/*.cpp"
 	"utils/MD5/*.cpp"

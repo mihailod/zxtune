@@ -1,6 +1,6 @@
 project(libgme)
 
-add_definitions(-DNSF_EMU_APU_ONLY)
+add_definitions(-DHAVE_STDINT_H)
 
 set(SRCS_C_CXX
 	"gme/blargg_common.cpp"

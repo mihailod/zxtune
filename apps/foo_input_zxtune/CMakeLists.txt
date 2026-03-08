@@ -30,8 +30,14 @@ else()
 include_directories("${WTL_ROOT}/Include")
 endif()
 
+include_directories("../..")
 include_directories("../../include")
 include_directories("../../src")
+include_directories("../../3rdparty/zlib")
+
+cmake_path(SET SOURCES_ROOTX NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+cmake_path(GET SOURCES_ROOTX PARENT_PATH SOURCES_ROOT)
+add_definitions(-DSOURCES_ROOT="${SOURCES_ROOT}")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4018 /wd4244 /wd4800 /wd4996 /wd4267 /wd4101")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} /wd4018 /wd4090 /wd4146")

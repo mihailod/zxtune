@@ -69,7 +69,7 @@ const std::vector<std::string>& SupportedExts()
 		};
 		for(auto p : ZXTune::PlayerPlugin::Enumerate())
 		{
-			auto id = p->Id();
+			std::string id(p->Id());
 			Add(id);
 			if(id == "AY")
 				Add("EMUL");

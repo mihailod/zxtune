@@ -1,14 +1,13 @@
 #ifndef __ZXTUNE_PLAYER_H__
 #define __ZXTUNE_PLAYER_H__
 
-#include <cycle_buffer.h>
+#include <tools/cycle_buffer.h>
 #include <make_ptr.h>
 #include <parameters/container.h>
 #include <core/service.h>
 #include <module/holder.h>
 #include <module/players/pipeline.h>
 #include <sound/receiver.h>
-#include <sound/loop.h>
 
 #pragma once
 
@@ -93,7 +92,7 @@ public:
 			result += got;
 			if(!samples)
 				break;
-			auto chunk = Renderer->Render(Sound::LoopParameters());
+			auto chunk = Renderer->Render();
             if(chunk.empty())
 				break;
             Buffer->ApplyData(std::move(chunk));
