@@ -13,6 +13,8 @@
 #include "string_view.h"
 #include "types.h"
 
+#undef OUT
+
 namespace ZXTune
 {
   class PluginId : public StringView

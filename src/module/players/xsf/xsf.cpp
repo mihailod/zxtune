@@ -21,6 +21,8 @@
 #include "make_ptr.h"
 #include "string_view.h"
 
+#include <iterator>
+
 namespace Module::XSF
 {
   class FilePath

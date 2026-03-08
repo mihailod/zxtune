@@ -45,6 +45,7 @@
 #include "3rdparty/gme/gme/Nsfe_Emu.h"
 
 #include <map>
+#include <stdexcept>
 
 namespace Module::GME
 {

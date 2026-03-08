@@ -15,6 +15,8 @@
 #include "parameters/modifier.h"
 #include "sound/sound_parameters.h"
 
+#include <iterator>
+
 namespace Module::XSF
 {
   template<class T>
