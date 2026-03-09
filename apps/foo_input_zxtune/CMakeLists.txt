@@ -12,6 +12,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include_directories(${Boost_INCLUDE_DIR})
 add_definitions(-DHAVE_BOOST)
 add_definitions(-DNO_DEBUG_LOGS)
+add_definitions(-DFMT_DEPRECATED_HEAVY_CORE)
 
 if("${FOOBAR_SDK_ROOT}" STREQUAL "")
 message(FATAL_ERROR "Unable to find the foobar2000 SDK. Please set FOOBAR_SDK_ROOT to the root directory containing foobar2000 SDK. Get it here: http://www.foobar2000.org/SDK")
