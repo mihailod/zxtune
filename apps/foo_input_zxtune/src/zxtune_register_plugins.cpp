@@ -111,7 +111,7 @@ void RegisterASAPPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegist
 void RegisterV2MSupport(PlayerPluginsRegistrator& players);
 void RegisterVGMPlugins(PlayerPluginsRegistrator& players);
 void RegisterMPTPlugins(PlayerPluginsRegistrator& players);
-void RegisterVGMStreamPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegistrator& archives);
+//void RegisterVGMStreamPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegistrator& archives);
 
 void RegisterPlayerPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegistrator& archives)
 {
@@ -169,7 +169,7 @@ void RegisterPlayerPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegi
 	RegisterSIDPlugins(ppf, apr);
 	RegisterGMEPlugins(ppf, apr);
 	RegisterASAPPlugins(ppf, apr);
-	RegisterVGMStreamPlugins(ppf, apr);
+//	RegisterVGMStreamPlugins(ppf, apr);
 	
 	ppf.Filter(&players);
 	std::stable_sort(player_plugins.begin(), player_plugins.end(),
