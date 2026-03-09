@@ -27,7 +27,7 @@ set(SRCS_C
 	"emu/cores/gb.c"
 #nsfp default with fds
 	"emu/cores/nesintf.c" "emu/cores/np_nes_apu.c" "emu/cores/np_nes_dmc.c" "emu/cores/np_nes_fds.c" "emu/cores/nes_apu.c"
-	"emu/cores/multipcm.c"
+	"emu/cores/mikey.c" "emu/cores/multipcm.c"
 	"emu/cores/upd7759.c"
 	"emu/cores/okim6258.c"
 	"emu/cores/okim6295.c" "emu/cores/okiadpcm.c"
@@ -51,11 +51,19 @@ set(SRCS_C
 	"emu/cores/x1_010.c"
 	"emu/cores/c352.c"
 	"emu/cores/iremga20.c"
+	"emu/cores/bsmt2000.c"
+	"emu/cores/ics2115.c"
+	"emu/cores/k005289.c"
+	"emu/cores/k007232.c"
+	"emu/cores/msm5205.c"
+	"emu/cores/msm5232.c"
 )
 
-set(SRCS_C_CXX "player/playerbase.cpp" "player/s98player.cpp" "player/vgmplayer.cpp" "player/vgmplayer_cmdhandler.cpp")
+set(SRCS_C_CXX "player/playera.cpp" "player/playerbase.cpp" "player/s98player.cpp" "player/vgmplayer.cpp" "player/vgmplayer_cmdhandler.cpp")
 
 file(GLOB SRCS_H "emu/*.h" "utils/*.h" "player/*.h" "emu/cores/*.h")
+
+add_definitions(-DHAVE_STDINT_H -DVGM_LITTLE_ENDIAN)
 
 add_library(vgm ${SRCS_H} ${SRCS_C} ${SRCS_C_CXX})
 set_property(TARGET vgm PROPERTY FOLDER "3rdparty")
