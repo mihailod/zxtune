@@ -8,11 +8,14 @@
  *
  **/
 
+#include "binary/format/expression.h"
 #include "binary/format/grammar.h"
 #include "binary/format/syntax.h"
 
 #include "binary/format_factories.h"
+#include "strings/format.h"
 
+#include "static_string.h"
 #include "string_view.h"
 #include "types.h"
 
@@ -924,6 +927,55 @@ namespace
     Test("match (only)", resMatched.Matched, tst.MatchOnlyResult.Matched);
     Test("next match offset (only)", resMatched.NextMatch, tst.MatchOnlyResult.NextMatch);
   }
+  
+  void ExecuteExpressionTest()
+  {
+    constexpr StringView HOLES[] = {""sv, "?"sv, "??"sv, "???"sv};
+    constexpr StringView PATTERNS[] = {""sv, "'A"sv, "'A'B'C"sv};
+    for (const auto& prefix : HOLES)
+    {
+      for (const auto& begin : PATTERNS)
+      {
+        if (begin == prefix)
+        {
+          continue;
+        }
+        for (const auto& hole : HOLES)
+        {
+          if (begin.empty())
+          {
+            continue;
+          }
+          for (const auto& end : PATTERNS)
+          {
+            if (end == hole)
+            {
+              continue;
+            }
+            for (const auto& suffix : HOLES)
+            {
+              if (suffix == end)
+              {
+                continue;
+              }
+              if (begin.empty() && end.empty())
+              {
+                continue;
+              }
+              const auto offset = prefix.size();
+              // Use 2-char patterns for the sake of simplicity
+              const auto size = begin.size() / 2 + hole.size() * (begin.size() * end.size() != 0) + end.size() / 2;
+              const auto pattern = std::string(prefix) + begin + hole + end + suffix;
+              std::cout << Strings::Format("Testing for expression: ({})+({})+({})+({})+({})", prefix, begin, hole, end, suffix) << std::endl;
+              const auto exp = Binary::FormatDSL::Expression::Parse(pattern);
+              Test("offset", exp->StartOffset(), offset);
+              Test("size", exp->Predicates().size(), size);
+            }
+          }
+        }
+      }
+    }
+  }
 
   // clang-format off
   struct CompositeFormatTest
@@ -1036,6 +1088,7 @@ int main()
     {
       ExecuteTest(test);
     }
+    ExecuteExpressionTest();
     for (const auto& test : COMPOSITE_TESTS)
     {
       ExecuteCompositeTest(test);
