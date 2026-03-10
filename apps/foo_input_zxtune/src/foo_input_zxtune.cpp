@@ -40,10 +40,10 @@ extern std::vector<PlayerPlugin::Ptr> player_plugins;
 // Since foobar2000 v1.0 having at least one of these in your DLL is mandatory to let the troubleshooter tell different versions of your component apart.
 // Note that it is possible to declare multiple components within one DLL, but it's strongly recommended to keep only one declaration per DLL.
 // As for 1.1, the version numbers are used by the component update finder to find updates; for that to work, you must have ONLY ONE declaration per DLL. If there are multiple declarations, the component is assumed to be outdated and a version number of "0" is assumed, to overwrite the component with whatever is currently on the site assuming that it comes with proper version numbers.
-DECLARE_COMPONENT_VERSION("ZXTune Decoders", "0.0.9",
-"ZXTune (C) 2008 - 2020 by Vitamin/CAIG.\n"
-"based on r4953 jul 23 2020\n"
-"foobar2000 plugin by djdron (C) 2013 - 2020.\n"
+DECLARE_COMPONENT_VERSION("ZXTune Decoders", "0.0.10",
+"ZXTune (C) 2008 - 2026 by Vitamin/CAIG.\n"
+"based on r5100 mar 10 2026\n"
+"foobar2000 plugin by djdron (C) 2013 - 2026.\n"
 "https://github.com/djdron/zxtune/tree/cmake\n\n"
 
 "Technical credits:\n"
@@ -53,6 +53,7 @@ DECLARE_COMPONENT_VERSION("ZXTune Decoders", "0.0.9",
 "zlib library by Jean-loup Gailly and Mark Adler\n"
 "z80ex library by Boo-boo\n"
 "boost C++ library\n"
+"{fmt} by Victor Zverovich\n"
 "Pusher sources by Himik/ZxZ\n"
 "lhasa library by Simon Howard\n"
 "libxmp library by Claudio Matsuoka\n"
@@ -68,6 +69,8 @@ DECLARE_COMPONENT_VERSION("ZXTune Decoders", "0.0.9",
 "ASAP library by Piotr Fusik\n"
 "v2m-player library by Farbrausch and Joakim L. Gilje\n"
 "libvgm library by Valley Bell\n"
+"sseqplayer by Naram Qashat, fincs and Christopher Snowhill\n"
+"openmpt library\n"
 );
 
 // This will prevent users from renaming your component around (important for proper troubleshooter behaviors) or loading multiple instances of it.
