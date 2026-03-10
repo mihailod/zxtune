@@ -146,10 +146,12 @@ void RegisterPlayerPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegi
 	RegisterCOPSupport(ppf);
 	RegisterTFESupport(ppf);
 	RegisterXMPPlugins(ppf);
+	RegisterSIDPlugins(ppf, archives);
 	RegisterET1Support(ppf);
 	RegisterAYCSupport(ppf);
 	RegisterSPCSupport(ppf);
 	RegisterMTCSupport(ppf);
+	RegisterGMEPlugins(ppf, archives);
 	RegisterAHXSupport(ppf);
 	RegisterPSFSupport(ppf);
 	RegisterUSFSupport(ppf);
@@ -157,19 +159,11 @@ void RegisterPlayerPlugins(PlayerPluginsRegistrator& players, ArchivePluginsRegi
 	Register2SFSupport(ppf);
 	RegisterNCSFSupport(ppf);
 	RegisterSDSFSupport(ppf);
+	RegisterASAPPlugins(ppf, archives);
 	RegisterV2MSupport(ppf);
 	RegisterVGMPlugins(ppf);
 	RegisterMPTPlugins(ppf);
-	
-	struct APR : public ArchivePluginsRegistrator
-	{
-		virtual void RegisterPlugin(typename ArchivePlugin::Ptr plugin) {}
-	};
-	APR apr;
-	RegisterSIDPlugins(ppf, apr);
-	RegisterGMEPlugins(ppf, apr);
-	RegisterASAPPlugins(ppf, apr);
-//	RegisterVGMStreamPlugins(ppf, apr);
+//	RegisterVGMStreamPlugins(ppf, archives);
 	
 	ppf.Filter(&players);
 	std::stable_sort(player_plugins.begin(), player_plugins.end(),
