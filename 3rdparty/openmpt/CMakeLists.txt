@@ -2,7 +2,9 @@ project(openmpt)
 
 add_definitions(-DMPT_FRAMEWORK_ASSERT_IS_DEFINED -DMPT_ASSERT_USE_FRAMEWORK=1 -DMPT_FRAMEWORK_ASSERT_IS_ACTIVE=1 -D "ASSERT(p)=(void)(p)" -DMPT_LOG_IS_DISABLED -DMPT_DETERMINISTIC_RANDOM)
 add_definitions(-DLIBOPENMPT_BUILD -DNO_LOGGING -DNO_MPG123 -DNO_CONTAINERS_SUPPORT -DOPENMPT_VERSION_REVISION=0)
-#add_definitions(-DMPT_WITH_MINIMP3 -DMPT_WITH_VORBISFILE -DMPT_WITH_OPUSFILE)
+add_definitions(-DMPT_WITH_MINIMP3 -DMINIMP3_IMPLEMENTATION -DMINIMP3_NONSTANDARD_BUT_LOGICAL)
+add_definitions(-DMPT_WITH_VORBISFILE)
+add_definitions(-DMPT_WITH_OPUSFILE)
 
 include_directories("common" "." "build/svn_version" "src")
 include_directories("../../3rdparty/openmpt/include/opusfile/include" "../../3rdparty/opus/include" "../../3rdparty")
