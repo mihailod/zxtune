@@ -111,7 +111,7 @@ namespace Formats::Chiptune
 
       uint_t GetVersion() const
       {
-        if (std::isdigit(Version[0]) && Version[1] == '.' && std::isdigit(Version[2]) && std::isdigit(Version[3]))
+        if (std::isdigit((uint8_t)Version[0]) && Version[1] == '.' && std::isdigit((uint8_t)Version[2]) && std::isdigit((uint8_t)Version[3]))
         {
           return 100 * (Version[0] - '0') + 10 * (Version[2] - '0') + (Version[3] - '0');
         }
