@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define _UNICODE
 #include <helpers/foobar2000+atl.h>
 #include <helpers/atl-misc.h>
+#include <helpers/DarkMode.h>
 #include <libPPUI/CListControlSimple.h>
 #include <libPPUI/CListControl-Cells.h>
 #undef UNICODE
@@ -133,6 +134,8 @@ private:
 	const preferences_page_callback::ptr m_callback;
 	CListPlayerPlugins players_list;
 	std::set<int> players_disabled;
+
+	fb2k::CDarkModeHooks m_dark;
 };
 
 BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM)
@@ -149,12 +152,14 @@ BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM)
 	players_list.AddColumnDLU("ID", 30);
 	players_list.AddColumnDLU("Description", 500);
 	players_list.ReloadData();
+
+	m_dark.AddDialogWithControls(*this);
 	return FALSE;
 }
 
 t_uint32 CMyPreferences::get_state()
 {
-	t_uint32 state = preferences_state::resettable;
+	t_uint32 state = preferences_state::resettable|preferences_state::dark_mode_supported;
 	if(HasChangedNeedRestart())
 		state |= preferences_state::changed|preferences_state::needs_restart;
 	return state;
