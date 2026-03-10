@@ -100,9 +100,9 @@ public:
 		return result;
 	}
 
-	void Seek(std::size_t samples)
+	void Seek(double p_seconds)
 	{
-		Renderer->SetPosition(Time::Instant<Time::Millisecond>(samples));
+		Renderer->SetPosition(Time::AtMillisecond(p_seconds*1000.0));
 	}
 
 	void Reset()

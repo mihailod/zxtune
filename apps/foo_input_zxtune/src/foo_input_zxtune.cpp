@@ -383,14 +383,7 @@ bool input_zxtune::decode_run(audio_chunk & p_chunk,abort_callback & p_abort)
 }
 void input_zxtune::decode_seek(double p_seconds,abort_callback & p_abort)
 {
-	// IMPORTANT: convert time to sample offset with proper rounding! audio_math::time_to_samples does this properly for you.
-	t_uint64 s = audio_math::time_to_samples(p_seconds, raw_sample_rate);
-	Module::Information::Ptr mi = input_module->GetModuleInformation();
-	Parameters::Accessor::Ptr props = input_module->GetModuleProperties();
-	t_uint64 max_s = audio_math::time_to_samples(mi->Duration().CastTo<Time::Second>().Get(), raw_sample_rate);
-	if(s > max_s)
-		s = max_s;
-	input_player->Seek((size_t)s);
+	input_player->Seek(p_seconds);
 }
 bool input_zxtune::g_is_our_path(const char* p_path, const char* p_extension)
 {
