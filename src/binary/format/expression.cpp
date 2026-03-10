@@ -109,15 +109,17 @@ namespace Binary::FormatDSL
       const auto first = Predicates.begin();
       const auto last = Predicates.end();
       const auto isAny = [](const Predicate* p) { return p == AnyValuePredicate::Instance(); };
-      const auto firstNotAny = std::find_if_not(first, last, isAny);
-      Require(firstNotAny != last);
-      const auto lastNotAny = std::find_if_not(Predicates.rbegin(), Predicates.rend(), isAny).base();
-      if (first != firstNotAny)
+      const auto beginNotAny = std::find_if_not(first, last, isAny);
+      Require(beginNotAny != last);
+      const auto endNotAny = std::find_if_not(Predicates.rbegin(), Predicates.rend(), isAny).base();
+      const auto offset = std::distance(first, beginNotAny);
+      const auto size = std::distance(beginNotAny, endNotAny);
+      if (offset)
       {
-        std::copy(firstNotAny, lastNotAny, first);
+        std::copy_n(beginNotAny, size, first);
       }
-      Predicates.resize(std::distance(firstNotAny, lastNotAny));
-      return std::distance(first, firstNotAny);
+      Predicates.resize(size);
+      return offset;
     }
 
     std::span<const Predicate* const> GetPredicates() const
