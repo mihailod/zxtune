@@ -372,6 +372,133 @@ namespace
     DisplayComponent& Display;
   };
 
+  class Indexer : public OnItemCallback
+  {
+  public:
+    explicit Indexer(const Parameters::Accessor& params)
+      : Stream(IO::CreateStream(GetFilenameTemplate(params), params, Log::ProgressCallback::Stub()))
+      , Output(CreateOutput(params))
+    {}
+
+    void ProcessItem(Binary::Data::Ptr /*data*/, Module::Holder::Ptr holder) override
+    {
+      Output->Write(*holder->GetModuleProperties());
+    }
+
+  private:
+    class Output
+    {
+    public:
+      using Ptr = std::unique_ptr<Output>;
+      virtual ~Output() = default;
+
+      virtual void Write(const Parameters::Accessor& properties) = 0;
+    };
+
+    class CsvOutput : public Output
+    {
+    public:
+      CsvOutput(Binary::OutputStream& stream, StringView format)
+        : Stream(stream)
+        , Template(Strings::Template::Create(format))
+      {
+        WriteLine(format);
+      }
+
+      ~CsvOutput() override
+      {
+        Stream.Flush();
+      }
+
+      void Write(const Parameters::Accessor& properties) override
+      {
+        WriteLine(Template->Instantiate(Escaping(properties)));
+      }
+
+    private:
+      void WriteLine(StringView line)
+      {
+        WriteString(line);
+        WriteString("\n"sv);
+      }
+
+      void WriteString(StringView str)
+      {
+        Stream.ApplyData({str.data(), str.size() * sizeof(*str.data())});
+      }
+
+      class Escaping : public Strings::FieldsSource
+      {
+      public:
+        explicit Escaping(const Parameters::Accessor& params)
+          : Delegate(params)
+        {}
+
+        String GetFieldValue(StringView fieldName) const override
+        {
+          if (auto integer = Delegate.FindInteger(fieldName))
+          {
+            return Parameters::ConvertToString(*integer);
+          }
+          if (auto str = Delegate.FindString(fieldName))
+          {
+            return Escape(std::move(*str));
+          }
+          return {};
+        }
+
+      private:
+        String Escape(String in) const
+        {
+          if (in.empty() || String::npos == in.find_first_of(",;\"\n"))
+          {
+            return in;
+          }
+          String result;
+          result.reserve(in.size() + 5);
+          result += '"';
+          if (String::npos == in.find_first_of('"'))
+          {
+            result += in;
+          }
+          else
+          {
+            for (auto c : in)
+            {
+              if (c == '"')
+              {
+                result += c;
+              }
+              result += c;
+            }
+          }
+          result += '"';
+          return result;
+        }
+
+      private:
+        const Parameters::Accessor& Delegate;
+      };
+
+    private:
+      Binary::OutputStream& Stream;
+      const Strings::Template::Ptr Template;
+    };
+
+    Output::Ptr CreateOutput(const Parameters::Accessor& params)
+    {
+      if (auto csv = params.FindString("csv"))
+      {
+        return MakePtr<CsvOutput>(*Stream, *csv);
+      }
+      throw Error(THIS_LINE, "No output format defined");
+    }
+
+  private:
+    const Binary::OutputStream::Ptr Stream;
+    const Output::Ptr Output;
+  };
+
   const auto NO_BENCHMARK = ~0u;
 
   class CLIApplication
@@ -411,6 +538,14 @@ namespace
         {
           Benchmark benchmark(BenchmarkIterations, DumpUnknownData, *Sounder, *Display);
           Sourcer->ProcessItems(benchmark);
+        }
+        else if (!IndexerParams.empty())
+        {
+          auto idxParams = Parameters::Container::Create();
+          ParseParametersString("", IndexerParams, *idxParams);
+          const auto mergedParams = Parameters::CreateMergedAccessor(std::move(idxParams), ConfigParams);
+          Indexer idx(*mergedParams);
+          Sourcer->ProcessItems(idx);
         }
         else
         {
@@ -453,6 +588,12 @@ namespace
           opt("benchmark", value<uint_t>(&BenchmarkIterations),
               "Switch on benchmark mode with specified iterations count.\n");
           opt("dump-unknown-data", bool_switch(&DumpUnknownData), "Also report about unprocessed data regions.\n");
+          opt("index", value<String>(&IndexerParams),
+              "Perform indexation instead of playback.\n"
+              "Parameter is a map with the next mandatory parameters:\n"
+              " filename - output filename, no template fields supported\n"
+              " csv - CSV output format string with delimiters\n"
+              ".");
         }
         options.add(Informer->GetOptionsDescription());
         options.add(Sourcer->GetOptionsDescription());
@@ -599,6 +740,7 @@ namespace
     uint_t SeekStep = 10;
     uint_t BenchmarkIterations;
     bool DumpUnknownData = false;
+    String IndexerParams;
   };
 }  // namespace
 
