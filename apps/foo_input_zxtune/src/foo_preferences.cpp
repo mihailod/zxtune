@@ -149,7 +149,7 @@ BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM)
 	players_list.disabled = players_disabled;
 	players_list.CreateInDialog(*this, IDC_PLAYER_PLUGINS);
 	players_list.AddColumnDLU("On", 20);
-	players_list.AddColumnDLU("ID", 30);
+	players_list.AddColumnDLU("ID", 50);
 	players_list.AddColumnDLU("Description", 500);
 	players_list.ReloadData();
 
