@@ -18,5 +18,6 @@
 
 // features
 #define MPT_WITH_MINIMP3 
+#define MPT_WITH_VORBIS
 #define MPT_WITH_VORBISFILE 
 #define MPT_WITH_OPUSFILE
