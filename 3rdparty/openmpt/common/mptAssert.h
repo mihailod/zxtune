@@ -72,7 +72,7 @@ OPENMPT_NAMESPACE_BEGIN
 // let MFC handle our asserts
 #define MPT_ASSERT_USE_FRAMEWORK 1
 
-#elif !defined(MPT_ASSERT_USE_FRAMEWORK) // !MPT_WITH_MFC
+#else // !MPT_WITH_MFC
 
 #if defined(ASSERT)
 #define MPT_FRAMEWORK_ASSERT_IS_DEFINED
@@ -131,7 +131,7 @@ OPENMPT_NAMESPACE_BEGIN
 
 #if defined(MPT_ASSERT_HANDLER_NEEDED)
 // custom assert handler needed
-MPT_NOINLINE void AssertHandler(const mpt::source_location &loc, const char *expr, const char *msg=nullptr);
+MPT_ATTR_NOINLINE MPT_DECL_NOINLINE void AssertHandler(const mpt::source_location &loc, const char *expr, const char *msg=nullptr);
 #endif // MPT_ASSERT_HANDLER_NEEDED
 
 
