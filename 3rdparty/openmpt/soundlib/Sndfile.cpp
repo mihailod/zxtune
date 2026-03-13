@@ -377,6 +377,7 @@ CSoundFile::ProbeResult CSoundFile::Probe(ProbeFlags flags, mpt::span<const std:
 		throw std::invalid_argument("");
 	}
 	MemoryFileReader file(data);
+#ifndef NO_CONTAINERS_SUPPORT
 	if(flags & ProbeContainers)
 	{
 #if !defined(MPT_WITH_ANCIENT)
@@ -386,6 +387,7 @@ CSoundFile::ProbeResult CSoundFile::Probe(ProbeFlags flags, mpt::span<const std:
 #endif // !MPT_WITH_ANCIENT
 		MPT_DO_PROBE(result, ProbeFileHeaderUMX(file, pfilesize));
 	}
+#endif // NO_CONTAINERS_SUPPORT
 	if(flags & ProbeModules)
 	{
 		for(const auto &format : ModuleFormatLoaders)
@@ -480,6 +482,7 @@ bool CSoundFile::CreateInternal(FileReader file, ModLoadingFlags loadFlags)
 {
 	if(file.IsValid())
 	{
+#ifndef NO_CONTAINERS_SUPPORT
 		std::vector<ContainerItem> containerItems;
 		ModContainerType packedContainerType = ModContainerType::None;
 		if(!(loadFlags & skipContainer))
@@ -505,6 +508,7 @@ bool CSoundFile::CreateInternal(FileReader file, ModLoadingFlags loadFlags)
 				}
 			}
 		}
+#endif // NO_CONTAINERS_SUPPORT
 
 		if(loadFlags & skipModules)
 		{
@@ -540,10 +544,12 @@ bool CSoundFile::CreateInternal(FileReader file, ModLoadingFlags loadFlags)
 			return loaderSuccess;
 		}
 
+#ifndef NO_CONTAINERS_SUPPORT
 		if(packedContainerType != ModContainerType::None && m_ContainerType == ModContainerType::None)
 		{
 			m_ContainerType = packedContainerType;
 		}
+#endif // NO_CONTAINERS_SUPPORT
 
 		m_visitedRows.Initialize(true);
 	} else
