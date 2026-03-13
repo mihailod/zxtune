@@ -268,7 +268,7 @@ namespace Module::PSF
       ::psx_set_readfile(Emu.get(), &ReadCallback, &Io);
     }
 
-    static sint32 ReadCallback(void* context, const char* path, sint32 offset, char* buffer, sint32 length)
+    static EMU_CALL sint32 ReadCallback(void* context, const char* path, sint32 offset, char* buffer, sint32 length)
     {
       auto* const io = static_cast<VfsIO*>(context);
       return io->Read(path, offset, buffer, length);
