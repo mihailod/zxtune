@@ -51,6 +51,7 @@ public:
 	LIBOPENMPT_CXX_API_MEMBER module_ext( const std::uint8_t * data, std::size_t size, std::ostream & log = std::clog, const std::map< std::string, std::string > & ctls = detail::initial_ctls_map() );
 	LIBOPENMPT_CXX_API_MEMBER module_ext( const char * data, std::size_t size, std::ostream & log = std::clog, const std::map< std::string, std::string > & ctls = detail::initial_ctls_map() );
 	LIBOPENMPT_CXX_API_MEMBER module_ext( const void * data, std::size_t size, std::ostream & log = std::clog, const std::map< std::string, std::string > & ctls = detail::initial_ctls_map() );
+	LIBOPENMPT_CXX_API_MEMBER module_ext( const void * data, std::size_t size, std::ostream * log = &std::clog, const std::map< std::string, std::string > & ctls = detail::initial_ctls_map() );
 	LIBOPENMPT_CXX_API_MEMBER virtual ~module_ext();
 
 public:

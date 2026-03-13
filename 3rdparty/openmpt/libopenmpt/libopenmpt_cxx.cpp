@@ -515,6 +515,10 @@ module_ext::module_ext( const void * data, std::size_t size, std::ostream & log,
 	ext_impl = new module_ext_impl( data, size, openmpt::helper::make_unique<std_ostream_log>( log ), ctls );
 	set_impl( ext_impl );
 }
+module_ext::module_ext( const void * data, std::size_t size, std::ostream * log, const std::map< std::string, std::string > & ctls) : ext_impl(0) {
+	ext_impl = new module_ext_impl( data, size, openmpt::helper::make_unique<std_ostream_log>( log ), ctls );
+	set_impl( ext_impl );
+}
 module_ext::~module_ext() {
 	set_impl( 0 );
 	delete ext_impl;
