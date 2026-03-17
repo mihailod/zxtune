@@ -75,6 +75,8 @@ const std::vector<std::string>& SupportedExts()
 				Add("EMUL");
 			else if(id == "OKT")
 				Add("OKTA");
+			else if(id == "IT")
+				Add("MPTM");
 		}
 		if(res.empty())
 			return res;
