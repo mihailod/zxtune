@@ -52,7 +52,6 @@ DECLARE_COMPONENT_VERSION("ZXTune Decoders", "0.0.10",
 "xPlugins sources by elf/2\n"
 "zlib library by Jean-loup Gailly and Mark Adler\n"
 "z80ex library by Boo-boo\n"
-"boost C++ library\n"
 "{fmt} by Victor Zverovich\n"
 "Pusher sources by Himik/ZxZ\n"
 "lhasa library by Simon Howard\n"
