@@ -42,7 +42,7 @@ extern std::vector<PlayerPlugin::Ptr> player_plugins;
 // As for 1.1, the version numbers are used by the component update finder to find updates; for that to work, you must have ONLY ONE declaration per DLL. If there are multiple declarations, the component is assumed to be outdated and a version number of "0" is assumed, to overwrite the component with whatever is currently on the site assuming that it comes with proper version numbers.
 DECLARE_COMPONENT_VERSION("ZXTune Decoders", "0.0.10",
 "ZXTune (C) 2008 - 2026 by Vitamin/CAIG.\n"
-"based on r5100 mar 10 2026\n"
+"based on r5100 + develop mar 10 2026\n"
 "foobar2000 plugin by djdron (C) 2013 - 2026.\n"
 "https://github.com/djdron/zxtune/tree/cmake\n\n"
 
