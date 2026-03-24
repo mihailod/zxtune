@@ -164,7 +164,7 @@ void input_zxtune::open(service_ptr_t<file> p_filehint, const char * p_path,t_in
 		throw exception_io_unsupported_format();
 	if(p_reason == input_open_info_read || m_file->is_remote())
 		ParseModules(p_abort);
-}
+}	
 class FoobarFilesSource : public Module::AdditionalFilesSource
 {
 public:
@@ -298,7 +298,7 @@ void input_zxtune::get_info(t_uint32 p_subsong, file_info & p_info,abort_callbac
 		props = m->GetModuleProperties();
 	}
 
-	double len = mi->Duration().CastTo<Time::Second>().Get();
+	double len = mi->Duration().CastTo<Time::Microsecond>().Get()/1e6;
 	p_info.set_length(len);
 	Parameters::IntType size;
 	if(Parameters::FindValue(*props, Module::ATTR_SIZE, size))
