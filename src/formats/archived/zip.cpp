@@ -184,7 +184,7 @@ namespace Formats::Archived
           // See ${modland}/Renoise/Farmer/funktastrophe.xrns
           const char* start = header->Name;
           const char* end = std::find(start, start + header->NameSize, 0);
-          const StringView rawName(start, end);
+          const auto rawName = MakeStringView(start, end);
           const bool isUtf8 = 0 != (header->Flags & Packed::Zip::FILE_UTF8);
           return isUtf8 ? String{rawName} : Strings::ToAutoUtf8(rawName);
         }
