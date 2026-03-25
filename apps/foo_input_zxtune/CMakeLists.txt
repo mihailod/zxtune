@@ -47,6 +47,10 @@ add_compile_options(-Wno-bool-operation -Wno-unused-but-set-variable -Wno-unused
 add_compile_options(/showFilenames)
 endif()
 
+if(MSVC)
+add_compile_options(/MP)
+endif()
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4018 /wd4244 /wd4800 /wd4996 /wd4267 /wd4101")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} /wd4018 /wd4090 /wd4146")
 
