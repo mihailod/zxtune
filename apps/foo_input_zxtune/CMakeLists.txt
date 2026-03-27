@@ -24,6 +24,7 @@ include_directories("${FOOBAR_SDK_ROOT}")
 include_directories("${FOOBAR_SDK_ROOT}/foobar2000")
 endif()
 
+if(WIN32)
 if("${WTL_ROOT}" STREQUAL "")
 message(FATAL_ERROR "Unable to find WTL. Please set WTL_ROOT to the root directory containing WTL. Get it here: http://wtl.sourceforge.net/")
 elseif(NOT EXISTS "${WTL_ROOT}/Include/atlapp.h")
@@ -31,6 +32,7 @@ message(FATAL_ERROR "Unable to find WTL in ${WTL_ROOT}")
 else()
 include_directories("${WTL_ROOT}/Include")
 endif()
+endif(WIN32)
 
 include_directories("../..")
 include_directories("../../include")
@@ -41,18 +43,18 @@ cmake_path(SET SOURCES_ROOTX NORMALIZE "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 cmake_path(GET SOURCES_ROOTX PARENT_PATH SOURCES_ROOT)
 add_definitions(-DSOURCES_ROOT="${SOURCES_ROOT}")
 
+if(MSVC)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 add_compile_options(-Wno-deprecated-literal-operator -Wno-gnu-string-literal-operator-template -Wno-microsoft-include -Wno-deprecated-non-prototype)
 add_compile_options(-Wno-bool-operation -Wno-unused-but-set-variable -Wno-unused-variable -Wno-misleading-indentation -Wno-unused-function)
 add_compile_options(/showFilenames)
 endif()
 
-if(MSVC)
 add_compile_options(/MP)
-endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4018 /wd4244 /wd4800 /wd4996 /wd4267 /wd4101")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} /wd4018 /wd4090 /wd4146")
+endif()
 
 #3rdparty
 add_subdirectory("../../3rdparty/asap" "asap")

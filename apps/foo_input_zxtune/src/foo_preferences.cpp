@@ -15,6 +15,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#ifdef _WINDOWS
+
 #include "resource.h"
 #define UNICODE
 #define _UNICODE
@@ -204,3 +206,6 @@ public:
 };
 
 static preferences_page_factory_t<preferences_page_myimpl> g_preferences_page_myimpl_factory;
+
+#endif//_WINDOWS
+
