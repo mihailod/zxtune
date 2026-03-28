@@ -15,16 +15,16 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifdef _WINDOWS
-
 #include "resource.h"
 #define UNICODE
 #define _UNICODE
 #include <helpers/foobar2000+atl.h>
 #include <helpers/atl-misc.h>
 #include <helpers/DarkMode.h>
+#ifdef _WINDOWS
 #include <libPPUI/CListControlSimple.h>
 #include <libPPUI/CListControl-Cells.h>
+#endif//_WINDOWS
 #undef UNICODE
 #undef _UNICODE
 #undef min
@@ -50,10 +50,12 @@ extern std::vector<PlayerPlugin::Ptr> player_plugins;
 bool PlayerPluginEnabled(const PlayerPlugin::Ptr& pp)
 {
 	auto hash = PlayerPluginHash(pp);
-	return player_plugins_disabled_cfg.find_first(hash.c_str()) == ~0;
+	return player_plugins_disabled_cfg.get().find_first(hash.c_str()) == ~0;
 }
 }
 //namespace ZXTune
+
+#ifdef _WINDOWS
 
 class CMyPreferences : public CDialogImpl<CMyPreferences>, public preferences_page_instance
 {
