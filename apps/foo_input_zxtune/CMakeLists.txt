@@ -45,6 +45,7 @@ if(MSVC)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 add_compile_options(-Wno-deprecated-literal-operator -Wno-gnu-string-literal-operator-template -Wno-microsoft-include -Wno-deprecated-non-prototype)
 add_compile_options(-Wno-bool-operation -Wno-unused-but-set-variable -Wno-unused-variable -Wno-misleading-indentation -Wno-unused-function)
+add_compile_options(-Wno-inconsistent-missing-override -Wno-overloaded-virtual -Wno-unused-value -Wno-reorder-ctor -Wno-nontrivial-memcall)
 add_compile_options(/showFilenames)
 endif()
 
