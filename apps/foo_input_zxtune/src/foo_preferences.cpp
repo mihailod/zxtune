@@ -72,9 +72,11 @@ public:
 	//WTL message map
 	BEGIN_MSG_MAP(CMyPreferences)
 	MSG_WM_INITDIALOG(OnInitDialog)
+	MSG_WM_SIZE(OnSize)
 	END_MSG_MAP()
 private:
 	BOOL		OnInitDialog(CWindow, LPARAM);
+	void		OnSize(UINT, const CSize&);
 	bool		HasChangedNeedRestart();
 
 	class CListPlayerPlugins : public CListControlReadOnly
@@ -154,11 +156,15 @@ BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM)
 	players_list.CreateInDialog(*this, IDC_PLAYER_PLUGINS);
 	players_list.AddColumnDLU("On", 20);
 	players_list.AddColumnDLU("ID", 50);
-	players_list.AddColumnDLU("Description", 500);
+	players_list.AddColumnAutoWidth("Description");
 	players_list.ReloadData();
 
 	m_dark.AddDialogWithControls(*this);
 	return FALSE;
+}
+void CMyPreferences::OnSize(UINT, const CSize& s)
+{
+	players_list.SetWindowPos(HWND_TOP, 0, 0, s.cx, s.cy, 0);
 }
 
 t_uint32 CMyPreferences::get_state()
