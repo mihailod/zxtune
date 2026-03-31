@@ -9,8 +9,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-include_directories(${Boost_INCLUDE_DIR})
-add_definitions(-DHAVE_BOOST)
 add_definitions(-DNO_DEBUG_LOGS)
 add_definitions(-DFMT_DEPRECATED_HEAVY_CORE)
 add_definitions(-D_CRT_SECURE_NO_WARNINGS)
