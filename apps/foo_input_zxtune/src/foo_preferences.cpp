@@ -49,14 +49,15 @@ bool PlayerPluginEnabled(const PlayerPlugin::Ptr& pp)
 }
 void SetPlayerPluginsDisabled(const std::vector<PlayerPlugin::Ptr>& pps)
 {
-	player_plugins_disabled_cfg.clear();
+	pfc::string8 hashes;
 	for(auto& i : pps)
 	{
 		auto hash = PlayerPluginHash(i);
-		if(!player_plugins_disabled_cfg.is_empty())
-			player_plugins_disabled_cfg.add_string(" ");
-		player_plugins_disabled_cfg.add_string(hash);
+		if(!hashes.is_empty())
+			hashes.add_string(" ");
+		hashes.add_string(hash);
 	}
+	player_plugins_disabled_cfg = hashes;
 }
 
 }
