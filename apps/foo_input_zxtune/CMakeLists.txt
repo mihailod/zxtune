@@ -116,11 +116,12 @@ add_subdirectory("../../src/tools" "tools")
 
 file(GLOB SRCS_CXX "src/*.cpp")
 file(GLOB SRCS_H "src/*.h")
-file(GLOB RES_RC "src/*.rc")
 
 set(LIBS asap gme he ht hvl lazyusf2 lhasa mgba ogg openmpt opus sidplayfp snesspc sseqplayer v2m vgm vio2sf vorbis xmp z80ex zlib analysis binary binary_compression binary_format core core_plugins_archives core_plugins_players dbg devices_aym devices_beeper devices_dac devices_fm devices_saa devices_z80 formats_archived formats_archived_multitrack formats_chiptune formats_packed formats_multitrack l10n_stub module_conversion module_players module_properties parameters platform_version sound strings tools)
 
 if(WIN32)
+
+file(GLOB RES_RC "src/*.rc")
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 set(ARCH "x64/")
@@ -160,10 +161,14 @@ set(FOOBAR_SDK_LIBRARIES
 	debug "${FOOBAR_SDK_ROOT}/pfc/build/Debug/libpfc-Mac.a"
 )
 
+file(GLOB SRCS_MAC "src/mac/*.h" "src/mac/*.mm")
+file(GLOB RES_MAC "src/mac/*.xib")
+
 endif(WIN32)
 
-add_library(foo_input_zxtune MODULE ${SRCS_CXX} ${SRCS_H} ${RES_RC})
+add_library(foo_input_zxtune MODULE ${SRCS_CXX} ${SRCS_H} ${RES_RC} ${SRCS_MAC} ${RES_MAC})
 target_link_libraries(foo_input_zxtune ${LIBS} ${FOOBAR_SDK_LIBRARIES})
+
 if(APPLE)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
 target_link_libraries(foo_input_zxtune "-framework CoreFoundation" "-framework Cocoa")
@@ -175,6 +180,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 	MACOSX_BUNDLE_GUI_IDENTIFIER com.djdron.foo-input-zxtune
 	MACOSX_BUNDLE_ICON_FILE AppIcon
 	MACOSX_BUNDLE_SHORT_VERSION_STRING "0.0.10"
+	RESOURCE "${RES_MAC}"
 	XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
 	XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED NO
 	XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.djdron.foo-input-zxtune"
