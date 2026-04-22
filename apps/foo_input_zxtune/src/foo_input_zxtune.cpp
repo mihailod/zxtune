@@ -75,6 +75,8 @@ DECLARE_COMPONENT_VERSION("ZXTune Decoders", "0.0.10",
 // This will prevent users from renaming your component around (important for proper troubleshooter behaviors) or loading multiple instances of it.
 VALIDATE_COMPONENT_FILENAME("foo_input_zxtune.dll");
 
+extern const GUID preferences_guid;
+
 const std::vector<std::string>& SupportedExts();
 
 // No inheritance. Our methods get called over input framework templates. See input_singletrack_impl for descriptions of what each method does.
@@ -119,6 +121,7 @@ public:
 
 	static const char* g_get_name() { return "ZXTune Decoders"; }
 	static GUID g_get_guid();
+	static GUID g_get_preferences_guid() { return preferences_guid; }
 
 private:
 	void ParseModules(abort_callback& p_abort);
