@@ -121,8 +121,6 @@ set(LIBS asap gme he ht hvl lazyusf2 lhasa mgba ogg openmpt opus sidplayfp sness
 
 if(WIN32)
 
-file(GLOB RES_RC "src/*.rc")
-
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 set(ARCH "x64/")
 set(ARCH2 "-x64")
@@ -146,6 +144,9 @@ set(FOOBAR_SDK_LIBRARIES
 	debug "${FOOBAR_SDK_ROOT}/libPPUI/${ARCH}Debug/libPPUI.lib"
 )
 
+file(GLOB SRCS_WIN32 "src/win32/*.h" "src/win32/*.cpp")
+file(GLOB RES_WIN32 "src/win32/*.rc")
+
 elseif(APPLE)
 
 set(FOOBAR_SDK_LIBRARIES
@@ -166,7 +167,7 @@ file(GLOB RES_MAC "src/mac/*.xib")
 
 endif(WIN32)
 
-add_library(foo_input_zxtune MODULE ${SRCS_CXX} ${SRCS_H} ${RES_RC} ${SRCS_MAC} ${RES_MAC})
+add_library(foo_input_zxtune MODULE ${SRCS_CXX} ${SRCS_H} ${SRCS_WIN32} ${RES_WIN32} ${SRCS_MAC} ${RES_MAC})
 target_link_libraries(foo_input_zxtune ${LIBS} ${FOOBAR_SDK_LIBRARIES})
 
 if(APPLE)
