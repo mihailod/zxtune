@@ -2,13 +2,15 @@
 
 Official page is https://zxtune.bitbucket.io
 
-Based on ZXTune Player (C) 2008 - 2020 by Vitamin/CAIG, https://github.com/vitamin-caig/zxtune
+Based on ZXTune Player (C) 2008 - 2026 by Vitamin/CAIG, https://github.com/vitamin-caig/zxtune
 
-r4953 jul 23 2020
+r5100 + develop mar 26 2026
 
-foobar2000 plugin by djdron (C) 2013 - 2020.
+foobar2000 plugin by djdron (C) 2013 - 2026.
 
 https://github.com/djdron/zxtune/tree/cmake
+
+https://www.foobar2000.org/components/view/foo_input_zxtune
 
 ZX tunes archive: http://zxtunes.com/authors_list.php?&ln=eng
 
