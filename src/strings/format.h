@@ -13,7 +13,7 @@
 #include "string_type.h"
 #include "types.h"
 
-#include "3rdparty/fmt/include/fmt/core.h"
+#include "3rdparty/fmt/include/fmt/format.h"
 
 #include <utility>
 

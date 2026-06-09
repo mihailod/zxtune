@@ -97,28 +97,13 @@ namespace ZXTune
     RegisterFTCSupport(players);
     RegisterCOPSupport(players);
     RegisterTFESupport(players);
-    RegisterXMPPlugins(players);
     RegisterET1Support(players);
     RegisterAYCSupport(players);
-    RegisterSPCSupport(players);
-    RegisterMTCSupport(players);
-    RegisterAHXSupport(players);
-    RegisterPSFSupport(players);
-    RegisterUSFSupport(players);
-    RegisterGSFSupport(players);
-    Register2SFSupport(players);
-    RegisterNCSFSupport(players);
-    RegisterSDSFSupport(players);
-    RegisterMP3Plugin(players);
-    RegisterOGGPlugin(players);
-    RegisterFLACPlugin(players);
-    RegisterVGMPlugins(players);
-    RegisterMPTPlugins(players);
-    RegisterSIDPlugins(players, archives);
-    RegisterGMEPlugins(players, archives);
-    RegisterASAPPlugins(players, archives);
-    RegisterVGMStreamPlugins(players, archives);
-    RegisterV2MSupport(players);
-    RegisterWAVPlugin(players);  // wav after VGMStream
+    // chipmachine zxtuneplugin: only self-contained Spectrum/AY-family players
+    // are registered (AY/YM/PT/ST/ASC/SQT/PSC/FTC/GTR/VTX/PSG/TXT + DAC + TFM +
+    // SAA/COP). Players backed by external 3rdparty libs (XMP/GME/ASAP/MPT/
+    // VGMStream/V2M/SID/xSF/codecs) are intentionally omitted so the plugin
+    // vendors only fmt+z80ex+lhasa+lzma. See zxtuneplugin/CMakeLists.txt.
+    (void)archives;
   }
 }  // namespace ZXTune
